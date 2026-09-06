@@ -5,13 +5,14 @@ First determines if the email is a genuine recruitment/interview update (INTERVI
 If NOT_RELATED -> Returns is_interview_mail=False.
 If INTERVIEW_MAIL -> Extracts candidate_name, company, role, status, round, interview_date.
 No confidence scores.
+No offline/local keyword classification fallback is used; an AI API key is required.
 """
 
 import json
 import logging
 from typing import Any
 
-from app.core.ai_gateway import chat_completion
+from app.core.ai_gateway import AIServiceUnavailable, chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,8 @@ class GroqService:
         Send raw extracted email text to AI Gateway with temperature 0.
         Uses centralized multi-key failover and circuit breaking.
         First determines if the email is INTERVIEW_MAIL or NOT_RELATED.
+        Raises AIServiceUnavailable instead of making a local guess when API
+        credentials are missing or all configured providers fail.
         """
         import re
 
@@ -69,59 +72,39 @@ class GroqService:
                 max_tokens=500,
             )
 
-            if resp_data and "choices" in resp_data and resp_data["choices"]:
-                content = resp_data["choices"][0]["message"]["content"]
-                parsed = json.loads(content)
+            if not resp_data or "choices" not in resp_data or not resp_data["choices"]:
+                raise ValueError("AI Gateway returned no choices for email extraction.")
 
-                is_interview = bool(parsed.get("is_interview_mail", False))
-                if not is_interview:
-                    return {
-                        "is_interview_mail": False,
-                        "candidate_name": "",
-                        "company": "",
-                        "role": "",
-                        "status": "",
-                        "round": "",
-                        "interview_date": "",
-                        "resume_id_tag": "",
-                    }
+            content = resp_data["choices"][0]["message"]["content"]
+            parsed = json.loads(content)
 
-                extracted_tag = (parsed.get("resume_id_tag") or "").strip() or fallback_tag or ""
-
+            is_interview = bool(parsed.get("is_interview_mail", False))
+            if not is_interview:
                 return {
-                    "is_interview_mail": True,
-                    "candidate_name": (parsed.get("candidate_name") or "").strip(),
-                    "company": (parsed.get("company") or "").strip(),
-                    "role": (parsed.get("role") or "").strip() or "Software Engineer",
-                    "status": (parsed.get("status") or "Shortlisted").strip() or "Shortlisted",
-                    "round": (parsed.get("round") or "Round 1").strip() or "Round 1",
-                    "interview_date": (parsed.get("interview_date") or "").strip() or None,
-                    "resume_id_tag": extracted_tag,
+                    "is_interview_mail": False,
+                    "candidate_name": "",
+                    "company": "",
+                    "role": "",
+                    "status": "",
+                    "round": "",
+                    "interview_date": "",
+                    "resume_id_tag": "",
                 }
-        except Exception as e:
-            logger.warning(f"AI Gateway extract error ({e}). Using deterministic keyword fallback.")
-        lower = raw_email.lower()
-        spam_keywords = ["discount", "deal", "newsletter", "invoice", "billing", "otp", "unsubscribe", "sale", "coupon"]
 
-        if any(sp in lower for sp in spam_keywords) and not any(rk in lower for rk in ["interview scheduled", "offer letter"]):
+            extracted_tag = (parsed.get("resume_id_tag") or "").strip() or fallback_tag or ""
+
             return {
-                "is_interview_mail": False,
-                "candidate_name": "",
-                "company": "",
-                "role": "",
-                "status": "",
-                "round": "",
-                "interview_date": "",
-                "resume_id_tag": "",
+                "is_interview_mail": True,
+                "candidate_name": (parsed.get("candidate_name") or "").strip(),
+                "company": (parsed.get("company") or "").strip(),
+                "role": (parsed.get("role") or "").strip() or "Software Engineer",
+                "status": (parsed.get("status") or "Shortlisted").strip() or "Shortlisted",
+                "round": (parsed.get("round") or "Round 1").strip() or "Round 1",
+                "interview_date": (parsed.get("interview_date") or "").strip() or None,
+                "resume_id_tag": extracted_tag,
             }
-
-        return {
-            "is_interview_mail": True,
-            "candidate_name": "Candidate",
-            "company": "Company",
-            "role": "Software Engineer",
-            "status": "Shortlisted",
-            "round": "Shortlisted",
-            "interview_date": None,
-            "resume_id_tag": fallback_tag or "",
-        }
+        except Exception as e:
+            logger.error(f"AI Gateway extract error: {e}")
+            raise AIServiceUnavailable(
+                "AI email classification failed. Configure a valid AI API key and try again."
+            ) from e

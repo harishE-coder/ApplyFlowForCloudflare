@@ -37,11 +37,21 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 7
 
-    # Google Apps Script Web App Storage
+    # Cloudflare R2 Resume Storage
+    r2_account_id: str | None = Field(default=None, alias="r2_account_id")
+    r2_access_key_id: str | None = Field(default=None, alias="r2_access_key_id")
+    r2_secret_access_key: str | None = Field(default=None, alias="r2_secret_access_key")
+    r2_bucket_name: str = Field(default="applyflow-resumes", alias="r2_bucket_name")
+    r2_endpoint_url: str | None = Field(default=None, alias="r2_endpoint_url")
+    r2_public_url: str | None = Field(default=None, alias="r2_public_url")
+    resume_retention_days: int = Field(default=120, alias="resume_retention_days")
+
+    # Legacy Google Apps Script Web App Storage (fallback)
     google_apps_script_url: str = ""
     google_drive_root_folder_id: str = ""
 
     # Groq & Multi-Provider AI Gateway Keys
+    ai_provider: str | None = Field(default=None, alias="ai_provider")
     groq_api_key: str | None = None
     groq_api_key_1: str | None = Field(default=None, alias="groq_api_key_1")
     groq_api_key_2: str | None = Field(default=None, alias="groq_api_key_2")
@@ -69,6 +79,15 @@ class Settings(BaseSettings):
     admin_email: str = "harishabblu@gmail.com"
     admin_password: str = "Harish@2007"
     admin_name: str = "Harish Admin"
+
+    @property
+    def computed_r2_endpoint(self) -> str | None:
+        """Returns the Cloudflare R2 S3-compatible API endpoint."""
+        if self.r2_endpoint_url:
+            return self.r2_endpoint_url.strip()
+        if self.r2_account_id:
+            return f"https://{self.r2_account_id.strip()}.r2.cloudflarestorage.com"
+        return None
 
     @property
     def database_url(self) -> str:

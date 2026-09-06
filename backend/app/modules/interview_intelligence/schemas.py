@@ -4,7 +4,7 @@ Pydantic schemas for the Interview Intelligence Pipeline (v1.0 Production-Ready)
 - Normalized round types (RoundType) and status definitions (EventStatus)
 - First-class conversation thread_id tracking
 - Deterministic Groq AI Teacher structured extraction
-- Review action audit trails and timeline telemetry responses
+- API-key classifier telemetry, review action audit trails, and timeline responses
 """
 
 import uuid
@@ -127,7 +127,7 @@ class EmailTrainingDataCreate(BaseModel):
     role: str | None = None
     category: str | None = None
     confidence: int = 0
-    source: str = "local"
+    source: str = "api_key"
     classification_source_version: str | None = None
     pipeline_version: str = "interview_pipeline_v2.0"
     needs_retraining: bool = False
@@ -239,8 +239,8 @@ class ProcessEmailResponse(BaseModel):
     thread_id: uuid.UUID | None = None
     category: str
     confidence: int
-    decision: str  # "accept", "ai_fallback", "review_queue"
-    source: str  # "local", "groq", "human"
+    decision: str  # "api_classified"
+    source: str  # "api_key", "human", or legacy historical source
     company: str | None = None
     role: str | None = None
     round_name: str | None = None
@@ -254,47 +254,6 @@ class ProcessEmailResponse(BaseModel):
     ai_reasoning: str | None = None
     needs_retraining: bool = False
     pipeline_version: str = "interview_pipeline_v2.0"
-
-
-class ModelVersionResponse(BaseModel):
-    id: uuid.UUID
-    version: str
-    accuracy: float | None = None
-    samples: int = 0
-    storage_type: str = "supabase"
-    trained_at: datetime
-    active: bool = False
-    model_path: str | None = None
-    metrics: dict | None = None
-
-    model_config = {"from_attributes": True}
-
-
-class TeacherDisagreementCreate(BaseModel):
-    email_id: uuid.UUID
-    local_label: str | None = None
-    local_confidence: int | None = None
-    ai_label: str | None = None
-    ai_confidence: int | None = None
-    human_label: str | None = None
-    resolved: bool = False
-    notes: str | None = None
-
-
-class TeacherDisagreementResponse(BaseModel):
-    id: uuid.UUID
-    email_id: uuid.UUID
-    local_label: str | None = None
-    local_confidence: int | None = None
-    ai_label: str | None = None
-    ai_confidence: int | None = None
-    human_label: str | None = None
-    resolved: bool = False
-    notes: str | None = None
-    created_at: datetime
-    resolved_at: datetime | None = None
-
-    model_config = {"from_attributes": True}
 
 
 class ReviewActionCreate(BaseModel):
@@ -324,6 +283,12 @@ class DashboardMetricsResponse(BaseModel):
     active_model_version: str
     golden_accuracy: float
     needs_retraining_count: int
+    api_classified: int = 0
+    human_reviewed: int = 0
+    pending_processing: int = 0
+    api_keys_configured: int = 0
+    api_providers: list[str] = Field(default_factory=list)
+    api_model: str | None = None
     pipeline_version: str = "interview_pipeline_v2.0"
     prompt_version: str = "teacher_v1"
     category_breakdown: dict[str, int] = Field(default_factory=dict)

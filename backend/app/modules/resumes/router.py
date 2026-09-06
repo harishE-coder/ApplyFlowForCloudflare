@@ -12,6 +12,7 @@ from fastapi import (
     Query,
     UploadFile,
 )
+from fastapi.responses import RedirectResponse
 from fastapi.responses import Response as FastAPIResponse
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ from app.modules.resumes.schemas import (
 )
 from app.modules.users.models import User
 from app.services.google_drive import drive_service
+from app.services.r2_storage import r2_storage
 
 router = APIRouter(prefix="/api/resumes", tags=["resumes"])
 
@@ -215,17 +217,45 @@ async def get_resume(
 @router.get("/{resume_id}/preview")
 async def preview_resume(
     resume_id: uuid.UUID,
+    stream: bool = Query(False, description="Stream binary directly instead of redirecting to presigned R2 URL"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Stream raw PDF binary bytes directly with application/pdf header.
+    Preview resume:
+    - If stored in Cloudflare R2: Redirects (307) directly to Cloudflare R2 presigned preview URL (or streams if stream=True).
+    - If legacy file: Streams valid PDF binary bytes with application/pdf header.
     Never returns HTML.
     """
     resume = await service.get_resume_by_id(db, resume_id, current_user)
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    r2_key = getattr(resume, "r2_key", None)
+    if r2_key:
+        if not stream:
+            presigned_url = r2_storage.get_presigned_preview_url(
+                r2_key=r2_key,
+                original_filename=resume.original_filename,
+            )
+            if presigned_url:
+                return RedirectResponse(url=presigned_url, status_code=307)
+
+        # Direct streaming fallback (or stream=True requested)
+        file_bytes, mime_type = r2_storage.get_file_bytes(
+            r2_key=r2_key,
+            original_filename=resume.original_filename,
+        )
+        return FastAPIResponse(
+            content=file_bytes,
+            media_type=mime_type or "application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{resume.original_filename}"',
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    # Legacy Google Drive / local storage fallback
     file_bytes, mime_type = await drive_service.get_file_bytes(
         file_id=resume.drive_file_id,
         original_filename=resume.original_filename,
@@ -244,16 +274,42 @@ async def preview_resume(
 @router.get("/{resume_id}/download")
 async def download_resume(
     resume_id: uuid.UUID,
+    stream: bool = Query(False, description="Stream binary directly instead of redirecting to presigned R2 URL"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Download raw resume file with attachment Content-Disposition.
+    Download raw resume file:
+    - If stored in Cloudflare R2: Redirects (307) directly to Cloudflare R2 presigned attachment download URL.
+    - If legacy file: Streams with attachment Content-Disposition.
     """
     resume = await service.get_resume_by_id(db, resume_id, current_user)
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    r2_key = getattr(resume, "r2_key", None)
+    if r2_key:
+        if not stream:
+            presigned_url = r2_storage.get_presigned_download_url(
+                r2_key=r2_key,
+                original_filename=resume.original_filename,
+            )
+            if presigned_url:
+                return RedirectResponse(url=presigned_url, status_code=307)
+
+        file_bytes, mime_type = r2_storage.get_file_bytes(
+            r2_key=r2_key,
+            original_filename=resume.original_filename,
+        )
+        return StreamingResponse(
+            io.BytesIO(file_bytes),
+            media_type=mime_type or "application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{resume.original_filename}"'
+            },
+        )
+
+    # Legacy Google Drive / local storage fallback
     file_bytes, mime_type = await drive_service.get_file_bytes(
         file_id=resume.drive_file_id,
         original_filename=resume.original_filename,
@@ -290,5 +346,19 @@ async def delete_resume(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete resume from database and Google Drive."""
+    """Delete resume from database and Cloudflare R2."""
     return await service.delete_resume(db, resume_id, current_user)
+
+
+@router.post("/cleanup", dependencies=[Depends(require_role("admin"))])
+async def cleanup_resumes_endpoint(
+    retention_days: int | None = Query(None, description="Optional retention days override (e.g. 120)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Trigger automatic retention cleanup of expired resumes from Cloudflare R2 and database.
+    Only Super Administrators can invoke this endpoint.
+    """
+    return await service.cleanup_expired_resumes(db, current_user, retention_days)
+

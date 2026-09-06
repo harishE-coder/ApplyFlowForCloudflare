@@ -50,6 +50,12 @@ class ResumeResponse(BaseModel):
     resume_date: date | None = None
     client_notes: str | None = None
     is_note_shared: bool = False
+    r2_key: str | None = None
+    file_size: int | None = None
+    content_type: str | None = "application/pdf"
+    expires_at: datetime | None = None
+    preview_url: str | None = None
+    download_url: str | None = None
     drive_file_id: str | None = None
     drive_url: str | None = None
     upload_date: datetime
@@ -71,6 +77,8 @@ class ParsedFileUploadItem(BaseModel):
     requirement_id: uuid.UUID | None = None
     requirement_code: str | None = None
     resume_date: date | None = None
+    r2_key: str | None = None
+    file_size: int | None = None
     drive_file_id: str | None = None
     saved_resume_id: uuid.UUID | None = None
     temp_file_id: str | None = None

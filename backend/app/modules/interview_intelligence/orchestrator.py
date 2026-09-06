@@ -3,13 +3,11 @@ Interview Intelligence Pipeline Orchestrator (v1.0 Production-Ready):
 Coordinates the complete end-to-end ingestion flow:
 1. Parse email (.eml, .pdf, or raw text)
 2. Staging in Supabase Storage with atomic rollback
-3. Sub-100ms Local Model classification with Calibrated Confidence
-4. Groq AI Teacher Fallback on uncertainty (75-96% or <75%)
-5. First-class conversation thread_id resolution / propagation
-6. Active learning disagreement logging to teacher_disagreements
-7. Application matching by company / role / domain with 3rd-party ATS filtering
-8. Conversation threading & timeline event deduplication separating round from status
-9. Database persistence and status updates
+3. First-class conversation thread_id resolution / propagation
+4. API-key AI classification and structured extraction
+5. Application matching by company / role / domain with 3rd-party ATS filtering
+6. Conversation threading & timeline event deduplication separating round from status
+7. Database persistence and status updates
 """
 
 import logging
@@ -18,13 +16,10 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.interview_intelligence.application_matcher import ApplicationMatcher
-from app.modules.interview_intelligence.model import (
-    ClassificationDecision,
-    local_classifier,
-)
 from app.modules.interview_intelligence.models import EmailTrainingData
 from app.modules.interview_intelligence.parser import EmailParser
 from app.modules.interview_intelligence.schemas import (
+    EmailCategory,
     GroqTeacherResult,
     NormalizedEmail,
     ProcessEmailResponse,
@@ -79,51 +74,34 @@ class InterviewPipelineOrchestrator:
             # Step 3: Resolve Conversation Thread ID
             thread_id = await ThreadMatcher.resolve_or_create_thread_id(session, parsed_email)
 
-            # Step 4: Local Model Inference (< 15ms)
-            local_pred = local_classifier.predict(parsed_email)
-            decision = local_pred["decision"]
-            confidence = local_pred["confidence"]
+            # Step 4: Fetch recent recruiter corrections as prompt memory (few-shot dynamic alignment)
+            recent_corrections = await cls._fetch_recent_corrections(session, limit=5)
 
-            company = None
-            role = None
-            round_name = None
-            round_type = None
-            status_value = None
-            meeting_link = None
-            deadline = None
-            ai_reasoning = None
-            source = "local"
-            category = local_pred["category"]
+            # Step 5: API-key AI classification and structured extraction.
+            teacher_res: GroqTeacherResult = await groq_teacher.classify_with_teacher(
+                email_data=parsed_email,
+                recent_corrections=recent_corrections,
+            )
+            category = teacher_res.category
+            if not teacher_res.it_related and category not in {
+                EmailCategory.NON_IT.value,
+                EmailCategory.OTHER.value,
+            }:
+                category = EmailCategory.OTHER.value
 
-            # Step 5: Decision Engine Routing
-            if decision == ClassificationDecision.ACCEPT:
-                # High-confidence local classification
-                category = local_pred["category"]
-                company = cls._heuristic_company_extract(parsed_email)
-                meeting_link = cls._heuristic_meeting_link(parsed_email)
-                round_name = ThreadMatcher._default_round_name(category)
-                round_type = ThreadMatcher._infer_round_type(category, round_name)
-                status_value = ThreadMatcher._default_status(category)
-                ai_reasoning = f"Directly accepted by local calibrated model ({confidence}% confidence)."
-            else:
-                # Escalate to Groq Teacher (75-96% or <75%)
-                teacher_res: GroqTeacherResult = await groq_teacher.classify_with_teacher(
-                    email_data=parsed_email,
-                    local_prediction=local_pred,
-                )
-                category = teacher_res.category
-                company = teacher_res.company or cls._heuristic_company_extract(parsed_email)
-                role = teacher_res.role
-                round_name = teacher_res.round_name or teacher_res.round
-                round_type = teacher_res.round_type
-                status_value = teacher_res.status
-                meeting_link = teacher_res.meeting_link or cls._heuristic_meeting_link(parsed_email)
-                deadline = teacher_res.deadline
-                confidence = teacher_res.confidence
-                source = "groq"
-                ai_reasoning = teacher_res.reason
+            company = teacher_res.company or cls._heuristic_company_extract(parsed_email)
+            role = teacher_res.role
+            round_name = teacher_res.round_name or teacher_res.round
+            round_type = teacher_res.round_type
+            status_value = teacher_res.status
+            meeting_link = teacher_res.meeting_link or cls._heuristic_meeting_link(parsed_email)
+            deadline = teacher_res.deadline
+            confidence = teacher_res.confidence
+            source = "api_key"
+            decision = "api_classified"
+            ai_reasoning = teacher_res.reason
 
-            # Step 6: Create Database Training Record with thread_id
+            # Step 5: Create Database Email Record with thread_id
             email_record = EmailTrainingData(
                 id=uuid.uuid4(),
                 version=1,
@@ -145,7 +123,7 @@ class InterviewPipelineOrchestrator:
                 category=category,
                 confidence=confidence,
                 source=source,
-                classification_source_version=f"{source}_v1.0",
+                classification_source_version=f"{source}_{teacher_res.prompt_version}",
                 pipeline_version="interview_pipeline_v2.0",
                 needs_retraining=False,
                 ai_reasoning=ai_reasoning,
@@ -153,16 +131,7 @@ class InterviewPipelineOrchestrator:
             )
             session.add(email_record)
 
-            # Step 7: Log Disagreement for Active Learning (if Local != Groq)
-            if source == "groq":
-                await groq_teacher.log_disagreement_if_any(
-                    session=session,
-                    email_record=email_record,
-                    local_prediction=local_pred,
-                    teacher_result=teacher_res,
-                )
-
-            # Step 8: Application Matching with 3rd-party ATS precedence
+            # Step 6: Application Matching with 3rd-party ATS precedence
             matched_app = await ApplicationMatcher.match_application(
                 session=session,
                 company=company,
@@ -176,7 +145,7 @@ class InterviewPipelineOrchestrator:
             if matched_app and not company:
                 company = matched_app.company
 
-            # Step 9: Thread & Event Timeline Deduplication
+            # Step 7: Thread & Event Timeline Deduplication
             action, event_record = await ThreadMatcher.match_and_deduplicate_event(
                 session=session,
                 email_record=email_record,
@@ -193,7 +162,7 @@ class InterviewPipelineOrchestrator:
                 application_id=app_id,
             )
 
-            # Step 10: Sync Matched Application Status
+            # Step 8: Sync Matched Application Status
             if matched_app:
                 await ApplicationMatcher.sync_application_status(
                     session=session,
@@ -261,6 +230,43 @@ class InterviewPipelineOrchestrator:
             if any(p in link.lower() for p in ["zoom.us", "meet.google.com", "teams.microsoft.com", "calendly.com"]):
                 return link
         return None
+
+    @classmethod
+    async def _fetch_recent_corrections(
+        cls,
+        session: AsyncSession,
+        limit: int = 5,
+    ) -> list[dict]:
+        """
+        Fetches the latest human recruiter corrections (ReviewAction joined with EmailTrainingData)
+        to inject as few-shot prompt memory into the AI Teacher classification call.
+        This continuously teaches the AI provider from past feedback with zero local retraining.
+        """
+        from sqlalchemy import desc, select
+        from app.modules.interview_intelligence.models import EmailTrainingData, ReviewAction
+
+        try:
+            stmt = (
+                select(ReviewAction, EmailTrainingData.subject, EmailTrainingData.company)
+                .join(EmailTrainingData, ReviewAction.email_id == EmailTrainingData.id)
+                .order_by(desc(ReviewAction.created_at))
+                .limit(limit)
+            )
+            res = await session.execute(stmt)
+            rows = res.all()
+            corrections = []
+            for action, subject, company in rows:
+                corrections.append({
+                    "subject": subject or "",
+                    "company": company or "",
+                    "old_label": action.old_label or "unknown",
+                    "new_label": action.new_label,
+                    "notes": action.notes or "",
+                })
+            return corrections
+        except Exception as err:
+            logger.debug(f"Could not load recruiter corrections for prompt memory: {err}")
+            return []
 
 
 # Global singleton instance

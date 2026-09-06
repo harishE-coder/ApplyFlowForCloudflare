@@ -34,8 +34,6 @@ from app.modules.dashboard.router import router as dashboard_router
 from app.modules.interview_intelligence.models import (  # noqa: F401
     EmailTrainingData,
     InterviewEvent,
-    ModelVersion,
-    TeacherDisagreement,
 )
 from app.modules.interview_intelligence.router import (
     router as interview_intelligence_router,
@@ -174,6 +172,18 @@ async def lifespan(app: FastAPI):
                 except Exception:
                     pass
 
+            # Migrate resumes table columns for Cloudflare R2
+            for col, col_type in [
+                ("r2_key", "VARCHAR(500)"),
+                ("file_size", "INTEGER"),
+                ("content_type", "VARCHAR(100) DEFAULT 'application/pdf'"),
+                ("expires_at", "TIMESTAMP"),
+            ]:
+                try:
+                    await conn.execute(sqlalchemy.text(f"ALTER TABLE resumes ADD COLUMN {col} {col_type}"))
+                except Exception:
+                    pass
+
             try:
                 res = await conn.execute(sqlalchemy.text("PRAGMA table_info(applications)"))
                 cols = res.fetchall()
@@ -224,6 +234,17 @@ async def lifespan(app: FastAPI):
             ]:
                 try:
                     await conn.execute(sqlalchemy.text(f"ALTER TABLE requirements ADD COLUMN IF NOT EXISTS {col} {col_type}"))
+                except Exception:
+                    pass
+
+            for col, col_type in [
+                ("r2_key", "VARCHAR(500)"),
+                ("file_size", "INTEGER"),
+                ("content_type", "VARCHAR(100) DEFAULT 'application/pdf'"),
+                ("expires_at", "TIMESTAMP WITH TIME ZONE"),
+            ]:
+                try:
+                    await conn.execute(sqlalchemy.text(f"ALTER TABLE resumes ADD COLUMN IF NOT EXISTS {col} {col_type}"))
                 except Exception:
                     pass
         print("✅ Neon PostgreSQL schema verified.")

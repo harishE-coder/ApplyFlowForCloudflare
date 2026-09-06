@@ -59,7 +59,13 @@ class Resume(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
-    # Google Drive references
+    # Cloudflare R2 Storage references
+    r2_key: Mapped[str | None] = mapped_column(String(500), nullable=True, index=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(100), default="application/pdf", nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+    # Legacy Google Drive references (backward compatibility)
     drive_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     drive_folder_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     original_filename: Mapped[str] = mapped_column(String(500), nullable=False)

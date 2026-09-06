@@ -3,26 +3,20 @@ Comprehensive Test Suite for Phase 3: Groq AI Teacher & Structured Extraction
 Tests:
 1. Versioned prompt loading (interview_teacher_v1.md).
 2. Strict GroqTeacherResult JSON schema validation.
-3. Fallback workflow from Local Model to Groq Teacher on uncertain confidence (75-96%).
-4. Automatic TeacherDisagreement logging and needs_retraining=True flagging.
-5. Threading metadata persistence (in_reply_to, pipeline_version).
+3. API-only behavior when AI Gateway is unavailable.
 """
 
-import uuid
+import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from app.core.database import Base
-from app.modules.interview_intelligence.models import (
-    EmailTrainingData,
-    TeacherDisagreement,
-)
+from app.core.ai_gateway import AIServiceUnavailable
 from app.modules.interview_intelligence.schemas import (
     EmailCategory,
     GroqTeacherResult,
     NormalizedEmail,
 )
 from app.modules.interview_intelligence.teacher import GroqTeacherService
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 
 @pytest.fixture(scope="session")
@@ -43,12 +37,11 @@ def test_prompt_versioning_and_payload_builder():
         attachment_names=["prep_guide.pdf"],
         body="We invite you to Technical Round 1 on Zoom.",
     )
-    local_pred = {"category": "interview", "confidence": 85, "decision": "ai_fallback"}
-    payload = teacher.build_user_payload(email, local_pred)
+    payload = teacher.build_user_payload(email)
 
     assert payload["subject"] == "Senior Systems Engineer Interview - Citadel"
     assert payload["sender_domain"] == "citadel.com"
-    assert payload["local_model_prediction"]["confidence"] == 85
+    assert "local_model_prediction" not in payload
 
 
 @pytest.mark.anyio
@@ -63,7 +56,31 @@ async def test_groq_teacher_structured_json_extraction():
         body="Please complete the 90-minute online assessment within 48 hours.",
     )
 
-    result = await teacher.classify_with_teacher(email)
+    mock_payload = {
+        "it_related": True,
+        "category": EmailCategory.TECHNICAL_ASSESSMENT.value,
+        "company": "Snowflake",
+        "role": "Backend Engineer",
+        "round_name": "Online Assessment",
+        "round_type": "technical_assessment",
+        "status": "Scheduled",
+        "confidence": 99,
+        "meeting_link": "https://hackerrank.com/tests/snowflake-oa-123",
+        "deadline": "within 48 hours",
+        "reason": "Detected HackerRank assessment instructions.",
+    }
+
+    with patch(
+        "app.modules.interview_intelligence.teacher.chat_completion",
+        new=AsyncMock(
+            return_value={
+                "choices": [{"message": {"content": json.dumps(mock_payload)}}],
+                "model": "llama-3.3-70b-versatile",
+            }
+        ),
+    ):
+        result = await teacher.classify_with_teacher(email)
+
     assert isinstance(result, GroqTeacherResult)
     assert result.it_related is True
     assert result.category == EmailCategory.TECHNICAL_ASSESSMENT.value
@@ -73,77 +90,18 @@ async def test_groq_teacher_structured_json_extraction():
 
 
 @pytest.mark.anyio
-async def test_teacher_disagreement_and_retraining_flag():
-    test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    async_session = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+async def test_teacher_raises_when_gateway_unavailable():
+    teacher = GroqTeacherService(prompt_version="teacher_v1")
+    email = NormalizedEmail(
+        subject="Quick note",
+        sender_email="sender@example.com",
+        sender_domain="example.com",
+        body="Can we talk later?",
+    )
 
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with async_session() as session:
-        # Create an email where local model was uncertain or misclassified
-        email_record = EmailTrainingData(
-            id=uuid.uuid4(),
-            version=1,
-            message_id="uber-oa-999@uber.com",
-            in_reply_to="uber-app-initial@uber.com",
-            email_hash="999888777666555444333222111000aaabbbcccdddeeefff0001112223334445",
-            subject="Next Steps in your Uber Application",
-            sender_email="recruiting@uber.com",
-            sender_domain="uber.com",
-            body_preview="Please complete your CodeSignal assessment...",
-            storage_key="emails/normalized/2026/09/01/uber.json",
-            raw_storage_key="emails/raw/2026/09/01/uber.eml",
-            body_sha256="abc123sha256hashvalue",
-            category="recruiter_followup",  # Local model thought followup
-            confidence=78,
-            source="local",
-            pipeline_version="interview_pipeline_v2.0",
-            needs_retraining=False,
-            processing_status="pending",
-        )
-        session.add(email_record)
-        await session.commit()
-
-        # Local model prediction
-        local_pred = {"category": "recruiter_followup", "confidence": 78, "decision": "ai_fallback"}
-
-        # Groq Teacher result extracts actual category: technical_assessment
-        teacher_result = GroqTeacherResult(
-            it_related=True,
-            category=EmailCategory.TECHNICAL_ASSESSMENT.value,
-            company="Uber",
-            role="Software Engineer",
-            round="Online Assessment",
-            confidence=99,
-            meeting_link="https://codesignal.com/eval/123",
-            deadline="within 48 hours",
-            reason="Detected CodeSignal evaluation link and time limit.",
-            prompt_version="teacher_v1",
-        )
-
-        teacher = GroqTeacherService(prompt_version="teacher_v1")
-        disagreement = await teacher.log_disagreement_if_any(
-            session=session,
-            email_record=email_record,
-            local_prediction=local_pred,
-            teacher_result=teacher_result,
-        )
-        await session.commit()
-
-        assert disagreement is not None
-        assert disagreement.local_label == "recruiter_followup"
-        assert disagreement.ai_label == "technical_assessment"
-        assert email_record.needs_retraining is True
-
-        # Query back from DB
-        from sqlalchemy import select
-        res = await session.execute(
-            select(TeacherDisagreement).where(TeacherDisagreement.email_id == email_record.id)
-        )
-        saved_dis = res.scalar_one_or_none()
-        assert saved_dis is not None
-        assert saved_dis.resolved is False
-        assert saved_dis.ai_label == "technical_assessment"
-
-    await test_engine.dispose()
+    with patch(
+        "app.modules.interview_intelligence.teacher.chat_completion",
+        new=AsyncMock(side_effect=AIServiceUnavailable("No AI API key configured")),
+    ):
+        with pytest.raises(AIServiceUnavailable):
+            await teacher.classify_with_teacher(email)

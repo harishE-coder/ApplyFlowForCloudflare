@@ -7,9 +7,11 @@ Provides:
 4. End-to-end Request ID tracing and Idempotency keys.
 5. 60-second Circuit Breaker cooldowns on retryable errors.
 6. Prometheus & Dashboard-ready in-memory telemetry metrics.
+
+Classification is API-key only. If no AI API key is configured, callers receive
+AIServiceUnavailable instead of a local/offline classification fallback.
 """
 
-import json
 import logging
 import time
 import uuid
@@ -151,6 +153,18 @@ class AIGateway:
                     )
                 )
 
+        # 4. If AI_PROVIDER is explicitly configured (e.g. "openai", "groq", "gemini"),
+        # prioritize that provider's keys ahead of all others.
+        target_provider = (settings.ai_provider or "").strip().lower()
+        if target_provider:
+            def provider_sort_key(p: Provider) -> tuple[int, int]:
+                is_target = 0 if (target_provider in p.name.lower() or target_provider in p.key_id.lower()) else 1
+                return (is_target, p.priority_rank)
+
+            providers.sort(key=provider_sort_key)
+            for idx, p in enumerate(providers, start=1):
+                p.priority_rank = idx
+
         return providers
 
     def is_cooling(self, provider: Provider) -> bool:
@@ -235,18 +249,11 @@ class AIGateway:
         providers = self.get_available_providers()
 
         if not providers:
-            logger.info(f"[AI Gateway] [Req: {req_trace}] No active AI providers configured. Returning deterministic fallback.")
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps({"error": "No AI API key configured", "is_interview_mail": False})
-                        }
-                    }
-                ],
-                "model": "offline-fallback",
-                "usage": {"total_tokens": 0},
-            }
+            logger.error(f"[AI Gateway] [Req: {req_trace}] No active AI providers configured.")
+            raise AIServiceUnavailable(
+                "No AI API key configured. Set GROQ_API_KEY, GROQ_API_KEY_1, "
+                "OPENAI_API_KEY, or GEMINI_API_KEY."
+            )
 
         # 1. Filter out providers currently in cooldown
         active_providers = [p for p in providers if not self.is_cooling(p)]
@@ -309,7 +316,14 @@ class AIGateway:
                                     f"Status: Success | Latency: {latency_ms}ms | Failover Attempt: #{failover_attempt}"
                                 )
                             provider_succeeded = True
-                            return resp.json()
+                            result = resp.json()
+                            result.setdefault("model", model_candidate)
+                            result["_gateway"] = {
+                                "provider": provider.name,
+                                "provider_key_id": provider.key_id,
+                                "model": model_candidate,
+                            }
+                            return result
 
                         # 2. RETRYABLE FAILURES
                         # 429 Rate Limit (-30 health score, 60s cooldown)

@@ -56,18 +56,19 @@ export function InterviewIntelligencePage() {
   const [metrics, setMetrics] = useState({
     total_processed: 0,
     auto_accepted: 0,
-    teacher_fallback: 0,
     needs_review: 0,
-    active_model_version: 'local_v2.0',
-    golden_accuracy: 97.3,
-    needs_retraining_count: 0,
+    active_model_version: 'api_key_not_configured',
+    api_classified: 0,
+    human_reviewed: 0,
+    pending_processing: 0,
+    api_keys_configured: 0,
+    api_providers: [],
+    api_model: '',
     pipeline_version: 'interview_pipeline_v2.0',
     prompt_version: 'teacher_v1',
     category_breakdown: {},
   });
 
-  const [disagreements, setDisagreements] = useState([]);
-  const [retrainingQueue, setRetrainingQueue] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -95,7 +96,7 @@ export function InterviewIntelligencePage() {
   const [timelineLoading, setTimelineLoading] = useState(false);
 
   // Active Tab View
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'review_queue', 'timeline', 'search'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'timeline', 'search'
 
   const fetchData = async () => {
     setLoading(true);
@@ -104,15 +105,7 @@ export function InterviewIntelligencePage() {
       const mRes = await api.get('/interview-intelligence/dashboard', { cache: false });
       if (mRes.data) setMetrics(mRes.data);
 
-      // 2. Disagreements Review Queue
-      const dRes = await api.get('/interview-intelligence/disagreements?resolved=false&limit=20', { cache: false });
-      if (dRes.data) setDisagreements(dRes.data);
-
-      // 3. Needs Retraining Queue
-      const rRes = await api.get('/interview-intelligence/needs-retraining?limit=15', { cache: false });
-      if (rRes.data) setRetrainingQueue(rRes.data);
-
-      // 4. Initial Search Table
+      // 2. Initial Search Table
       const sRes = await api.get('/interview-intelligence/emails/search?limit=15', { cache: false });
       if (sRes.data) setSearchResults(sRes.data);
     } catch (err) {
@@ -140,28 +133,6 @@ export function InterviewIntelligencePage() {
       setSearchResults(res.data || []);
     } catch (err) {
       toastError('Search Error', 'Failed searching recruiter emails.');
-    }
-  };
-
-  // Quick Resolve Teacher Disagreement
-  const handleResolveDisagreement = async (disagreementId, chosenLabelText, notes = '') => {
-    setActionLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('human_label', chosenLabelText);
-      if (notes) formData.append('notes', notes);
-
-      await api.post(`/interview-intelligence/disagreements/${disagreementId}/resolve`, formData);
-      toastSuccess('Label Verified', `Sample confirmed as "${chosenLabelText}" and queued for retraining.`);
-
-      // Optimistic update
-      setDisagreements((prev) => prev.filter((d) => d.id !== disagreementId));
-      fetchData();
-    } catch (err) {
-      toastError('Resolution Error', 'Could not save review action.');
-    } finally {
-      setActionLoading(false);
-      setRelabelModalOpen(false);
     }
   };
 
@@ -256,7 +227,7 @@ export function InterviewIntelligencePage() {
                 </span>
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Real-time ingestion telemetry, active learning review queue, model health, and timeline inspector.
+                Real-time API-key intake telemetry, provider health, and timeline inspector.
               </p>
             </div>
           </div>
@@ -295,23 +266,23 @@ export function InterviewIntelligencePage() {
           color="blue"
         />
         <KPICard
-          title="Auto Accepted"
-          value={metrics.auto_accepted.toLocaleString()}
-          subtitle="≥97% confidence (Local Model)"
+          title="API Classified"
+          value={(metrics.api_classified ?? metrics.auto_accepted).toLocaleString()}
+          subtitle={`${metrics.api_keys_configured || 0} API key${metrics.api_keys_configured === 1 ? '' : 's'} configured`}
           icon={CheckCircle2}
           color="emerald"
         />
         <KPICard
-          title="Teacher Fallback"
-          value={metrics.teacher_fallback.toLocaleString()}
-          subtitle="Groq Llama 3.3 assisted"
+          title="Human Reviewed"
+          value={(metrics.human_reviewed || 0).toLocaleString()}
+          subtitle="Manual audit corrections"
           icon={Bot}
           color="indigo"
         />
         <KPICard
-          title="Needs Review"
-          value={metrics.needs_review.toLocaleString()}
-          subtitle="Active learning queue"
+          title="Pending"
+          value={(metrics.pending_processing ?? metrics.needs_review).toLocaleString()}
+          subtitle="Pending or failed processing"
           icon={AlertTriangle}
           color="amber"
         />
@@ -329,22 +300,6 @@ export function InterviewIntelligencePage() {
         >
           <Cpu className="w-4 h-4" />
           Overview & Health
-        </button>
-        <button
-          onClick={() => setActiveTab('review_queue')}
-          className={`pb-3 px-4 text-sm font-semibold transition-all border-b-2 cursor-pointer flex items-center gap-2 relative ${
-            activeTab === 'review_queue'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <UserCheck className="w-4 h-4" />
-          Review Queue
-          {disagreements.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-xs bg-amber-500 text-white font-bold ml-1">
-              {disagreements.length}
-            </span>
-          )}
         </button>
         <button
           onClick={() => setActiveTab('timeline')}
@@ -373,7 +328,7 @@ export function InterviewIntelligencePage() {
       {/* Tab 1: Overview & Model Status */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Model Status Card */}
+          {/* API Status Card */}
           <Card className="p-6 space-y-5 lg:col-span-1 border border-border/60 shadow-sm bg-gradient-to-b from-card to-card/50">
             <div className="flex items-center justify-between border-b border-border/40 pb-4">
               <div className="flex items-center gap-2.5">
@@ -381,18 +336,18 @@ export function InterviewIntelligencePage() {
                   <Cpu className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-foreground">Model Status</h3>
-                  <p className="text-xs text-muted-foreground">Calibrated Classifier & Prompt</p>
+                  <h3 className="text-base font-bold text-foreground">API Status</h3>
+                  <p className="text-xs text-muted-foreground">Provider key & prompt</p>
                 </div>
               </div>
               <span className="px-2.5 py-1 text-xs font-semibold rounded-md bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                Active
+                {metrics.api_keys_configured > 0 ? 'Active' : 'No Key'}
               </span>
             </div>
 
             <div className="space-y-3.5">
               <div className="flex items-center justify-between text-sm py-1 border-b border-border/20">
-                <span className="text-muted-foreground font-medium">Current Model</span>
+                <span className="text-muted-foreground font-medium">Current API Model</span>
                 <span className="font-mono font-bold text-foreground bg-muted px-2 py-0.5 rounded">
                   {metrics.active_model_version}
                 </span>
@@ -402,13 +357,13 @@ export function InterviewIntelligencePage() {
                 <span className="font-mono text-indigo-500 font-semibold">{metrics.prompt_version}</span>
               </div>
               <div className="flex items-center justify-between text-sm py-1 border-b border-border/20">
-                <span className="text-muted-foreground font-medium">Golden Benchmark</span>
-                <span className="font-bold text-emerald-600">{metrics.golden_accuracy}%</span>
+                <span className="text-muted-foreground font-medium">API Keys</span>
+                <span className="font-bold text-emerald-600">{metrics.api_keys_configured || 0}</span>
               </div>
               <div className="flex items-center justify-between text-sm py-1 border-b border-border/20">
-                <span className="text-muted-foreground font-medium">Queued for Retraining</span>
+                <span className="text-muted-foreground font-medium">Human Reviewed</span>
                 <span className="font-semibold text-amber-600 flex items-center gap-1">
-                  {metrics.needs_retraining_count} emails
+                  {metrics.human_reviewed || 0} emails
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm py-1">
@@ -419,105 +374,55 @@ export function InterviewIntelligencePage() {
               </div>
             </div>
 
-            {/* Decision Thresholds Legend */}
+            {/* Provider Legend */}
             <div className="p-3.5 rounded-xl bg-muted/40 border border-border/40 space-y-2">
-              <p className="text-xs font-bold text-foreground uppercase tracking-wider">Confidence Engine</p>
+              <p className="text-xs font-bold text-foreground uppercase tracking-wider">API Gateway</p>
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">≥ 97%</span>
-                  <span className="text-emerald-600 font-semibold">Direct Accept</span>
+                  <span className="text-muted-foreground">Mode</span>
+                  <span className="text-emerald-600 font-semibold">API Key Only</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">75% – 96%</span>
-                  <span className="text-indigo-600 font-semibold">Groq AI Fallback</span>
+                  <span className="text-muted-foreground">Primary</span>
+                  <span className="text-indigo-600 font-semibold">{metrics.api_providers?.[0] || 'Not configured'}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">&lt; 75%</span>
-                  <span className="text-amber-600 font-semibold">Human Review Queue</span>
+                  <span className="text-muted-foreground">Fallback</span>
+                  <span className="text-amber-600 font-semibold">{Math.max((metrics.api_keys_configured || 0) - 1, 0)} keys</span>
                 </div>
               </div>
             </div>
           </Card>
 
-          {/* Quick Review Queue Preview & Category Breakdown */}
+          {/* Intake Summary & Category Breakdown */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Top Disagreements Widget */}
             <Card className="p-6 border border-border/60 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-border/40 pb-4">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                   <h3 className="text-base font-bold text-foreground">
-                    High-Priority Disagreements
+                    Intake Mode
                   </h3>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setActiveTab('review_queue')}
-                  className="text-xs text-primary"
-                >
-                  View All ({disagreements.length}) <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                </Button>
+                <span className="text-xs px-2.5 py-1 rounded-md bg-primary/10 text-primary font-semibold">
+                  API Key Only
+                </span>
               </div>
 
-              {disagreements.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground text-sm flex flex-col items-center gap-2">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-500/60" />
-                  <span>Review queue is currently clear! No active disagreements.</span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-lg border border-border/60 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">API classified</p>
+                  <p className="text-xl font-bold text-foreground">{metrics.api_classified || 0}</p>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {disagreements.slice(0, 3).map((item) => (
-                    <div
-                      key={item.id}
-                      className="p-3.5 rounded-xl border border-border/60 bg-muted/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-foreground">
-                            Disagreement #{item.id.slice(0, 8)}
-                          </span>
-                          <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                            Email ID: {item.email_id.slice(0, 8)}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
-                          <span>
-                            Local: <strong className="text-red-500">{item.local_label}</strong> ({item.local_confidence}%)
-                          </span>
-                          <span>·</span>
-                          <span>
-                            Teacher: <strong className="text-emerald-600">{item.ai_label}</strong> ({item.ai_confidence}%)
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-end sm:self-center">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleResolveDisagreement(item.id, item.ai_label)}
-                          className="text-xs border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
-                        >
-                          Approve Teacher
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setActiveItemForRelabel(item);
-                            setChosenLabel(item.ai_label || 'interview');
-                            setRelabelModalOpen(true);
-                          }}
-                          className="text-xs"
-                        >
-                          Manual
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="p-3.5 rounded-lg border border-border/60 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">Manual corrections</p>
+                  <p className="text-xl font-bold text-foreground">{metrics.human_reviewed || 0}</p>
                 </div>
-              )}
+                <div className="p-3.5 rounded-lg border border-border/60 bg-muted/20">
+                  <p className="text-xs text-muted-foreground">Pending</p>
+                  <p className="text-xl font-bold text-foreground">{metrics.pending_processing || 0}</p>
+                </div>
+              </div>
             </Card>
 
             {/* Category Breakdown Chips */}
@@ -541,122 +446,7 @@ export function InterviewIntelligencePage() {
         </div>
       )}
 
-      {/* Tab 2: Full Review Queue (Active Learning Interface) */}
-      {activeTab === 'review_queue' && (
-        <Card className="p-6 border border-border/60 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/40 pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-foreground">Active Learning Review Queue</h2>
-              <p className="text-xs text-muted-foreground">
-                Resolving model/teacher differences produces high-fidelity verified training samples.
-              </p>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {disagreements.length} unresolved items
-            </span>
-          </div>
-
-          {disagreements.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground flex flex-col items-center gap-3">
-              <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-              <p className="font-semibold">All disagreements have been resolved!</p>
-              <p className="text-xs max-w-md">
-                When new edge cases fall below the 97% confidence threshold and diverge from Groq Teacher, they will appear here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {disagreements.map((item) => (
-                <div
-                  key={item.id}
-                  className="p-5 rounded-xl border border-border/70 bg-card hover:border-primary/40 transition-all shadow-xs space-y-4"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/20 pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-foreground">
-                        Disagreement on Email #{item.email_id.slice(0, 8)}
-                      </span>
-                      <span className="text-xs px-2 py-0.5 rounded bg-muted font-mono text-muted-foreground">
-                        ID: {item.id.slice(0, 8)}
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      Created: {new Date(item.created_at).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-3.5 rounded-lg border border-red-500/20 bg-red-500/5 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-red-600 flex items-center gap-1.5">
-                          <Cpu className="w-3.5 h-3.5" /> Local Calibrated Model
-                        </span>
-                        <span className="text-xs font-bold text-red-600">{item.local_confidence}%</span>
-                      </div>
-                      <p className="text-sm font-mono font-bold text-foreground capitalize">
-                        {item.local_label}
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1.5">
-                          <Bot className="w-3.5 h-3.5" /> Groq AI Teacher
-                        </span>
-                        <span className="text-xs font-bold text-emerald-600">{item.ai_confidence}%</span>
-                      </div>
-                      <p className="text-sm font-mono font-bold text-foreground capitalize">
-                        {item.ai_label}
-                      </p>
-                    </div>
-                  </div>
-
-                  {item.notes && (
-                    <p className="text-xs text-muted-foreground italic bg-muted/30 p-2.5 rounded-md">
-                      Reason: {item.notes}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2 border-t border-border/20">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleResolveDisagreement(item.id, item.local_label, 'Kept local model classification')}
-                      className="text-xs text-muted-foreground"
-                    >
-                      Keep Local ({item.local_label})
-                    </Button>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleResolveDisagreement(item.id, item.ai_label, 'Approved AI Teacher')}
-                      className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Approve Teacher ({item.ai_label})
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setActiveItemForRelabel(item);
-                        setChosenLabel(item.ai_label || 'interview');
-                        setRelabelModalOpen(true);
-                      }}
-                      className="text-xs flex items-center gap-1.5"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      Manual Relabel
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Tab 3: Timeline Inspector */}
+      {/* Tab 2: Timeline Inspector */}
       {activeTab === 'timeline' && (
         <Card className="p-6 border border-border/60 shadow-sm space-y-6">
           <div className="border-b border-border/40 pb-4">
@@ -775,7 +565,7 @@ export function InterviewIntelligencePage() {
         </Card>
       )}
 
-      {/* Tab 4: Email Search & Repository Table */}
+      {/* Tab 3: Email Search & Repository Table */}
       {activeTab === 'search' && (
         <Card className="p-6 border border-border/60 shadow-sm space-y-6">
           <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
@@ -810,8 +600,8 @@ export function InterviewIntelligencePage() {
                 className="w-full px-3 py-2 text-sm rounded-lg border border-border/60 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
               >
                 <option value="">All Sources</option>
-                <option value="local">Local Model</option>
-                <option value="groq">Groq Teacher</option>
+                <option value="api_key">API Key</option>
+                <option value="groq">Groq Legacy</option>
                 <option value="human">Human Verified</option>
               </select>
               <Button type="submit" variant="primary" size="sm" className="px-4">
@@ -990,7 +780,7 @@ export function InterviewIntelligencePage() {
       >
         <form onSubmit={handleManualRelabel} className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            This action creates an audit log entry in <code className="bg-muted px-1.5 py-0.5 rounded">review_actions</code> and flags this sample for future dataset retraining.
+            This action creates an audit log entry in <code className="bg-muted px-1.5 py-0.5 rounded">review_actions</code>.
           </p>
 
           <div className="space-y-1.5">

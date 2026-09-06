@@ -1,15 +1,12 @@
 """
-FastAPI Router for the Interview Intelligence Subsystem (Phase 5 Dashboard & Review Queue):
-- GET   /api/interview-intelligence/dashboard: Live counters, active model, and category telemetry
+FastAPI Router for the Interview Intelligence Subsystem:
+- GET   /api/interview-intelligence/dashboard: Live counters, API-key model, and category telemetry
 - GET   /api/interview-intelligence/timeline/{application_id}: Sequential application timeline inspector
 - GET   /api/interview-intelligence/emails/search: Comprehensive full-text & filter search across recruiter emails
 - PATCH /api/interview-intelligence/emails/{id}: Human manual correction with ReviewAction audit trail
-- GET   /api/interview-intelligence/needs-retraining: Queue of verified corrections for future model training
 - POST  /api/interview-intelligence/process-email: Unified ingestion endpoint (raw text / paste)
 - POST  /api/interview-intelligence/upload-file: Multipart file upload (.eml, .pdf, .txt)
-- GET   /api/interview-intelligence/disagreements: Active learning disagreement queue
-- POST  /api/interview-intelligence/disagreements/{id}/resolve: Resolves disagreement with human label
-- GET   /api/interview-intelligence/model-status: Model telemetry and confidence thresholds
+- GET   /api/interview-intelligence/model-status: API-key classifier status
 """
 
 import uuid
@@ -28,16 +25,15 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ai_gateway import AIServiceUnavailable, ai_gateway
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.modules.applications.models import Application
-from app.modules.interview_intelligence.model import local_classifier
 from app.modules.interview_intelligence.models import (
     EmailTrainingData,
     InterviewEvent,
-    ModelVersion,
     ReviewAction,
-    TeacherDisagreement,
 )
 from app.modules.interview_intelligence.orchestrator import (
     InterviewPipelineOrchestrator,
@@ -48,7 +44,6 @@ from app.modules.interview_intelligence.schemas import (
     EmailTrainingDataResponse,
     ProcessEmailRequest,
     ProcessEmailResponse,
-    TeacherDisagreementResponse,
     TimelineInspectorEvent,
 )
 from app.modules.users.models import User
@@ -70,57 +65,59 @@ async def get_dashboard_metrics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Computes real-time counters from Neon database for the admin intelligence dashboard."""
+    """Computes real-time counters for the API-key intake dashboard."""
     # 1. Total processed emails
     total_res = await db.execute(select(func.count(EmailTrainingData.id)))
     total_processed = total_res.scalar() or 0
 
-    # 2. Auto accepted (high confidence local model)
-    auto_res = await db.execute(
+    # 2. API-key classified intake records.
+    api_res = await db.execute(
         select(func.count(EmailTrainingData.id)).where(
-            EmailTrainingData.confidence >= 97,
-            EmailTrainingData.source == "local",
+            EmailTrainingData.source.in_(["api_key", "groq"])
         )
     )
-    auto_accepted = auto_res.scalar() or 0
+    api_classified = api_res.scalar() or 0
 
-    # 3. Teacher fallback (Groq assisted)
-    teacher_res = await db.execute(
+    # 3. Human-reviewed audit records.
+    human_res = await db.execute(
         select(func.count(EmailTrainingData.id)).where(
-            EmailTrainingData.source == "groq"
+            EmailTrainingData.source == "human"
         )
     )
-    teacher_fallback = teacher_res.scalar() or 0
+    human_reviewed = human_res.scalar() or 0
 
-    # 4. Needs review (retraining queue / disagreements)
-    review_res = await db.execute(
+    # 4. Pending or failed processing records.
+    pending_res = await db.execute(
         select(func.count(EmailTrainingData.id)).where(
-            EmailTrainingData.needs_retraining == True
+            EmailTrainingData.processing_status.in_(["pending", "failed"])
         )
     )
-    needs_review = review_res.scalar() or 0
+    pending_processing = pending_res.scalar() or 0
 
-    # 5. Active model version
-    mv_res = await db.execute(
-        select(ModelVersion).where(ModelVersion.active == True).order_by(desc(ModelVersion.trained_at)).limit(1)
-    )
-    active_mv = mv_res.scalar_one_or_none()
-
-    # 6. Category breakdown
+    # 5. Category breakdown.
     cat_res = await db.execute(
         select(EmailTrainingData.category, func.count(EmailTrainingData.id))
         .group_by(EmailTrainingData.category)
     )
     category_breakdown = {cat: count for cat, count in cat_res.all() if cat}
 
+    providers = ai_gateway.get_available_providers()
+    primary_model = providers[0].model if providers else settings.groq_model
+
     return DashboardMetricsResponse(
         total_processed=total_processed,
-        auto_accepted=auto_accepted,
-        teacher_fallback=teacher_fallback,
-        needs_review=needs_review,
-        active_model_version=active_mv.version if active_mv else "local_v2.0",
-        golden_accuracy=round(active_mv.accuracy * 100, 1) if (active_mv and active_mv.accuracy) else 97.3,
-        needs_retraining_count=needs_review,
+        auto_accepted=api_classified,
+        teacher_fallback=0,
+        needs_review=pending_processing,
+        active_model_version=primary_model,
+        golden_accuracy=0.0,
+        needs_retraining_count=0,
+        api_classified=api_classified,
+        human_reviewed=human_reviewed,
+        pending_processing=pending_processing,
+        api_keys_configured=len(providers),
+        api_providers=[p.key_id for p in providers],
+        api_model=primary_model,
         pipeline_version="interview_pipeline_v2.0",
         prompt_version="teacher_v1",
         category_breakdown=category_breakdown,
@@ -197,14 +194,14 @@ async def get_application_timeline(
 async def search_emails(
     q: str | None = Query(None, description="Free text search on subject, company, role, sender"),
     category: str | None = Query(None, description="Filter by category"),
-    source: str | None = Query(None, description="Filter by source (local, groq, human)"),
+    source: str | None = Query(None, description="Filter by source (api_key, human, or historical source)"),
     needs_retraining: bool | None = Query(None, description="Filter by retraining status"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Searches email training and classification repository with composable filters."""
+    """Searches email intake and classification records with composable filters."""
     query = select(EmailTrainingData).order_by(desc(EmailTrainingData.created_at))
 
     if q and q.strip():
@@ -246,8 +243,7 @@ async def update_email_label(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Updates email classification label with source='human', logs a ReviewAction audit entry,
-    and flags needs_retraining=True.
+    Updates email classification label with source='human' and logs a ReviewAction audit entry.
     """
     res = await db.execute(select(EmailTrainingData).where(EmailTrainingData.id == email_id))
     email_rec = res.scalar_one_or_none()
@@ -269,40 +265,17 @@ async def update_email_label(
     )
     db.add(action_log)
 
-    # Update EmailTrainingData
+    # Update EmailTrainingData as an audit correction only.
     email_rec.category = new_label
     email_rec.source = "human"
     email_rec.classification_source_version = f"human_{current_user.role}"
-    email_rec.needs_retraining = True
+    email_rec.needs_retraining = False
     email_rec.version += 1
     db.add(email_rec)
 
     await db.commit()
     await db.refresh(email_rec)
     return email_rec
-
-
-@router.get(
-    "/needs-retraining",
-    response_model=list[EmailTrainingDataResponse],
-    summary="List all human-corrected or disagreement samples queued for model retraining",
-)
-async def get_retraining_queue(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Retrieves human verified samples queued for the next training iteration."""
-    query = (
-        select(EmailTrainingData)
-        .where(EmailTrainingData.needs_retraining == True)
-        .order_by(desc(EmailTrainingData.updated_at))
-        .limit(limit)
-        .offset(offset)
-    )
-    res = await db.execute(query)
-    return res.scalars().all()
 
 
 @router.post(
@@ -329,6 +302,11 @@ async def process_email(
             uploader_id=current_user.id,
         )
         return response
+    except AIServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -363,6 +341,11 @@ async def upload_email_file(
             uploader_id=current_user.id,
         )
         return response
+    except AIServiceUnavailable as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -371,108 +354,27 @@ async def upload_email_file(
 
 
 @router.get(
-    "/disagreements",
-    response_model=list[TeacherDisagreementResponse],
-    summary="List active learning model/teacher disagreements",
-)
-async def list_disagreements(
-    resolved: bool = Query(False, description="Filter by resolution status"),
-    limit: int = Query(50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Retrieves active learning disagreements between local model and AI teacher."""
-    query = (
-        select(TeacherDisagreement)
-        .where(TeacherDisagreement.resolved == resolved)
-        .order_by(desc(TeacherDisagreement.created_at))
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    return result.scalars().all()
-
-
-@router.post(
-    "/disagreements/{disagreement_id}/resolve",
-    response_model=TeacherDisagreementResponse,
-    summary="Resolve a model disagreement with human feedback label",
-)
-async def resolve_disagreement(
-    disagreement_id: uuid.UUID,
-    human_label: str = Form(...),
-    notes: str | None = Form(None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Resolves disagreement, records ReviewAction, and updates training sample."""
-    res = await db.execute(
-        select(TeacherDisagreement).where(TeacherDisagreement.id == disagreement_id)
-    )
-    dis = res.scalar_one_or_none()
-    if not dis:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Disagreement record not found.")
-
-    clean_label = human_label.strip().lower()
-    dis.human_label = clean_label
-    dis.resolved = True
-    if notes:
-        dis.notes = notes
-
-    # Update associated training record
-    train_res = await db.execute(
-        select(EmailTrainingData).where(EmailTrainingData.id == dis.email_id)
-    )
-    train_rec = train_res.scalar_one_or_none()
-    if train_rec:
-        old_cat = train_rec.category
-        train_rec.category = clean_label
-        train_rec.source = "human"
-        train_rec.classification_source_version = f"human_{current_user.role}"
-        train_rec.needs_retraining = True
-        train_rec.version += 1
-
-        # Record ReviewAction Audit Log
-        action_log = ReviewAction(
-            id=uuid.uuid4(),
-            email_id=train_rec.id,
-            reviewer=current_user.name or current_user.email,
-            reviewer_id=current_user.id,
-            old_label=old_cat,
-            new_label=clean_label,
-            notes=notes or "Resolved via Teacher Disagreement Review Queue",
-        )
-        db.add(action_log)
-
-    await db.commit()
-    await db.refresh(dis)
-    return dis
-
-
-@router.get(
     "/model-status",
-    summary="Get current local classifier and pipeline status",
+    summary="Get current API-key classifier and pipeline status",
 )
 async def get_model_status(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Returns local model version, trained status, and confidence calibration settings."""
-    res = await db.execute(
-        select(ModelVersion).where(ModelVersion.active == True).order_by(desc(ModelVersion.trained_at)).limit(1)
-    )
-    active_mv = res.scalar_one_or_none()
+    """Returns API-key classifier status."""
+    providers = ai_gateway.get_available_providers()
+    primary = providers[0] if providers else None
 
     return {
         "pipeline_version": "interview_pipeline_v2.0",
-        "local_classifier_loaded": local_classifier._is_trained,
-        "local_classifier_version": local_classifier.version,
-        "active_model_version": active_mv.version if active_mv else "local_v2.0",
-        "accuracy": active_mv.accuracy if active_mv else 0.973,
-        "decision_thresholds": {
-            "accept_threshold": 97,
-            "ai_fallback_min": 75,
-            "review_queue_max": 74,
-        },
+        "classifier_mode": "api_key",
+        "api_keys_configured": len(providers),
+        "providers": [p.key_id for p in providers],
+        "primary_provider": primary.name if primary else None,
+        "primary_model": primary.model if primary else settings.groq_model,
+        "prompt_version": "teacher_v1",
+        "active_model_version": primary.model if primary else "api_key_not_configured",
+        "decision_thresholds": None,
         "storage_provider": "supabase",
         "storage_bucket": "applyflow-storage",
     }

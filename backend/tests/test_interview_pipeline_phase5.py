@@ -3,9 +3,8 @@ Test Suite for Phase 5: Admin Intelligence Dashboard, Review Actions, and Timeli
 Tests:
 1. ReviewAction audit trail model creation and persistence.
 2. Manual email correction via PATCH /api/interview-intelligence/emails/{id}.
-3. Disagreement resolution with ReviewAction audit log creation.
-4. Dashboard telemetry metrics calculation.
-5. Sequential Timeline Inspector query with email snippets.
+3. Dashboard telemetry metrics calculation.
+4. Sequential Timeline Inspector query with email snippets.
 """
 
 import uuid
@@ -64,7 +63,7 @@ async def test_review_action_audit_trail_and_manual_correction():
             body_sha256="sha9988",
             category="other",
             confidence=70,
-            source="local",
+            source="api_key",
             needs_retraining=False,
         )
         session.add(email)
@@ -88,7 +87,7 @@ async def test_review_action_audit_trail_and_manual_correction():
         email.category = new_cat
         email.source = "human"
         email.classification_source_version = "human_admin"
-        email.needs_retraining = True
+        email.needs_retraining = False
         email.version += 1
         session.add(email)
         await session.commit()
@@ -98,7 +97,7 @@ async def test_review_action_audit_trail_and_manual_correction():
         updated_email = res_email.scalar_one()
         assert updated_email.category == EmailCategory.TECHNICAL_ASSESSMENT.value
         assert updated_email.source == "human"
-        assert updated_email.needs_retraining is True
+        assert updated_email.needs_retraining is False
         assert updated_email.version == 2
 
         # Verify ReviewAction recorded
@@ -113,7 +112,7 @@ async def test_review_action_audit_trail_and_manual_correction():
 
 @pytest.mark.anyio
 async def test_dashboard_metrics_aggregation():
-    """Verify live metrics computation for auto_accepted, teacher_fallback, and needs_review."""
+    """Verify live metrics computation for API-classified, human-reviewed, and pending records."""
     test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async_session = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -121,7 +120,7 @@ async def test_dashboard_metrics_aggregation():
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session() as session:
-        # Sample 1: Auto accepted
+        # Sample 1: API-key classified
         session.add(
             EmailTrainingData(
                 id=uuid.uuid4(),
@@ -129,12 +128,13 @@ async def test_dashboard_metrics_aggregation():
                 storage_key="k1",
                 body_sha256="s1",
                 confidence=98,
-                source="local",
+                source="api_key",
                 category=EmailCategory.INTERVIEW.value,
                 needs_retraining=False,
+                processing_status="classified",
             )
         )
-        # Sample 2: Groq teacher fallback
+        # Sample 2: Historical Groq API row
         session.add(
             EmailTrainingData(
                 id=uuid.uuid4(),
@@ -145,9 +145,10 @@ async def test_dashboard_metrics_aggregation():
                 source="groq",
                 category=EmailCategory.TECHNICAL_ASSESSMENT.value,
                 needs_retraining=False,
+                processing_status="classified",
             )
         )
-        # Sample 3: Human corrected / needs review
+        # Sample 3: Human corrected
         session.add(
             EmailTrainingData(
                 id=uuid.uuid4(),
@@ -157,36 +158,52 @@ async def test_dashboard_metrics_aggregation():
                 confidence=80,
                 source="human",
                 category=EmailCategory.HR_SCREENING.value,
-                needs_retraining=True,
+                needs_retraining=False,
+                processing_status="classified",
+            )
+        )
+        # Sample 4: Pending processing
+        session.add(
+            EmailTrainingData(
+                id=uuid.uuid4(),
+                email_hash="hash4" * 12 + "1234",
+                storage_key="k4",
+                body_sha256="s4",
+                confidence=0,
+                source="api_key",
+                category=None,
+                needs_retraining=False,
+                processing_status="pending",
             )
         )
         await session.commit()
 
         # Compute counts
         total = (await session.execute(select(func.count(EmailTrainingData.id)))).scalar()
-        auto_accepted = (
+        api_classified = (
             await session.execute(
                 select(func.count(EmailTrainingData.id)).where(
-                    EmailTrainingData.confidence >= 97,
-                    EmailTrainingData.source == "local",
+                    EmailTrainingData.source.in_(["api_key", "groq"]),
                 )
             )
         ).scalar()
-        teacher_fb = (
+        human_reviewed = (
             await session.execute(
-                select(func.count(EmailTrainingData.id)).where(EmailTrainingData.source == "groq")
+                select(func.count(EmailTrainingData.id)).where(EmailTrainingData.source == "human")
             )
         ).scalar()
-        needs_retrain = (
+        pending = (
             await session.execute(
-                select(func.count(EmailTrainingData.id)).where(EmailTrainingData.needs_retraining == True)
+                select(func.count(EmailTrainingData.id)).where(
+                    EmailTrainingData.processing_status.in_(["pending", "failed"])
+                )
             )
         ).scalar()
 
-        assert total == 3
-        assert auto_accepted == 1
-        assert teacher_fb == 1
-        assert needs_retrain == 1
+        assert total == 4
+        assert api_classified == 3
+        assert human_reviewed == 1
+        assert pending == 1
 
     await test_engine.dispose()
 

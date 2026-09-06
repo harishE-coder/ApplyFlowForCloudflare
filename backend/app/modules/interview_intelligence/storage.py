@@ -1,5 +1,5 @@
 """
-Supabase Storage service for raw email files, normalized JSON payloads, datasets, and models.
+Supabase Storage service for raw email files, normalized JSON payloads, and datasets.
 Uses Supabase Storage Python SDK with automatic fallback to local persistent filesystem
 storage when Supabase credentials are not configured (e.g. offline dev/testing).
 Includes retry-safe staging and atomic rollback cleanup to prevent orphaned files.
@@ -23,7 +23,7 @@ LOCAL_STORAGE_BASE = Path(__file__).resolve().parent.parent.parent.parent / "upl
 
 
 class SupabaseStorageService:
-    """Manages file persistence (.eml/.pdf/json/joblib) in Supabase Storage."""
+    """Manages file persistence (.eml/.pdf/json/jsonl) in Supabase Storage."""
 
     def __init__(self):
         self._client = None
@@ -82,7 +82,6 @@ class SupabaseStorageService:
             "txt": "text/plain",
             "json": "application/json",
             "jsonl": "application/x-ndjson",
-            "joblib": "application/octet-stream",
         }
         content_type = content_type_map.get(ext, "application/octet-stream")
 

@@ -24,6 +24,7 @@ from app.modules.resumes.schemas import (
 )
 from app.modules.users.models import User
 from app.services.google_drive import UPLOAD_DIR, drive_service
+from app.services.r2_storage import r2_storage
 
 
 def _parse_to_date(val) -> date | None:
@@ -282,6 +283,11 @@ async def search_resumes(
         if current_user.role == "client" and not resume.is_note_shared:
             notes_visible = None
 
+        r2_k = getattr(resume, "r2_key", None)
+        f_sz = getattr(resume, "file_size", None)
+        c_type = getattr(resume, "content_type", "application/pdf")
+        exp_at = getattr(resume, "expires_at", None)
+
         response_items.append(
             ResumeResponse(
                 id=resume.id,
@@ -300,6 +306,12 @@ async def search_resumes(
                 resume_date=resume.resume_date,
                 client_notes=notes_visible,
                 is_note_shared=resume.is_note_shared,
+                r2_key=r2_k,
+                file_size=f_sz,
+                content_type=c_type,
+                expires_at=exp_at,
+                preview_url=f"/api/resumes/{resume.id}/preview",
+                download_url=f"/api/resumes/{resume.id}/download",
                 drive_file_id=resume.drive_file_id,
                 drive_url=f"https://drive.google.com/file/d/{resume.drive_file_id}/view" if resume.drive_file_id and not resume.drive_file_id.startswith("file_") else None,
                 upload_date=resume.upload_date,
@@ -330,6 +342,12 @@ async def delete_resume(db: AsyncSession, resume_id: uuid.UUID, current_user: Us
     else:
         raise HTTPException(status_code=403, detail="Forbidden: Clients cannot delete resumes.")
 
+    if getattr(resume, "r2_key", None):
+        try:
+            r2_storage.delete_resume(resume.r2_key)
+        except Exception as e:
+            print(f"⚠️ Note during R2 delete: {e}")
+
     if resume.drive_file_id:
         try:
             await drive_service.delete_file(resume.drive_file_id)
@@ -353,7 +371,7 @@ async def delete_resume(db: AsyncSession, resume_id: uuid.UUID, current_user: Us
     await db.flush()
     invalidate_dashboard_cache()
 
-    return {"message": "Resume deleted successfully from database and Google Drive."}
+    return {"message": "Resume deleted successfully from database and Cloudflare R2."}
 
 
 async def update_resume(
@@ -610,10 +628,11 @@ async def process_bulk_upload(
         bg_sync_items = []
 
         for f_bytes, f_name, f_parsed, t_comp, t_role, c_name in tasks_to_upload:
-            file_id, local_path = drive_service.save_local_file(
+            r2_res = r2_storage.upload_resume(
                 file_bytes=f_bytes,
                 filename=f_name,
                 client_name=client.company_name,
+                mime_type="application/pdf",
             )
             r_id = uuid.uuid4()
             app_id = uuid.uuid4()
@@ -630,7 +649,10 @@ async def process_bulk_upload(
                 requirement_id=selected_req.id if selected_req else None,
                 uploaded_by=current_user.id,
                 resume_date=batch_date,
-                drive_file_id=file_id,
+                r2_key=r2_res.get("r2_key"),
+                file_size=r2_res.get("file_size"),
+                content_type=r2_res.get("content_type", "application/pdf"),
+                expires_at=r2_res.get("expires_at"),
                 original_filename=f_name,
             )
             entities_to_add.append(resume)
@@ -673,6 +695,7 @@ async def process_bulk_upload(
                         "company": t_comp,
                         "candidate": c_name,
                         "resume_date": batch_date.isoformat(),
+                        "r2_key": resume.r2_key,
                     },
                 )
             )
@@ -681,7 +704,7 @@ async def process_bulk_upload(
                 ParsedFileUploadItem(
                     filename=f_name,
                     status="saved",
-                    message="Successfully parsed and saved to database & storage.",
+                    message="Successfully parsed and saved to database & Cloudflare R2 storage.",
                     company=t_comp,
                     role=t_role,
                     candidate_name=c_name,
@@ -691,27 +714,16 @@ async def process_bulk_upload(
                     requirement_id=selected_req.id if selected_req else None,
                     requirement_code=selected_req.role_code if selected_req else None,
                     resume_date=batch_date,
-                    drive_file_id=resume.drive_file_id,
+                    r2_key=resume.r2_key,
+                    file_size=resume.file_size,
                     saved_resume_id=r_id,
                 )
             )
             saved_count += 1
-            bg_sync_items.append((r_id, f_bytes, f_name, client.company_name))
 
         db.add_all(entities_to_add)
         await db.flush()
         invalidate_dashboard_cache()
-
-        # If background_tasks is available, dispatch Drive sync
-        if background_tasks and bg_sync_items:
-            for r_id, f_bytes, f_name, c_name in bg_sync_items:
-                background_tasks.add_task(
-                    drive_service.sync_to_google_drive_background,
-                    resume_id=r_id,
-                    file_bytes=f_bytes,
-                    filename=f_name,
-                    client_name=c_name,
-                )
 
     # Auto-Sync Notifications & Dashboard Telemetry
     dash_stats = None
@@ -772,10 +784,11 @@ async def confirm_manual_uploads(
                 except Exception:
                     pass
 
-        file_id, local_path = drive_service.save_local_file(
+        r2_res = r2_storage.upload_resume(
             file_bytes=file_bytes or b"%PDF-1.4...",
             filename=item.original_filename,
             client_name=client.company_name,
+            mime_type="application/pdf",
         )
 
         resume = Resume(
@@ -788,7 +801,10 @@ async def confirm_manual_uploads(
             uploaded_by=current_user.id,
             resume_date=item.resume_date or date.today(),
             client_notes=item.client_notes,
-            drive_file_id=file_id,
+            r2_key=r2_res.get("r2_key"),
+            file_size=r2_res.get("file_size"),
+            content_type=r2_res.get("content_type", "application/pdf"),
+            expires_at=r2_res.get("expires_at"),
             original_filename=item.original_filename,
         )
         db.add(resume)
@@ -824,15 +840,6 @@ async def confirm_manual_uploads(
             )
         )
 
-        if background_tasks and file_bytes:
-            background_tasks.add_task(
-                drive_service.sync_to_google_drive_background,
-                resume_id=resume.id,
-                file_bytes=file_bytes,
-                filename=item.original_filename,
-                client_name=client.company_name,
-            )
-
         saved_resumes.append(
             ResumeResponse(
                 id=resume.id,
@@ -850,8 +857,12 @@ async def confirm_manual_uploads(
                 resume_date=resume.resume_date,
                 client_notes=resume.client_notes,
                 is_note_shared=resume.is_note_shared,
-                drive_file_id=resume.drive_file_id,
-                drive_url=f"https://drive.google.com/file/d/{resume.drive_file_id}/view" if resume.drive_file_id and not resume.drive_file_id.startswith("file_") else None,
+                r2_key=resume.r2_key,
+                file_size=resume.file_size,
+                content_type=resume.content_type,
+                expires_at=resume.expires_at,
+                preview_url=f"/api/resumes/{resume.id}/preview",
+                download_url=f"/api/resumes/{resume.id}/download",
                 upload_date=resume.upload_date,
                 has_application=True,
             )
@@ -937,6 +948,12 @@ async def get_resume_response_by_id(
         resume_date=resume.resume_date,
         client_notes=notes_visible,
         is_note_shared=resume.is_note_shared,
+        r2_key=getattr(resume, "r2_key", None),
+        file_size=getattr(resume, "file_size", None),
+        content_type=getattr(resume, "content_type", "application/pdf"),
+        expires_at=getattr(resume, "expires_at", None),
+        preview_url=f"/api/resumes/{resume.id}/preview",
+        download_url=f"/api/resumes/{resume.id}/download",
         drive_file_id=resume.drive_file_id,
         drive_url=f"https://drive.google.com/file/d/{resume.drive_file_id}/view" if resume.drive_file_id and not resume.drive_file_id.startswith("file_") else None,
         upload_date=resume.upload_date,
@@ -1040,3 +1057,18 @@ async def find_matching_resume(
         match_priority=None,
         match_reason="No matching resume found in client candidate bank.",
     )
+
+
+async def cleanup_expired_resumes(
+    db: AsyncSession,
+    current_user: User,
+    retention_days: int | None = None,
+) -> dict:
+    """Admin-triggered or automated retention cleanup of expired resumes from Cloudflare R2."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden: Only administrators can trigger retention cleanup.")
+
+    result = await r2_storage.cleanup_expired_resumes(db, retention_days)
+    invalidate_dashboard_cache()
+    return result
+

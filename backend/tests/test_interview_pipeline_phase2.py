@@ -1,24 +1,22 @@
 """
-Comprehensive Test Suite for Phase 2: Local ML Feature Pipeline & Confidence Engine
+Phase 2 tests for API-key-only Interview Intelligence.
 Tests:
-1. Multi-signal feature extraction with explicit binary signals (HAS_ICS=1, HAS_MEETING_LINK=1, HAS_DEADLINE=1).
-2. Domain signal heuristics (assessment, interview, scheduling, ATS).
-3. Quality-gated dataset exporter (generating train.jsonl, validation.jsonl, golden.jsonl, human_verified).
-4. TF-IDF + Logistic Regression model training with CalibratedClassifierCV and sub-100ms inference.
-5. Production confidence calibration with stricter precision thresholds (Accept >= 97, AI Fallback 75-96, Review Queue < 75).
+1. Multi-signal feature extraction remains available for search/export metadata.
+2. Dataset exporter still generates seed datasets without a local classifier.
+3. AI Gateway raises when no API provider is configured.
 """
 
+from unittest.mock import patch
+
 import pytest
+
+from app.core.ai_gateway import AIGateway, AIServiceUnavailable
 from app.modules.interview_intelligence.export_dataset import DatasetExporter
 from app.modules.interview_intelligence.features import (
     build_feature_text,
     extract_domain_signals,
 )
-from app.modules.interview_intelligence.model import (
-    ClassificationDecision,
-    LocalInterviewClassifier,
-)
-from app.modules.interview_intelligence.schemas import EmailCategory, NormalizedEmail
+from app.modules.interview_intelligence.schemas import NormalizedEmail
 
 
 @pytest.fixture(scope="session")
@@ -61,87 +59,14 @@ def test_dataset_exporter_seed_generation():
     assert len(export_res["class_distribution"]) >= 10
 
 
-def test_local_model_training_and_serialization(tmp_path):
-    classifier = LocalInterviewClassifier(version="v1.0.0-test")
+@pytest.mark.asyncio
+async def test_ai_gateway_requires_configured_api_key():
+    gateway = AIGateway()
 
-    # 1. Train baseline
-    accuracy = classifier.train_baseline()
-    assert accuracy > 0.85
-    assert classifier._is_trained is True
+    # Simulate an environment with no AI API keys configured. The gateway must
+    # surface a clear configuration error rather than attempting a local guess.
+    with patch.object(gateway, "get_available_providers", return_value=[]):
+        with pytest.raises(AIServiceUnavailable) as exc_info:
+            await gateway.chat_completion(messages=[{"role": "user", "content": "classify this"}])
 
-    # 2. Save model to temp dir
-    saved_path = classifier.save(model_dir=tmp_path)
-    assert "classifier.joblib" in saved_path
-
-    # 3. Reload into fresh instance
-    new_classifier = LocalInterviewClassifier(version="v1.0.0-test")
-    assert new_classifier._is_trained is False
-    loaded = new_classifier.load(model_path=saved_path)
-    assert loaded is True
-    assert new_classifier._is_trained is True
-
-
-def test_sub_100ms_prediction_and_decision_engine():
-    classifier = LocalInterviewClassifier(version="v1.0.0-test")
-    classifier.train_baseline()
-
-    # Case A: High-confidence technical assessment with HackerRank link
-    assessment_email = NormalizedEmail(
-        subject="Snowflake Online Technical Assessment - HackerRank",
-        sender_email="evaluations@hackerrank.com",
-        sender_domain="hackerrank.com",
-        links=["https://hackerrank.com/tests/snowflake-oa"],
-        attachment_names=[],
-        body="You have been invited to complete a timed coding challenge on HackerRank within 48 hours.",
-    )
-    res_a = classifier.predict(assessment_email)
-    assert res_a["category"] == EmailCategory.TECHNICAL_ASSESSMENT.value
-    assert res_a["confidence"] >= 97
-    assert res_a["decision"] == ClassificationDecision.ACCEPT
-    assert res_a["latency_ms"] < 100.0  # Performance requirement
-
-    # Case B: Technical interview invite with Zoom & invite.ics
-    interview_email = NormalizedEmail(
-        subject="Interview Schedule: Amazon SDE II Technical Round 1",
-        sender_email="recruiting@amazon.jobs",
-        sender_domain="amazon.jobs",
-        links=["https://amazon.zoom.us/j/999111"],
-        attachment_names=["invite.ics", "guide.pdf"],
-        body="We would like to invite you for your 60-minute technical coding interview on Zoom.",
-    )
-    res_b = classifier.predict(interview_email)
-    assert res_b["category"] in (EmailCategory.INTERVIEW.value, EmailCategory.HR_SCREENING.value)
-    assert res_b["confidence"] >= 97
-    assert res_b["decision"] == ClassificationDecision.ACCEPT
-    assert res_b["latency_ms"] < 100.0
-
-    # Case C: Rejection email
-    rejection_email = NormalizedEmail(
-        subject="Your application to Netflix",
-        sender_email="talent@netflix.com",
-        sender_domain="netflix.com",
-        links=[],
-        attachment_names=[],
-        body="Thank you for interviewing. After consideration, we have decided to move forward with other candidates.",
-    )
-    res_c = classifier.predict(rejection_email)
-    assert res_c["category"] == EmailCategory.REJECTION.value
-    assert res_c["latency_ms"] < 100.0
-
-
-def test_confidence_escalation_decision_logic():
-    classifier = LocalInterviewClassifier(version="v1.0.0-test")
-    classifier.train_baseline()
-
-    # Ambiguous short email without strong headers
-    ambiguous_email = NormalizedEmail(
-        subject="Quick question",
-        sender_email="someone@gmail.com",
-        sender_domain="gmail.com",
-        links=[],
-        attachment_names=[],
-        body="Hey, let's talk later.",
-    )
-    res = classifier.predict(ambiguous_email)
-    # Ambiguous email should have lower confidence (< 97) and trigger AI fallback or review queue
-    assert res["decision"] in (ClassificationDecision.AI_FALLBACK, ClassificationDecision.REVIEW_QUEUE)
+    assert "No AI API key configured" in str(exc_info.value)

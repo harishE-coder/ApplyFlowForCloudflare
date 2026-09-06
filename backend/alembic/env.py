@@ -28,7 +28,6 @@ from app.modules.clients.models import Client, EmployeeClient  # noqa: F401
 from app.modules.interview_intelligence.models import (  # noqa: F401
     EmailTrainingData,
     InterviewEvent,
-    ModelVersion,
 )
 from app.modules.notifications.models import (  # noqa: F401
     Notification,

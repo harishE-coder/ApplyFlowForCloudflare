@@ -9,6 +9,8 @@ Tests:
 """
 
 import uuid
+import json
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from app.core.database import Base
@@ -63,7 +65,7 @@ async def test_thread_reconstruction_thread_id_and_status_separation():
             body_sha256="sha001",
             category=EmailCategory.INTERVIEW.value,
             confidence=98,
-            source="local",
+            source="api_key",
         )
         session.add(email1)
         await session.commit()
@@ -107,7 +109,7 @@ async def test_thread_reconstruction_thread_id_and_status_separation():
             body_sha256="sha002",
             category=EmailCategory.INTERVIEW_RESCHEDULE.value,
             confidence=95,
-            source="local",
+            source="api_key",
         )
         session.add(email2)
         await session.commit()
@@ -149,7 +151,7 @@ async def test_thread_reconstruction_thread_id_and_status_separation():
             body_sha256="sha003",
             category=EmailCategory.INTERVIEW_CONFIRMATION.value,
             confidence=99,
-            source="local",
+            source="api_key",
         )
         session.add(email3)
         await session.commit()
@@ -271,16 +273,41 @@ You have been invited by Snowflake to complete a timed coding assessment on Hack
 Link: https://hackerrank.com/tests/snowflake-backend-oa
 Please complete within 48 hours.
 """
-        response = await InterviewPipelineOrchestrator.process_email(
-            session=session,
-            content=raw_email,
-            filename="snowflake_oa.eml",
-        )
+        mock_api_payload = {
+            "it_related": True,
+            "category": EmailCategory.TECHNICAL_ASSESSMENT.value,
+            "company": "Snowflake",
+            "role": "Backend Engineer",
+            "round_name": "Online Assessment",
+            "round_type": RoundType.TECHNICAL_ASSESSMENT.value,
+            "status": EventStatus.SCHEDULED.value,
+            "confidence": 99,
+            "meeting_link": "https://hackerrank.com/tests/snowflake-backend-oa",
+            "deadline": "within 48 hours",
+            "reason": "Detected HackerRank assessment instructions.",
+        }
+
+        with patch(
+            "app.modules.interview_intelligence.teacher.chat_completion",
+            new=AsyncMock(
+                return_value={
+                    "choices": [{"message": {"content": json.dumps(mock_api_payload)}}],
+                    "model": "llama-3.3-70b-versatile",
+                }
+            ),
+        ):
+            response = await InterviewPipelineOrchestrator.process_email(
+                session=session,
+                content=raw_email,
+                filename="snowflake_oa.eml",
+            )
 
         assert response.status == "success"
         assert response.category == EmailCategory.TECHNICAL_ASSESSMENT.value
         assert response.round_type == RoundType.TECHNICAL_ASSESSMENT.value
         assert response.confidence >= 95
+        assert response.source == "api_key"
+        assert response.decision == "api_classified"
         assert response.action == "created_new_interview_event"
         assert response.application_id == app.id
         assert response.thread_id is not None

@@ -865,7 +865,7 @@ async def get_employee_dashboard(
         pending_review_count = (
             await db.execute(
                 select(func.count(EmailTrainingData.id)).where(
-                    or_(EmailTrainingData.needs_retraining == True, EmailTrainingData.processing_status == "pending")
+                    EmailTrainingData.processing_status == "pending"
                 )
             )
         ).scalar() or 0

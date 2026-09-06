@@ -20,6 +20,8 @@ Your task is to analyze candidate emails and extract precise, deterministic recr
    - "non_it" (Non-IT jobs, retail, general marketing spam, sales newsletters)
    - "other" (System/billing notices or uncategorized communication)
 
+If the email is not a recruitment, candidate, application, interview, assessment, offer, or rejection update, set "it_related" to false and choose "non_it" or "other".
+
 3. Company Extraction Rule:
    - Always extract the hiring company name from email text or subject (e.g., "Stripe", "Netflix", "Amazon", "OpenAI"), NOT third-party ATS platforms (greenhouse, lever, ashby, workday).
 

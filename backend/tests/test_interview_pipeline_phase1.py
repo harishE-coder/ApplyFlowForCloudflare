@@ -4,7 +4,7 @@ Tests:
 1. Sender name, domain, email, and Message-ID parsing (.eml, .pdf, text).
 2. Supabase Storage upload, download, metadata headers, and existence checks.
 3. Atomic rollback / retry-safe scope (zero orphaned files on DB failure).
-4. Dual SQLite/Postgres database persistence and relations (including optimistic locking & TeacherDisagreement).
+4. Dual SQLite/Postgres database persistence and relations (including optimistic locking & review actions).
 """
 
 import io
@@ -16,8 +16,7 @@ from app.core.database import Base
 from app.modules.interview_intelligence.models import (
     EmailTrainingData,
     InterviewEvent,
-    ModelVersion,
-    TeacherDisagreement,
+    ReviewAction,
 )
 from app.modules.interview_intelligence.parser import (
     EmailParser,
@@ -308,36 +307,19 @@ async def test_database_persistence_and_relationships():
         )
         session.add(event_record)
 
-        # 3. Insert ModelVersion
-        mv = ModelVersion(
-            id=uuid.uuid4(),
-            version="v1.0.0",
-            accuracy=0.978,
-            samples=1200,
-            storage_type="supabase",
-            active=True,
-            model_path="models/v1.0.0/classifier.joblib",
-            metrics={"precision": 0.98, "recall": 0.97},
-        )
-        session.add(mv)
-        await session.commit()
-
-        # 4. Insert TeacherDisagreement
-        disagreement = TeacherDisagreement(
+        # 3. Insert ReviewAction audit entry
+        review_action = ReviewAction(
             id=uuid.uuid4(),
             email_id=email_record.id,
-            local_label="other",
-            local_confidence=60,
-            ai_label="technical_assessment",
-            ai_confidence=98,
-            human_label=None,
-            resolved=False,
-            notes="Local model missed HackerRank link; AI detected take-home instructions.",
+            reviewer="QA Admin",
+            old_label="other",
+            new_label="technical_assessment",
+            notes="Verified API-key classification.",
         )
-        session.add(disagreement)
+        session.add(review_action)
         await session.commit()
 
-        # 5. Query and verify relationships, optimistic locking, and fields
+        # 4. Query and verify relationships, optimistic locking, and fields
         from sqlalchemy import select
         res = await session.execute(
             select(EmailTrainingData).where(EmailTrainingData.message_id == "msg-anthropic-12345@anthropic.com")
@@ -350,8 +332,8 @@ async def test_database_persistence_and_relationships():
         assert "take-home" in queried_email.ai_reasoning
         assert queried_email.category == "technical_assessment"
         assert len(queried_email.interview_events) == 1
-        assert len(queried_email.disagreements) == 1
-        assert queried_email.disagreements[0].ai_label == "technical_assessment"
+        assert len(queried_email.review_actions) == 1
+        assert queried_email.review_actions[0].new_label == "technical_assessment"
 
         # Optimistic locking update test
         queried_email.version += 1

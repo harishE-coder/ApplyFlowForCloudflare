@@ -1,6 +1,6 @@
 name = "applyflow-backend"
 main = "src/index.ts"
-compatibility_date = "2024-09-23"
+compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
@@ -17,7 +17,7 @@ bindings = [
 
 [[migrations]]
 tag = "v1"
-new_classes = ["ChatRoomDO"]
+new_sqlite_classes = ["ChatRoomDO"]
 
 # Scheduled Background Tasks (Cron Triggers)
 # e.g., Daily resume and notification maintenance at 03:00 UTC

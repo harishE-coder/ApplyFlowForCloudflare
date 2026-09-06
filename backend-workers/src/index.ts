@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
 import { authRouter } from "./routes/auth";
+import { clientsRouter } from "./routes/clients";
 import { dashboardRouter } from "./routes/dashboard";
 import { healthRouter } from "./routes/health";
 import type { Bindings, Variables } from "./types";
@@ -59,6 +60,7 @@ app.get("/", (c) => {
 app.route("/api/health", healthRouter);
 app.route("/api/auth", authRouter);
 app.route("/api/dashboard", dashboardRouter);
+app.route("/api/clients", clientsRouter);
 
 // Global 404 Handler
 app.notFound((c) => {

@@ -160,3 +160,46 @@ authRouter.get("/me", requireAuth, async (c) => {
     created_at: u.created_at,
   });
 });
+
+// 5. GET /api/auth/bootstrap
+authRouter.get("/bootstrap", requireAuth, async (c) => {
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const [users, clientsRes, appsRes] = await Promise.all([
+    sql`
+      SELECT id, name, email, role, client_id, is_active, created_at
+      FROM users
+      WHERE id = ${user.id}
+      LIMIT 1
+    `,
+    sql`SELECT count(*)::int as count FROM clients WHERE is_active = true`,
+    sql`SELECT count(*)::int as count FROM applications`,
+  ]);
+
+  if (!users || users.length === 0) {
+    return c.json({ detail: "User not found" }, 404);
+  }
+
+  const u = users[0];
+  return c.json({
+    user: {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      client_id: u.client_id,
+      is_active: u.is_active,
+      created_at: u.created_at,
+    },
+    dashboard: {
+      metrics: {
+        total_clients: clientsRes[0]?.count || 0,
+        total_applications: appsRes[0]?.count || 0,
+      },
+    },
+    notifications: [],
+    chat_unread: 0,
+  });
+});
+

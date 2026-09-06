@@ -1,0 +1,13 @@
+# ApplyFlow Cloudflare Workers Local Development Secrets
+# Copy this file to .dev.vars for local testing with `wrangler dev`
+
+DATABASE_URL=postgresql://neondb_owner:YOUR_NEON_PASSWORD@ep-sample-host.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require
+JWT_SECRET_KEY=your-jwt-secret-key-here
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Multi-Provider AI API Keys
+AI_PROVIDER=groq
+GROQ_API_KEY=your-groq-api-key
+OPENAI_API_KEY=
+GEMINI_API_KEY=

@@ -40,10 +40,27 @@ export function LoginPage() {
     setAuthError('');
     try {
       const user = await login(data.email, data.password);
-      success('Welcome back', `Signed in as ${user.name}`);
+      success('Welcome back', `Signed in as ${user?.name || 'User'}`);
       navigate('/dashboard');
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Invalid email or password';
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        err?.response?.data?.error ??
+        err?.message ??
+        '';
+
+      let msg = 'Invalid email or password';
+      if (typeof detail === 'string' && detail.trim()) {
+        msg = detail;
+      } else if (Array.isArray(detail)) {
+        msg = detail
+          .map((d) => (typeof d === 'string' ? d : d?.msg || JSON.stringify(d)))
+          .join('; ');
+      } else if (typeof detail === 'object' && detail !== null) {
+        msg = detail.msg || detail.message || detail.error || JSON.stringify(detail);
+      }
+
       setAuthError(msg);
       toastError('Authentication Failed', msg);
     } finally {

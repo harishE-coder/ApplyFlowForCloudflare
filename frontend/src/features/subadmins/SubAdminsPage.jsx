@@ -199,10 +199,15 @@ export function SubAdminsPage() {
       showToast(`Sub-Admin ${sa.name} deleted.`);
       fetchData();
     } catch (err) {
-      if (err.response?.status === 400 || err.response?.data?.detail?.includes('Reassign')) {
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        err?.message ??
+        '';
+      if (err?.response?.status === 400 || (typeof detail === 'string' && detail.includes('Reassign'))) {
         setSafeDeleteModalSA(sa);
       } else {
-        showToast(err.response?.data?.detail || 'Failed to delete sub-admin');
+        showToast(typeof detail === 'string' && detail ? detail : 'Failed to delete sub-admin');
       }
     }
   };

@@ -119,7 +119,7 @@ export function ChatRoomList({
             const isActive = room.id === activeRoomId;
             const hasUnread = room.unread_count > 0;
             const hasOnlineParticipants = room.participants?.some(
-              (p) => p.id !== user?.id && onlineUsers.includes(String(p.id))
+              (p) => p.id !== user?.id && Array.isArray(onlineUsers) && onlineUsers.includes(String(p.id))
             );
             const isTypingInThisRoom = isActive && Object.keys(typingUsers).length > 0;
 

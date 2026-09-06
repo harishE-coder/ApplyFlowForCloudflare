@@ -63,7 +63,9 @@ const mockEnv: Bindings = {
 
 describe("Authentication & Page Refresh / Logout Verification Flows", () => {
   beforeEach(async () => {
-    mockUsers[0].hashed_password = await hashPassword("AdminSecret123!");
+    const pw = await hashPassword("AdminSecret123!");
+    mockUsers[0].hashed_password = pw;
+    (mockUsers[0] as any).password_hash = pw;
   });
 
   it("Flow 1: Login -> refresh page (bootstrap) -> user remains authenticated", async () => {

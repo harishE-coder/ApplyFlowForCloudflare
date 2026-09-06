@@ -339,7 +339,7 @@ export function ChatWindow({
         <div className="flex items-center gap-2.5">
           <div className="flex items-center -space-x-1.5 overflow-hidden">
             {room.participants?.slice(0, 4).map((p) => {
-              const isOnline = onlineUsers.includes(String(p.id));
+              const isOnline = Array.isArray(onlineUsers) && onlineUsers.includes(String(p.id));
               return (
                 <div key={p.id} className="relative" title={`${p.name} (${p.role})${isOnline ? ' • Online now' : ''}`}>
                   <Avatar

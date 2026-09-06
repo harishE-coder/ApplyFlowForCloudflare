@@ -98,10 +98,10 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
 
   const filtered = allActions.filter(
     (action) =>
-      action.roles.includes(userRole) &&
-      (action.title.toLowerCase().includes(query.toLowerCase()) ||
-        action.subtitle.toLowerCase().includes(query.toLowerCase()) ||
-        action.section.toLowerCase().includes(query.toLowerCase()))
+      (!action.roles || (Array.isArray(action.roles) && action.roles.includes(userRole))) &&
+      ((typeof action.title === 'string' && action.title.toLowerCase().includes(query.toLowerCase())) ||
+        (typeof action.subtitle === 'string' && action.subtitle.toLowerCase().includes(query.toLowerCase())) ||
+        (typeof action.section === 'string' && action.section.toLowerCase().includes(query.toLowerCase())))
   );
 
   const handleSelect = (action) => {

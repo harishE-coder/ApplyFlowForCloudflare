@@ -56,21 +56,33 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     sessionStorage.removeItem('applyflow_logged_out');
     const credentials = { email, password };
-    await api.post('/auth/login', credentials);
+    const loginRes = await api.post('/auth/login', credentials);
+    const loginUser = loginRes?.data?.user;
 
     // Immediately fetch the authenticated bootstrap payload after login.
-    const bootRes = await api.get('/auth/bootstrap', { cache: false });
+    let bootData = null;
+    try {
+      const bootRes = await api.get('/auth/bootstrap', { cache: false });
+      bootData = bootRes?.data;
+    } catch (e) {
+      console.warn('Bootstrap fetch after login encountered error, falling back to login user payload:', e);
+    }
 
-    setUser(bootRes.data.user);
-    setBootstrapData({
-      dashboard: bootRes.data.dashboard || null,
-      notifications: bootRes.data.notifications || null,
-      chat_unread: bootRes.data.chat_unread || null,
-    });
+    const currentUser = bootData?.user || loginUser;
+    if (currentUser) {
+      setUser(currentUser);
+      setBootstrapData({
+        dashboard: bootData?.dashboard || null,
+        notifications: bootData?.notifications || null,
+        chat_unread: bootData?.chat_unread || null,
+      });
 
-    initPushNotifications();
+      initPushNotifications();
 
-    return bootRes.data.user;
+      return currentUser;
+    }
+
+    throw new Error('Authentication succeeded but user payload is missing');
   }, []);
 
   const logout = useCallback(async () => {

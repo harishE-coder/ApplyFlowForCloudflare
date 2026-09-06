@@ -249,10 +249,15 @@ export function RecruitersPage() {
       success('Recruiter Deleted', `${emp.name} deleted successfully.`);
       fetchData();
     } catch (err) {
-      if (err.response?.status === 400 || err.response?.data?.detail?.includes('historical')) {
+      const detail =
+        err?.response?.data?.detail ??
+        err?.response?.data?.message ??
+        err?.message ??
+        '';
+      if (err?.response?.status === 400 || (typeof detail === 'string' && detail.includes('historical'))) {
         setSafeDeleteModalEmp(emp);
       } else {
-        toastError('Cannot Delete', err.response?.data?.detail || 'This recruiter has historical records.');
+        toastError('Cannot Delete', typeof detail === 'string' && detail ? detail : 'This recruiter has historical records.');
       }
     }
   };

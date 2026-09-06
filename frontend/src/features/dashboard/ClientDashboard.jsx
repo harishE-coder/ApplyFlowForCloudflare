@@ -140,7 +140,7 @@ export function ClientDashboard() {
   }, [data?.application_progress]);
 
   const getRoundBadgeColor = (roundStr = '') => {
-    const r = roundStr.toLowerCase();
+    const r = typeof roundStr === 'string' ? roundStr.toLowerCase() : '';
     if (r.includes('offer')) return 'bg-[#F0FDF4] text-[#16A34A] border-[#BBF7D0]';
     if (r.includes('tech') || r.includes('coding')) return 'bg-[#EFF6FF] text-[#2563EB] border-[#BFDBFE]';
     if (r.includes('hr') || r.includes('discussion')) return 'bg-[#FAF5FF] text-[#9333EA] border-[#E9D5FF]';

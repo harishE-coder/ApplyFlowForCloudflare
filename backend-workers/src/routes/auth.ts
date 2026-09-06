@@ -26,7 +26,7 @@ authRouter.post("/login", async (c) => {
 
   const sql = getDb(c.env.DATABASE_URL);
   const users = await sql`
-    SELECT id, name, email, hashed_password, role, client_id, is_active, created_at
+    SELECT *
     FROM users
     WHERE LOWER(email) = ${email}
     LIMIT 1
@@ -41,7 +41,12 @@ authRouter.post("/login", async (c) => {
     return c.json({ detail: "Account is disabled. Please contact an administrator." }, 403);
   }
 
-  const passwordValid = await verifyPassword(password, user.hashed_password);
+  const storedPasswordHash = user.password_hash || user.hashed_password;
+  if (!storedPasswordHash) {
+    return c.json({ detail: "Invalid email or password" }, 401);
+  }
+
+  const passwordValid = await verifyPassword(password, storedPasswordHash);
   if (!passwordValid) {
     return c.json({ detail: "Invalid email or password" }, 401);
   }

@@ -326,7 +326,7 @@ const createUserHandler = async (c: any) => {
 
   const [created] = await sql`
     INSERT INTO users (
-      id, name, email, phone, hashed_password, role, status, client_id, managed_by, is_active, created_at, updated_at
+      id, name, email, phone, password_hash, role, status, client_id, managed_by, is_active, created_at, updated_at
     ) VALUES (
       ${userId}, ${payload.name}, ${payload.email.toLowerCase()}, ${payload.phone || null},
       ${hashedPassword}, ${payload.role}, ${payload.status}, ${payload.client_id || null},
@@ -407,7 +407,7 @@ const updateUserHandler = async (c: any) => {
   const clientIdVal = payload.client_id !== undefined ? payload.client_id : current.client_id;
   const isActiveVal = payload.is_active !== undefined ? payload.is_active : current.is_active;
 
-  let passwordHash = current.hashed_password;
+  let passwordHash = current.password_hash || current.hashed_password;
   if (payload.password) {
     passwordHash = await hashPassword(payload.password);
   }
@@ -417,7 +417,7 @@ const updateUserHandler = async (c: any) => {
       name = ${nameVal},
       email = ${emailVal},
       phone = ${phoneVal},
-      hashed_password = ${passwordHash},
+      password_hash = ${passwordHash},
       role = ${roleVal},
       status = ${statusVal},
       client_id = ${clientIdVal},
@@ -585,7 +585,7 @@ const resetPasswordHandler = async (c: any) => {
 
   const hashedPassword = await hashPassword(payload.new_password);
   const [updated] = await sql`
-    UPDATE users SET hashed_password = ${hashedPassword}, updated_at = NOW()
+    UPDATE users SET password_hash = ${hashedPassword}, updated_at = NOW()
     WHERE id = ${userId}
     RETURNING id
   `;

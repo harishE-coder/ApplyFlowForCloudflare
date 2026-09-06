@@ -28,15 +28,21 @@ rawAxios.interceptors.request.use((config) => {
 rawAxios.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error?.config;
+
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    const reqUrl = typeof originalRequest.url === 'string' ? originalRequest.url : '';
 
     if (
-      error.response?.status === 401 &&
+      error?.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes('/auth/login') &&
-      !originalRequest.url?.includes('/auth/logout') &&
-      !originalRequest.url?.includes('/auth/refresh') &&
-      !originalRequest.url?.includes('/auth/bootstrap')
+      !reqUrl.includes('/auth/login') &&
+      !reqUrl.includes('/auth/logout') &&
+      !reqUrl.includes('/auth/refresh') &&
+      !reqUrl.includes('/auth/bootstrap')
     ) {
       originalRequest._retry = true;
 
@@ -55,19 +61,19 @@ rawAxios.interceptors.response.use(
 );
 
 export function invalidateCache(prefix = '') {
-  if (!prefix) {
+  if (!prefix || typeof prefix !== 'string') {
     cacheMap.clear();
     return;
   }
   for (const key of cacheMap.keys()) {
-    if (key.includes(prefix)) {
+    if (typeof key === 'string' && key.includes(prefix)) {
       cacheMap.delete(key);
     }
   }
 }
 
 export function invalidateScopedCache(url = '') {
-  if (!url) {
+  if (!url || typeof url !== 'string') {
     cacheMap.clear();
     return;
   }

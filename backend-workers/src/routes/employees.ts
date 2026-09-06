@@ -91,7 +91,7 @@ async function enrichUsers(sql: any, users: any[]): Promise<any[]> {
 /**
  * 1. GET /api/employees (Recruiter performance list)
  */
-employeesRouter.get("/employees", requireRoles("super_admin", "sub_admin"), async (c) => {
+employeesRouter.get("/employees", requireRoles("super_admin", "admin", "sub_admin"), async (c) => {
   const user = c.get("user");
   const statusFilter = c.req.query("status");
   const sql = getDb(c.env.DATABASE_URL);
@@ -226,7 +226,7 @@ employeesRouter.get("/employees", requireRoles("super_admin", "sub_admin"), asyn
 /**
  * 2. GET /api/users (List all users with filters)
  */
-employeesRouter.get("/users", requireRoles("super_admin", "sub_admin"), async (c) => {
+employeesRouter.get("/users", requireRoles("super_admin", "admin", "sub_admin"), async (c) => {
   const user = c.get("user");
   const roleFilter = c.req.query("role");
   const statusFilter = c.req.query("status");
@@ -290,8 +290,8 @@ const getUserHandler = async (c: any) => {
   return c.json(enriched);
 };
 
-employeesRouter.get("/employees/:user_id", requireRoles("super_admin", "sub_admin"), getUserHandler);
-employeesRouter.get("/users/:user_id", requireRoles("super_admin", "sub_admin"), getUserHandler);
+employeesRouter.get("/employees/:user_id", requireRoles("super_admin", "admin", "sub_admin"), getUserHandler);
+employeesRouter.get("/users/:user_id", requireRoles("super_admin", "admin", "sub_admin"), getUserHandler);
 
 /**
  * 4. POST /api/employees and POST /api/users (Create User)
@@ -369,8 +369,8 @@ const createUserHandler = async (c: any) => {
   return c.json(enriched, 201);
 };
 
-employeesRouter.post("/employees", requireRoles("super_admin", "sub_admin"), createUserHandler);
-employeesRouter.post("/users", requireRoles("super_admin", "sub_admin"), createUserHandler);
+employeesRouter.post("/employees", requireRoles("super_admin", "admin", "sub_admin"), createUserHandler);
+employeesRouter.post("/users", requireRoles("super_admin", "admin", "sub_admin"), createUserHandler);
 
 /**
  * 5. PUT / PATCH /api/employees/:user_id and /api/users/:user_id
@@ -451,11 +451,11 @@ const updateUserHandler = async (c: any) => {
   return c.json(enriched);
 };
 
-employeesRouter.put("/employees/:user_id", requireRoles("super_admin", "sub_admin"), updateUserHandler);
-employeesRouter.patch("/employees/:user_id", requireRoles("super_admin", "sub_admin"), updateUserHandler);
-employeesRouter.patch("/employees/:user_id/status", requireRoles("super_admin", "sub_admin"), updateUserHandler);
-employeesRouter.put("/users/:user_id", requireRoles("super_admin", "sub_admin"), updateUserHandler);
-employeesRouter.patch("/users/:user_id", requireRoles("super_admin", "sub_admin"), updateUserHandler);
+employeesRouter.put("/employees/:user_id", requireRoles("super_admin", "admin", "sub_admin"), updateUserHandler);
+employeesRouter.patch("/employees/:user_id", requireRoles("super_admin", "admin", "sub_admin"), updateUserHandler);
+employeesRouter.patch("/employees/:user_id/status", requireRoles("super_admin", "admin", "sub_admin"), updateUserHandler);
+employeesRouter.put("/users/:user_id", requireRoles("super_admin", "admin", "sub_admin"), updateUserHandler);
+employeesRouter.patch("/users/:user_id", requireRoles("super_admin", "admin", "sub_admin"), updateUserHandler);
 
 /**
  * 6. POST /api/employees/:user_id/activate & /api/users/:user_id/activate
@@ -489,8 +489,8 @@ const activateUserHandler = async (c: any) => {
   return c.json(enriched);
 };
 
-employeesRouter.post("/employees/:user_id/activate", requireRoles("super_admin", "sub_admin"), activateUserHandler);
-employeesRouter.post("/users/:user_id/activate", requireRoles("super_admin", "sub_admin"), activateUserHandler);
+employeesRouter.post("/employees/:user_id/activate", requireRoles("super_admin", "admin", "sub_admin"), activateUserHandler);
+employeesRouter.post("/users/:user_id/activate", requireRoles("super_admin", "admin", "sub_admin"), activateUserHandler);
 
 /**
  * 7. POST /api/employees/:user_id/deactivate & /api/users/:user_id/deactivate
@@ -524,8 +524,8 @@ const deactivateUserHandler = async (c: any) => {
   return c.json(enriched);
 };
 
-employeesRouter.post("/employees/:user_id/deactivate", requireRoles("super_admin", "sub_admin"), deactivateUserHandler);
-employeesRouter.post("/users/:user_id/deactivate", requireRoles("super_admin", "sub_admin"), deactivateUserHandler);
+employeesRouter.post("/employees/:user_id/deactivate", requireRoles("super_admin", "admin", "sub_admin"), deactivateUserHandler);
+employeesRouter.post("/users/:user_id/deactivate", requireRoles("super_admin", "admin", "sub_admin"), deactivateUserHandler);
 
 /**
  * 8. POST /api/employees/:user_id/archive & /api/users/:user_id/archive
@@ -559,8 +559,8 @@ const archiveUserHandler = async (c: any) => {
   return c.json(enriched);
 };
 
-employeesRouter.post("/employees/:user_id/archive", requireRoles("super_admin", "sub_admin"), archiveUserHandler);
-employeesRouter.post("/users/:user_id/archive", requireRoles("super_admin", "sub_admin"), archiveUserHandler);
+employeesRouter.post("/employees/:user_id/archive", requireRoles("super_admin", "admin", "sub_admin"), archiveUserHandler);
+employeesRouter.post("/users/:user_id/archive", requireRoles("super_admin", "admin", "sub_admin"), archiveUserHandler);
 
 /**
  * 9. POST /api/employees/:user_id/reset-password & /api/users/:user_id/reset-password
@@ -602,8 +602,8 @@ const resetPasswordHandler = async (c: any) => {
   return c.json({ message: "Password reset successfully" });
 };
 
-employeesRouter.post("/employees/:user_id/reset-password", requireRoles("super_admin", "sub_admin"), resetPasswordHandler);
-employeesRouter.post("/users/:user_id/reset-password", requireRoles("super_admin", "sub_admin"), resetPasswordHandler);
+employeesRouter.post("/employees/:user_id/reset-password", requireRoles("super_admin", "admin", "sub_admin"), resetPasswordHandler);
+employeesRouter.post("/users/:user_id/reset-password", requireRoles("super_admin", "admin", "sub_admin"), resetPasswordHandler);
 
 /**
  * 10. DELETE /api/employees/:user_id and /api/users/:user_id (Safe delete - Super Admin only)

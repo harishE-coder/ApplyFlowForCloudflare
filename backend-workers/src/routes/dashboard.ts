@@ -43,9 +43,10 @@ dashboardRouter.get("/home", async (c) => {
 
     // 3. Recent 5 applications
     const recentApps = await sql`
-      SELECT a.id, a.candidate_name, a.company, a.role, a.status, a.round, a.created_at
+      SELECT a.id, r.candidate_name, r.company, r.role, a.status, a.current_round, a.applied_date
       FROM applications a
-      ORDER BY a.created_at DESC
+      LEFT JOIN resumes r ON r.id = a.resume_id
+      ORDER BY a.applied_date DESC
       LIMIT 5
     `;
 

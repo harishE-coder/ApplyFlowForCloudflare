@@ -135,7 +135,7 @@ attendanceRouter.get(
     let allowedEmployeeIds: string[] | null = null;
     if (user.role === "sub_admin") {
       const subAdminRows = await sql`
-        SELECT employee_id FROM sub_admin_employees WHERE sub_admin_id = ${user.id}
+        SELECT employee_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND employee_id IS NOT NULL
       `;
       allowedEmployeeIds = subAdminRows.map((r: any) => String(r.employee_id));
     }

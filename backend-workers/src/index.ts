@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
 import { requestId } from "hono/request-id";
+import { aiRouter } from "./routes/ai";
 import { applicationsRouter } from "./routes/applications";
 import { attendanceRouter } from "./routes/attendance";
 import { authRouter } from "./routes/auth";
@@ -83,6 +84,7 @@ app.route("/api/notifications", notificationsRouter);
 app.route("/api/attendance", attendanceRouter);
 app.route("/api/targets", targetsRouter);
 app.route("/api/chat", chatRouter);
+app.route("/api/ai", aiRouter);
 app.get("/ws/chat/:room_id", handleChatWebSocketUpgrade);
 app.route("/api", employeesRouter);
 

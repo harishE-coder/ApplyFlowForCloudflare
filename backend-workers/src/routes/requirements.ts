@@ -21,7 +21,7 @@ requirementsRouter.use("*", requireAuth);
  * Helper: Resolve permitted client IDs for scoping requirements
  */
 async function getScopedClientIdsForReqs(sql: any, user: UserPayload): Promise<string[] | null> {
-  if (user.role === "super_admin") {
+  if (user.role === "super_admin" || user.role === "admin") {
     return null; // Global access
   }
 
@@ -58,8 +58,8 @@ async function getScopedClientIdsForReqs(sql: any, user: UserPayload): Promise<s
 async function enrichRequirements(sql: any, reqs: any[]): Promise<any[]> {
   if (!reqs || reqs.length === 0) return [];
 
-  const reqIds = reqs.map((r) => String(r.id));
-  const clientIds = [...new Set(reqs.map((r) => String(r.client_id)).filter(Boolean))];
+  const reqIds = reqs.map((r) => r.id).filter(Boolean).map(String);
+  const clientIds = [...new Set(reqs.map((r) => r.client_id).filter(Boolean).map(String))];
   const userIds = [
     ...new Set(
       reqs
@@ -153,37 +153,39 @@ requirementsRouter.get("/", async (c) => {
     return c.json([]);
   }
 
-  let rows: any[];
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let pIdx = 1;
 
   if (scopedCids !== null) {
-    rows = await sql`
-      SELECT * FROM requirements
-      WHERE client_id = ANY(${scopedCids})
-      ${filterClientId ? sql`AND client_id = ${filterClientId}` : sql``}
-      ${filterStatus && filterStatus !== "all" ? sql`AND status = ${filterStatus}` : sql``}
-      ${filterPriority ? sql`AND priority = ${filterPriority}` : sql``}
-      ${
-        search
-          ? sql`AND (company ILIKE ${`%${search}%`} OR role ILIKE ${`%${search}%`} OR role_code ILIKE ${`%${search}%`})`
-          : sql``
-      }
-      ORDER BY created_at DESC
-    `;
-  } else {
-    rows = await sql`
-      SELECT * FROM requirements
-      WHERE 1=1
-      ${filterClientId ? sql`AND client_id = ${filterClientId}` : sql``}
-      ${filterStatus && filterStatus !== "all" ? sql`AND status = ${filterStatus}` : sql``}
-      ${filterPriority ? sql`AND priority = ${filterPriority}` : sql``}
-      ${
-        search
-          ? sql`AND (company ILIKE ${`%${search}%`} OR role ILIKE ${`%${search}%`} OR role_code ILIKE ${`%${search}%`})`
-          : sql``
-      }
-      ORDER BY created_at DESC
-    `;
+    conditions.push(`client_id = ANY($${pIdx++})`);
+    params.push(scopedCids);
   }
+  if (filterClientId) {
+    conditions.push(`client_id = $${pIdx++}`);
+    params.push(filterClientId);
+  }
+  if (filterStatus && filterStatus !== "all") {
+    conditions.push(`status = $${pIdx++}`);
+    params.push(filterStatus);
+  }
+  if (filterPriority) {
+    conditions.push(`priority = $${pIdx++}`);
+    params.push(filterPriority);
+  }
+  if (search) {
+    conditions.push(`(company ILIKE $${pIdx} OR role ILIKE $${pIdx} OR role_code ILIKE $${pIdx})`);
+    params.push(`%${search}%`);
+    pIdx++;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const queryStr = `
+    SELECT * FROM requirements
+    ${whereClause}
+    ORDER BY created_at DESC
+  `;
+  const rows = await (sql as any)(queryStr, params);
 
   const enriched = await enrichRequirements(sql, rows);
   return c.json(enriched);

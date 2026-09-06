@@ -22,7 +22,7 @@ applicationsRouter.use("*", requireAuth);
  * Helper: Resolve permitted client IDs for scoping applications
  */
 async function getScopedClientIdsForApps(sql: any, user: UserPayload): Promise<string[] | null> {
-  if (user.role === "super_admin") {
+  if (user.role === "super_admin" || user.role === "admin") {
     return null; // Global access
   }
 
@@ -59,20 +59,23 @@ async function getScopedClientIdsForApps(sql: any, user: UserPayload): Promise<s
 async function enrichApplications(sql: any, apps: any[]): Promise<any[]> {
   if (!apps || apps.length === 0) return [];
 
-  const appIds = apps.map((a) => String(a.id));
-  const resumeIds = [...new Set(apps.map((a) => String(a.resume_id)).filter(Boolean))];
-  const clientIds = [...new Set(apps.map((a) => String(a.client_id)).filter(Boolean))];
-  const employeeIds = [...new Set(apps.map((a) => String(a.employee_id)).filter(Boolean))];
-  const reqIds = [...new Set(apps.map((a) => String(a.requirement_id)).filter(Boolean))];
+  const appIds = apps.map((a) => a.id).filter(Boolean).map(String);
+  const resumeIds = [...new Set(apps.map((a) => a.resume_id).filter(Boolean).map(String))];
+  const clientIds = [...new Set(apps.map((a) => a.client_id).filter(Boolean).map(String))];
+  const employeeIds = [...new Set(apps.map((a) => a.employee_id).filter(Boolean).map(String))];
+  const reqIds = [...new Set(apps.map((a) => a.requirement_id).filter(Boolean).map(String))];
 
   // 1. Resumes
   const resumeMap: Record<string, any> = {};
   if (resumeIds.length > 0) {
     const resumes = await sql`
-      SELECT id, display_id, candidate_name, company, role FROM resumes WHERE id = ANY(${resumeIds})
+      SELECT id, resume_id_tag, display_seq, candidate_name, company, role FROM resumes WHERE id = ANY(${resumeIds})
     `;
     for (const r of resumes) {
-      resumeMap[String(r.id)] = r;
+      resumeMap[String(r.id)] = {
+        ...r,
+        display_id: r.resume_id_tag || (r.display_seq ? `RES${1000 + r.display_seq}` : "RES1000"),
+      };
     }
   }
 
@@ -180,80 +183,57 @@ applicationsRouter.get("/", async (c) => {
     return c.json({ items: [], total: 0, page, page_size: pageSize });
   }
 
-  let apps: any[];
-  let totalCount = 0;
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let pIdx = 1;
 
   if (scopedCids !== null) {
-    const countRes = await sql`
-      SELECT count(*)::int as count
-      FROM applications a
-      LEFT JOIN resumes r ON a.resume_id = r.id
-      WHERE a.client_id = ANY(${scopedCids})
-      ${filterClientId ? sql`AND a.client_id = ${filterClientId}` : sql``}
-      ${filterReqId ? sql`AND a.requirement_id = ${filterReqId}` : sql``}
-      ${filterEmpId ? sql`AND a.employee_id = ${filterEmpId}` : sql``}
-      ${filterStatus && filterStatus !== "all" ? sql`AND a.status = ${filterStatus}` : sql``}
-      ${
-        search
-          ? sql`AND (r.candidate_name ILIKE ${`%${search}%`} OR r.company ILIKE ${`%${search}%`} OR r.role ILIKE ${`%${search}%`})`
-          : sql``
-      }
-    `;
-    totalCount = countRes[0]?.count || 0;
-
-    apps = await sql`
-      SELECT a.*
-      FROM applications a
-      LEFT JOIN resumes r ON a.resume_id = r.id
-      WHERE a.client_id = ANY(${scopedCids})
-      ${filterClientId ? sql`AND a.client_id = ${filterClientId}` : sql``}
-      ${filterReqId ? sql`AND a.requirement_id = ${filterReqId}` : sql``}
-      ${filterEmpId ? sql`AND a.employee_id = ${filterEmpId}` : sql``}
-      ${filterStatus && filterStatus !== "all" ? sql`AND a.status = ${filterStatus}` : sql``}
-      ${
-        search
-          ? sql`AND (r.candidate_name ILIKE ${`%${search}%`} OR r.company ILIKE ${`%${search}%`} OR r.role ILIKE ${`%${search}%`})`
-          : sql``
-      }
-      ORDER BY a.applied_date DESC
-      LIMIT ${pageSize} OFFSET ${offset}
-    `;
-  } else {
-    const countRes = await sql`
-      SELECT count(*)::int as count
-      FROM applications a
-      LEFT JOIN resumes r ON a.resume_id = r.id
-      WHERE 1=1
-      ${filterClientId ? sql`AND a.client_id = ${filterClientId}` : sql``}
-      ${filterReqId ? sql`AND a.requirement_id = ${filterReqId}` : sql``}
-      ${filterEmpId ? sql`AND a.employee_id = ${filterEmpId}` : sql``}
-      ${filterStatus && filterStatus !== "all" ? sql`AND a.status = ${filterStatus}` : sql``}
-      ${
-        search
-          ? sql`AND (r.candidate_name ILIKE ${`%${search}%`} OR r.company ILIKE ${`%${search}%`} OR r.role ILIKE ${`%${search}%`})`
-          : sql``
-      }
-    `;
-    totalCount = countRes[0]?.count || 0;
-
-    apps = await sql`
-      SELECT a.*
-      FROM applications a
-      LEFT JOIN resumes r ON a.resume_id = r.id
-      WHERE 1=1
-      ${filterClientId ? sql`AND a.client_id = ${filterClientId}` : sql``}
-      ${filterReqId ? sql`AND a.requirement_id = ${filterReqId}` : sql``}
-      ${filterEmpId ? sql`AND a.employee_id = ${filterEmpId}` : sql``}
-      ${filterStatus && filterStatus !== "all" ? sql`AND a.status = ${filterStatus}` : sql``}
-      ${
-        search
-          ? sql`AND (r.candidate_name ILIKE ${`%${search}%`} OR r.company ILIKE ${`%${search}%`} OR r.role ILIKE ${`%${search}%`})`
-          : sql``
-      }
-      ORDER BY a.applied_date DESC
-      LIMIT ${pageSize} OFFSET ${offset}
-    `;
+    conditions.push(`a.client_id = ANY($${pIdx++})`);
+    params.push(scopedCids);
   }
+  if (filterClientId) {
+    conditions.push(`a.client_id = $${pIdx++}`);
+    params.push(filterClientId);
+  }
+  if (filterReqId) {
+    conditions.push(`a.requirement_id = $${pIdx++}`);
+    params.push(filterReqId);
+  }
+  if (filterEmpId) {
+    conditions.push(`a.employee_id = $${pIdx++}`);
+    params.push(filterEmpId);
+  }
+  if (filterStatus && filterStatus !== "all") {
+    conditions.push(`a.status = $${pIdx++}`);
+    params.push(filterStatus);
+  }
+  if (search) {
+    conditions.push(`(r.candidate_name ILIKE $${pIdx} OR r.company ILIKE $${pIdx} OR r.role ILIKE $${pIdx})`);
+    params.push(`%${search}%`);
+    pIdx++;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const countQueryStr = `
+    SELECT count(*)::int as count
+    FROM applications a
+    LEFT JOIN resumes r ON a.resume_id = r.id
+    ${whereClause}
+  `;
+  const countRes = await (sql as any)(countQueryStr, params);
+  const totalCount = countRes[0]?.count || 0;
+
+  const listParams = [...params, pageSize, offset];
+  const listQueryStr = `
+    SELECT a.*
+    FROM applications a
+    LEFT JOIN resumes r ON a.resume_id = r.id
+    ${whereClause}
+    ORDER BY a.applied_date DESC
+    LIMIT $${pIdx++} OFFSET $${pIdx++}
+  `;
+  const apps = await (sql as any)(listQueryStr, listParams);
 
   const enriched = await enrichApplications(sql, apps);
   return c.json({
@@ -277,24 +257,27 @@ applicationsRouter.get("/stats", async (c) => {
     return c.json({ total: 0, submitted: 0, interview: 0, offer: 0, rejected: 0, hold: 0, closed: 0 });
   }
 
-  let statusRows: any[];
+  const sConds: string[] = [];
+  const sParams: any[] = [];
+  let sIdx = 1;
+
   if (scopedCids !== null) {
-    statusRows = await sql`
-      SELECT status, count(*)::int as count
-      FROM applications
-      WHERE client_id = ANY(${scopedCids})
-      ${filterClientId ? sql`AND client_id = ${filterClientId}` : sql``}
-      GROUP BY status
-    `;
-  } else {
-    statusRows = await sql`
-      SELECT status, count(*)::int as count
-      FROM applications
-      WHERE 1=1
-      ${filterClientId ? sql`AND client_id = ${filterClientId}` : sql``}
-      GROUP BY status
-    `;
+    sConds.push(`client_id = ANY($${sIdx++})`);
+    sParams.push(scopedCids);
   }
+  if (filterClientId) {
+    sConds.push(`client_id = $${sIdx++}`);
+    sParams.push(filterClientId);
+  }
+
+  const sWhere = sConds.length > 0 ? `WHERE ${sConds.join(" AND ")}` : "";
+  const sQuery = `
+    SELECT status, count(*)::int as count
+    FROM applications
+    ${sWhere}
+    GROUP BY status
+  `;
+  const statusRows = await (sql as any)(sQuery, sParams);
 
   const stats: Record<string, number> = {
     total: 0,
@@ -562,7 +545,7 @@ applicationsRouter.post("/:app_id/archive", async (c) => {
 /**
  * 9. DELETE /api/applications/:app_id (Super Admin only)
  */
-applicationsRouter.delete("/:app_id", requireRoles("super_admin"), async (c) => {
+applicationsRouter.delete("/:app_id", requireRoles("super_admin", "admin"), async (c) => {
   const appId = c.req.param("app_id");
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);

@@ -23,7 +23,7 @@ employeesRouter.use("*", requireAuth);
  * Helper: Resolve permitted employee IDs based on role
  */
 async function getScopedEmployeeIds(sql: any, user: UserPayload): Promise<string[] | null> {
-  if (user.role === "super_admin") {
+  if (user.role === "super_admin" || user.role === "admin") {
     return null; // Global access
   }
 
@@ -237,26 +237,31 @@ employeesRouter.get("/users", requireRoles("super_admin", "admin", "sub_admin"),
     return c.json([]);
   }
 
-  let queryUsers: any[];
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let pIdx = 1;
+
   if (scopedEids !== null) {
-    queryUsers = await sql`
-      SELECT id, name, email, phone, role, status, client_id, managed_by, is_active, created_at
-      FROM users
-      WHERE id = ANY(${scopedEids})
-      ${roleFilter ? sql`AND role = ${roleFilter}` : sql``}
-      ${statusFilter && statusFilter !== "all" ? sql`AND status = ${statusFilter}` : sql``}
-      ORDER BY name ASC
-    `;
-  } else {
-    queryUsers = await sql`
-      SELECT id, name, email, phone, role, status, client_id, managed_by, is_active, created_at
-      FROM users
-      WHERE 1=1
-      ${roleFilter ? sql`AND role = ${roleFilter}` : sql``}
-      ${statusFilter && statusFilter !== "all" ? sql`AND status = ${statusFilter}` : sql``}
-      ORDER BY name ASC
-    `;
+    conditions.push(`id = ANY($${pIdx++})`);
+    params.push(scopedEids);
   }
+  if (roleFilter) {
+    conditions.push(`role = $${pIdx++}`);
+    params.push(roleFilter);
+  }
+  if (statusFilter && statusFilter !== "all") {
+    conditions.push(`status = $${pIdx++}`);
+    params.push(statusFilter);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const queryStr = `
+    SELECT id, name, email, phone, role, status, client_id, managed_by, is_active, created_at
+    FROM users
+    ${whereClause}
+    ORDER BY name ASC
+  `;
+  const queryUsers = await (sql as any)(queryStr, params);
 
   const enriched = await enrichUsers(sql, queryUsers);
   return c.json(enriched);
@@ -662,5 +667,5 @@ const deleteUserHandler = async (c: any) => {
   return c.json({ message: "User deleted successfully" });
 };
 
-employeesRouter.delete("/employees/:user_id", requireRoles("super_admin"), deleteUserHandler);
-employeesRouter.delete("/users/:user_id", requireRoles("super_admin"), deleteUserHandler);
+employeesRouter.delete("/employees/:user_id", requireRoles("super_admin", "admin"), deleteUserHandler);
+employeesRouter.delete("/users/:user_id", requireRoles("super_admin", "admin"), deleteUserHandler);

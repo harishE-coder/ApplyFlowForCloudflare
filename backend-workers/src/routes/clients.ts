@@ -23,7 +23,7 @@ clientsRouter.use("*", requireAuth);
  * Helper: Resolve permitted client IDs based on role
  */
 async function getScopedClientIds(sql: any, user: UserPayload): Promise<string[] | null> {
-  if (user.role === "super_admin") {
+  if (user.role === "super_admin" || user.role === "admin") {
     return null; // Global access
   }
 
@@ -227,7 +227,7 @@ clientsRouter.get("/:client_id", async (c) => {
 /**
  * 3. POST /api/clients (Admin & Sub-Admin)
  */
-clientsRouter.post("/", requireRoles("super_admin", "sub_admin"), async (c) => {
+clientsRouter.post("/", requireRoles("super_admin", "admin", "sub_admin"), async (c) => {
   const user = c.get("user");
   const body = await c.req.json().catch(() => null);
 
@@ -379,8 +379,8 @@ const updateClientHandler = async (c: any) => {
   return c.json(enriched);
 };
 
-clientsRouter.put("/:client_id", requireRoles("super_admin", "sub_admin"), updateClientHandler);
-clientsRouter.patch("/:client_id", requireRoles("super_admin", "sub_admin"), updateClientHandler);
+clientsRouter.put("/:client_id", requireRoles("super_admin", "admin", "sub_admin"), updateClientHandler);
+clientsRouter.patch("/:client_id", requireRoles("super_admin", "admin", "sub_admin"), updateClientHandler);
 
 /**
  * 5. POST /api/clients/:client_id/activate & reactivate
@@ -424,13 +424,13 @@ const activateClientHandler = async (c: any) => {
   return c.json(enriched);
 };
 
-clientsRouter.post("/:client_id/activate", requireRoles("super_admin", "sub_admin"), activateClientHandler);
-clientsRouter.post("/:client_id/reactivate", requireRoles("super_admin", "sub_admin"), activateClientHandler);
+clientsRouter.post("/:client_id/activate", requireRoles("super_admin", "admin", "sub_admin"), activateClientHandler);
+clientsRouter.post("/:client_id/reactivate", requireRoles("super_admin", "admin", "sub_admin"), activateClientHandler);
 
 /**
  * 6. POST /api/clients/:client_id/deactivate
  */
-clientsRouter.post("/:client_id/deactivate", requireRoles("super_admin", "sub_admin"), async (c) => {
+clientsRouter.post("/:client_id/deactivate", requireRoles("super_admin", "admin", "sub_admin"), async (c) => {
   const clientId = c.req.param("client_id");
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
@@ -473,7 +473,7 @@ clientsRouter.post("/:client_id/deactivate", requireRoles("super_admin", "sub_ad
 /**
  * 7. POST /api/clients/:client_id/archive
  */
-clientsRouter.post("/:client_id/archive", requireRoles("super_admin", "sub_admin"), async (c) => {
+clientsRouter.post("/:client_id/archive", requireRoles("super_admin", "admin", "sub_admin"), async (c) => {
   const clientId = c.req.param("client_id");
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
@@ -512,7 +512,7 @@ clientsRouter.post("/:client_id/archive", requireRoles("super_admin", "sub_admin
 /**
  * 8. DELETE /api/clients/:client_id (Super Admin only safe delete)
  */
-clientsRouter.delete("/:client_id", requireRoles("super_admin"), async (c) => {
+clientsRouter.delete("/:client_id", requireRoles("super_admin", "admin"), async (c) => {
   const clientId = c.req.param("client_id");
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
@@ -625,15 +625,15 @@ const assignEmployeesHandler = async (c: any) => {
   return c.json({ message: "Recruiters assigned successfully" });
 };
 
-clientsRouter.post("/:client_id/employees", requireRoles("super_admin", "sub_admin"), assignEmployeesHandler);
-clientsRouter.post("/:client_id/assign", requireRoles("super_admin", "sub_admin"), assignEmployeesHandler);
+clientsRouter.post("/:client_id/employees", requireRoles("super_admin", "admin", "sub_admin"), assignEmployeesHandler);
+clientsRouter.post("/:client_id/assign", requireRoles("super_admin", "admin", "sub_admin"), assignEmployeesHandler);
 
 /**
  * 10. DELETE /api/clients/:client_id/employees/:employee_id
  */
 clientsRouter.delete(
   "/:client_id/employees/:employee_id",
-  requireRoles("super_admin", "sub_admin"),
+  requireRoles("super_admin", "admin", "sub_admin"),
   async (c) => {
     const clientId = c.req.param("client_id");
     const employeeId = c.req.param("employee_id");

@@ -13,6 +13,7 @@ import { clientsRouter } from "./routes/clients";
 import { dashboardRouter } from "./routes/dashboard";
 import { employeesRouter } from "./routes/employees";
 import { healthRouter } from "./routes/health";
+import { notificationsRouter } from "./routes/notifications";
 import { requirementsRouter } from "./routes/requirements";
 import { resumesRouter } from "./routes/resumes";
 import type { Bindings, Variables } from "./types";
@@ -68,6 +69,7 @@ app.route("/api/clients", clientsRouter);
 app.route("/api/requirements", requirementsRouter);
 app.route("/api/applications", applicationsRouter);
 app.route("/api/resumes", resumesRouter);
+app.route("/api/notifications", notificationsRouter);
 app.route("/api", employeesRouter);
 
 // Global 404 Handler

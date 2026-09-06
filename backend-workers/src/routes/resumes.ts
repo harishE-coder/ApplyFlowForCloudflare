@@ -667,15 +667,7 @@ resumesRouter.get("/:id/preview", async (c) => {
     return c.json({ detail: "Forbidden" }, 403);
   }
 
-  const streamRequested = c.req.query("stream") === "true";
-
-  // If R2 public custom domain configured and stream not requested -> 307 Redirect
-  if (c.env.R2_PUBLIC_URL && !streamRequested && resume.r2_key) {
-    const publicUrl = `${c.env.R2_PUBLIC_URL.replace(/\/+$/, "")}/${resume.r2_key}`;
-    return c.redirect(publicUrl, 307);
-  }
-
-  // Direct zero-egress stream via R2 binding
+  // Authorization check passed: Stream securely from private Cloudflare R2 bucket
   if (!resume.r2_key) {
     return c.json({ detail: "File not available in R2 storage" }, 404);
   }
@@ -689,7 +681,7 @@ resumesRouter.get("/:id/preview", async (c) => {
   r2Object.writeHttpMetadata(headers);
   headers.set("Content-Type", r2Object.httpMetadata?.contentType || "application/pdf");
   headers.set("Content-Disposition", `inline; filename="${resume.original_filename}"`);
-  headers.set("Cache-Control", "public, max-age=3600");
+  headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
 
   return new Response(r2Object.body, { headers });
 });
@@ -717,14 +709,7 @@ resumesRouter.get("/:id/download", async (c) => {
     return c.json({ detail: "Forbidden" }, 403);
   }
 
-  const streamRequested = c.req.query("stream") === "true";
-
-  // If R2 public custom domain configured and stream not requested -> 307 Redirect
-  if (c.env.R2_PUBLIC_URL && !streamRequested && resume.r2_key) {
-    const publicUrl = `${c.env.R2_PUBLIC_URL.replace(/\/+$/, "")}/${resume.r2_key}`;
-    return c.redirect(publicUrl, 307);
-  }
-
+  // Authorization check passed: Stream binary download from private Cloudflare R2 bucket
   if (!resume.r2_key) {
     return c.json({ detail: "File not available in R2 storage" }, 404);
   }
@@ -738,6 +723,7 @@ resumesRouter.get("/:id/download", async (c) => {
   r2Object.writeHttpMetadata(headers);
   headers.set("Content-Type", r2Object.httpMetadata?.contentType || "application/pdf");
   headers.set("Content-Disposition", `attachment; filename="${resume.original_filename}"`);
+  headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
 
   return new Response(r2Object.body, { headers });
 });

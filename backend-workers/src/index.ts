@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
 import { applicationsRouter } from "./routes/applications";
+import { attendanceRouter } from "./routes/attendance";
 import { authRouter } from "./routes/auth";
 import { clientsRouter } from "./routes/clients";
 import { dashboardRouter } from "./routes/dashboard";
@@ -70,6 +71,7 @@ app.route("/api/requirements", requirementsRouter);
 app.route("/api/applications", applicationsRouter);
 app.route("/api/resumes", resumesRouter);
 app.route("/api/notifications", notificationsRouter);
+app.route("/api/attendance", attendanceRouter);
 app.route("/api", employeesRouter);
 
 // Global 404 Handler

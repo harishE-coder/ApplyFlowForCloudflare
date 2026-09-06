@@ -10,6 +10,7 @@ import { prettyJSON } from "hono/pretty-json";
 import { authRouter } from "./routes/auth";
 import { clientsRouter } from "./routes/clients";
 import { dashboardRouter } from "./routes/dashboard";
+import { employeesRouter } from "./routes/employees";
 import { healthRouter } from "./routes/health";
 import type { Bindings, Variables } from "./types";
 
@@ -61,6 +62,7 @@ app.route("/api/health", healthRouter);
 app.route("/api/auth", authRouter);
 app.route("/api/dashboard", dashboardRouter);
 app.route("/api/clients", clientsRouter);
+app.route("/api", employeesRouter);
 
 // Global 404 Handler
 app.notFound((c) => {

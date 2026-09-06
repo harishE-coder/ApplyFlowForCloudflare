@@ -357,10 +357,11 @@ export function RecruitersPage() {
 
   // Filter recruiters
   const filteredEmployees = useMemo(() => {
+    const term = (search || '').toLowerCase();
     return employees.filter((emp) => {
       const matchesSearch =
-        emp.name?.toLowerCase().includes(search.toLowerCase()) ||
-        emp.email?.toLowerCase().includes(search.toLowerCase());
+        (emp?.name || '').toLowerCase().includes(term) ||
+        (emp?.email || '').toLowerCase().includes(term);
       const matchesClient =
         !selectedClientFilter ||
         emp.assigned_clients?.some((c) => (c.client_id || c.id) === selectedClientFilter);
@@ -640,7 +641,7 @@ export function RecruitersPage() {
                 >
                   <input
                     type="checkbox"
-                    checked={addAssignedClientIds.includes(c.id)}
+                    checked={Array.isArray(addAssignedClientIds) && addAssignedClientIds.includes(c.id)}
                     onChange={(e) => {
                       if (e.target.checked) {
                         setAddAssignedClientIds((prev) => [...prev, c.id]);
@@ -728,7 +729,7 @@ export function RecruitersPage() {
                 >
                   <input
                     type="checkbox"
-                    checked={editAssignedClientIds.includes(c.id)}
+                    checked={Array.isArray(editAssignedClientIds) && editAssignedClientIds.includes(c.id)}
                     onChange={(e) => {
                       if (e.target.checked) {
                         setEditAssignedClientIds((prev) => [...prev, c.id]);

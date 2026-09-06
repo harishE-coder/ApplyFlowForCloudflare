@@ -96,12 +96,13 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
     },
   ];
 
+  const term = (query || '').toLowerCase();
   const filtered = allActions.filter(
     (action) =>
       (!action.roles || (Array.isArray(action.roles) && action.roles.includes(userRole))) &&
-      ((typeof action.title === 'string' && action.title.toLowerCase().includes(query.toLowerCase())) ||
-        (typeof action.subtitle === 'string' && action.subtitle.toLowerCase().includes(query.toLowerCase())) ||
-        (typeof action.section === 'string' && action.section.toLowerCase().includes(query.toLowerCase())))
+      ((typeof action.title === 'string' && action.title.toLowerCase().includes(term)) ||
+        (typeof action.subtitle === 'string' && action.subtitle.toLowerCase().includes(term)) ||
+        (typeof action.section === 'string' && action.section.toLowerCase().includes(term)))
   );
 
   const handleSelect = (action) => {

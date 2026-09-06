@@ -39,6 +39,7 @@ rawAxios.interceptors.response.use(
     if (
       error?.response?.status === 401 &&
       !originalRequest._retry &&
+      typeof reqUrl === 'string' &&
       !reqUrl.includes('/auth/login') &&
       !reqUrl.includes('/auth/logout') &&
       !reqUrl.includes('/auth/refresh') &&
@@ -77,7 +78,11 @@ export function invalidateScopedCache(url = '') {
     cacheMap.clear();
     return;
   }
-  const cleanUrl = url.toLowerCase();
+  const cleanUrl = typeof url === 'string' ? url.toLowerCase() : '';
+  if (!cleanUrl) {
+    cacheMap.clear();
+    return;
+  }
 
   if (cleanUrl.includes('/resumes') || cleanUrl.includes('/applications')) {
     invalidateCache('/resumes');

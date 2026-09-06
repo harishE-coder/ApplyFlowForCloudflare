@@ -30,13 +30,13 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
       });
   }, [isOpen, roomId]);
 
-  const filteredResumes = resumes.filter((r) => {
-    const term = search.toLowerCase();
+  const filteredResumes = (Array.isArray(resumes) ? resumes : []).filter((r) => {
+    const term = (search || '').toLowerCase();
     return (
-      (r.candidate_name && r.candidate_name.toLowerCase().includes(term)) ||
-      (r.company && r.company.toLowerCase().includes(term)) ||
-      (r.role_designation && r.role_designation.toLowerCase().includes(term)) ||
-      (r.original_filename && r.original_filename.toLowerCase().includes(term))
+      (r?.candidate_name || '').toLowerCase().includes(term) ||
+      (r?.company || '').toLowerCase().includes(term) ||
+      (r?.role_designation || '').toLowerCase().includes(term) ||
+      (r?.original_filename || '').toLowerCase().includes(term)
     );
   });
 

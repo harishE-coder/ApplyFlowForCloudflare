@@ -226,10 +226,11 @@ export function SubAdminsPage() {
   };
 
   // Filtered sub-admins
+  const term = (searchTerm || '').toLowerCase();
   const filteredSubAdmins = subAdmins.filter(
     (sa) =>
-      sa.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sa.email.toLowerCase().includes(searchTerm.toLowerCase())
+      (sa?.name || '').toLowerCase().includes(term) ||
+      (sa?.email || '').toLowerCase().includes(term)
   );
 
   const totalAssignedClients = subAdmins.reduce((acc, sa) => acc + (sa.assigned_clients_count || 0), 0);
@@ -628,7 +629,7 @@ export function SubAdminsPage() {
                   </label>
                   <div className="max-h-36 overflow-y-auto p-2 bg-[#050C1B] border border-[#1E2E4E] rounded-xl space-y-1.5">
                     {clients.map((c) => {
-                      const isChecked = formData.client_ids.includes(c.id);
+                      const isChecked = Array.isArray(formData.client_ids) && formData.client_ids.includes(c.id);
                       return (
                         <label
                           key={c.id}
@@ -663,7 +664,7 @@ export function SubAdminsPage() {
                   </label>
                   <div className="max-h-36 overflow-y-auto p-2 bg-[#050C1B] border border-[#1E2E4E] rounded-xl space-y-1.5">
                     {employees.map((emp) => {
-                      const isChecked = formData.employee_ids.includes(emp.id);
+                      const isChecked = Array.isArray(formData.employee_ids) && formData.employee_ids.includes(emp.id);
                       return (
                         <label
                           key={emp.id}
@@ -775,7 +776,7 @@ export function SubAdminsPage() {
 
                     <div className="max-h-64 overflow-y-auto p-2 bg-[#050C1B] border border-[#1E2E4E] rounded-xl space-y-1">
                       {clients.map((c) => {
-                        const isChecked = assignmentData.client_ids.includes(c.id);
+                        const isChecked = Array.isArray(assignmentData.client_ids) && assignmentData.client_ids.includes(c.id);
                         return (
                           <label
                             key={c.id}
@@ -836,7 +837,7 @@ export function SubAdminsPage() {
 
                     <div className="max-h-64 overflow-y-auto p-2 bg-[#050C1B] border border-[#1E2E4E] rounded-xl space-y-1">
                       {employees.map((emp) => {
-                        const isChecked = assignmentData.employee_ids.includes(emp.id);
+                        const isChecked = Array.isArray(assignmentData.employee_ids) && assignmentData.employee_ids.includes(emp.id);
                         return (
                           <label
                             key={emp.id}

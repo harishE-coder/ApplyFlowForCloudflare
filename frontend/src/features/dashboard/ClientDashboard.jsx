@@ -120,11 +120,12 @@ export function ClientDashboard() {
       const matchCompany =
         selectedHiringCompany === 'all' ||
         item.hiring_company?.toLowerCase() === selectedHiringCompany.toLowerCase();
+      const term = (searchQuery || '').toLowerCase();
       const matchSearch =
-        !searchQuery ||
-        item.candidate_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.hiring_company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.role?.toLowerCase().includes(searchQuery.toLowerCase());
+        !term ||
+        (item?.candidate_name || '').toLowerCase().includes(term) ||
+        (item?.hiring_company || '').toLowerCase().includes(term) ||
+        (item?.role || '').toLowerCase().includes(term);
       return matchCompany && matchSearch;
     });
   }, [data, selectedHiringCompany, searchQuery]);

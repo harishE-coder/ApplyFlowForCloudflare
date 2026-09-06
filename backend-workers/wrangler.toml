@@ -5,8 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENVIRONMENT = "production"
-FRONTEND_URL = "https://applyflow.pages.dev"
-APP_CORS_ORIGINS = "https://applyflow.pages.dev,http://localhost:5173"
+FRONTEND_URL = "https://applyflowforcloudflare.pages.dev"
+APP_CORS_ORIGINS = "https://applyflowforcloudflare.pages.dev,http://localhost:5173"
 
 
 # Cloudflare Durable Objects for Persistent Multi-Room Chat

@@ -43,22 +43,39 @@ export function LoginPage() {
       success('Welcome back', `Signed in as ${user?.name || 'User'}`);
       navigate('/dashboard');
     } catch (err) {
-      const detail =
-        err?.response?.data?.detail ??
-        err?.response?.data?.message ??
-        err?.response?.data?.error ??
-        err?.message ??
-        '';
+      const status = err?.response?.status;
+      const resData = err?.response?.data;
 
       let msg = 'Invalid email or password';
-      if (typeof detail === 'string' && detail.trim()) {
-        msg = detail;
-      } else if (Array.isArray(detail)) {
-        msg = detail
-          .map((d) => (typeof d === 'string' ? d : d?.msg || JSON.stringify(d)))
-          .join('; ');
-      } else if (typeof detail === 'object' && detail !== null) {
-        msg = detail.msg || detail.message || detail.error || JSON.stringify(detail);
+
+      if (status === 401) {
+        msg = 'Invalid email or password';
+      } else if (status === 403) {
+        msg = 'Account is disabled. Please contact an administrator.';
+      } else {
+        const rawDetail =
+          resData?.detail ??
+          resData?.message ??
+          resData?.error ??
+          err?.message ??
+          '';
+
+        if (typeof rawDetail === 'string' && rawDetail.trim()) {
+          msg = rawDetail.trim();
+        } else if (Array.isArray(rawDetail)) {
+          msg = rawDetail
+            .map((d) => {
+              if (typeof d === 'string') return d;
+              if (d && typeof d === 'object') return d.msg || d.message || JSON.stringify(d);
+              return String(d);
+            })
+            .filter(Boolean)
+            .join('; ') || 'Invalid email or password';
+        } else if (rawDetail && typeof rawDetail === 'object') {
+          msg = rawDetail.msg || rawDetail.message || rawDetail.error || JSON.stringify(rawDetail);
+        } else if (rawDetail) {
+          msg = String(rawDetail);
+        }
       }
 
       setAuthError(msg);

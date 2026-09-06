@@ -49,7 +49,7 @@ function ProtectedRoute({ children, allowedRoles }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (Array.isArray(allowedRoles) && user?.role && !allowedRoles.includes(user.role)) {
+  if (Array.isArray(allowedRoles) && typeof user?.role === 'string' && !allowedRoles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />;
   }
 

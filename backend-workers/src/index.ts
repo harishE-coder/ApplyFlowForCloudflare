@@ -33,15 +33,19 @@ app.use("*", prettyJSON());
 // CORS Configuration with Credentials & Origin Matching
 app.use("*", async (c, next) => {
   const origin = c.req.header("Origin") || "";
-  const allowed = (c.env.APP_CORS_ORIGINS || "http://localhost:5173,https://applyflow.pages.dev")
+  const allowed = (c.env.APP_CORS_ORIGINS || "https://applyflowforcloudflare.pages.dev,http://localhost:5173")
     .split(",")
     .map((o) => o.trim().replace(/\/+$/, ""));
 
   const corsMiddleware = cors({
     origin: (reqOrigin) => {
-      if (!reqOrigin) return allowed[0];
+      if (!reqOrigin || typeof reqOrigin !== "string") return allowed[0];
       const cleanReq = reqOrigin.trim().replace(/\/+$/, "");
-      if (allowed.includes(cleanReq) || cleanReq.includes("localhost") || cleanReq.endsWith(".pages.dev")) {
+      if (
+        (Array.isArray(allowed) && allowed.includes(cleanReq)) ||
+        cleanReq.includes("localhost") ||
+        cleanReq.endsWith(".pages.dev")
+      ) {
         return reqOrigin;
       }
       return allowed[0];

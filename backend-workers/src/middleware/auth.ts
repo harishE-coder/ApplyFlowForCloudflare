@@ -4,7 +4,7 @@
 
 import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
-import { verifyToken } from "../auth";
+import { getJwtSecret, verifyToken } from "../auth";
 import { getDb } from "../db";
 import type { Bindings, Variables, UserPayload } from "../types";
 
@@ -22,7 +22,14 @@ export const requireAuth: MiddlewareHandler<{ Bindings: Bindings; Variables: Var
     return c.json({ detail: "Not authenticated" }, 401);
   }
 
-  const payload = await verifyToken(token, c.env.JWT_SECRET_KEY);
+  let jwtSecret: string;
+  try {
+    jwtSecret = getJwtSecret(c.env);
+  } catch {
+    return c.json({ detail: "Server authentication configuration error" }, 500);
+  }
+
+  const payload = await verifyToken(token, jwtSecret);
   if (!payload || payload.type !== "access" || !payload.sub) {
     return c.json({ detail: "Invalid or expired token" }, 401);
   }

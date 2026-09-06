@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import { verifyToken } from "../auth";
+import { getJwtSecret, verifyToken } from "../auth";
 import { getDb } from "../db";
 import { requireAuth } from "../middleware/auth";
 import {
@@ -619,7 +619,14 @@ export async function handleChatWebSocketUpgrade(c: any) {
     return c.text("Unauthorized: No session cookie provided", 401);
   }
 
-  const payload = await verifyToken(token, c.env.JWT_SECRET_KEY);
+  let jwtSecret: string;
+  try {
+    jwtSecret = getJwtSecret(c.env);
+  } catch {
+    return c.text("Unauthorized: Server authentication configuration error", 500);
+  }
+
+  const payload = await verifyToken(token, jwtSecret);
   if (!payload || !payload.sub) {
     return c.text("Unauthorized: Invalid or expired session", 401);
   }

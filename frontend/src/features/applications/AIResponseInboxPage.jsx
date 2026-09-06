@@ -1571,14 +1571,15 @@ export function AIResponseInboxPage() {
                 Loading client candidate bank...
               </div>
             ) : clientResumes.filter(r => {
-              if (!resumeSearchTerm.trim()) return true;
-              const q = resumeSearchTerm.toLowerCase();
+              const term = (resumeSearchTerm || '').trim();
+              if (!term) return true;
+              const q = term.toLowerCase();
               return (
-                r.candidate_name?.toLowerCase().includes(q) ||
-                r.company?.toLowerCase().includes(q) ||
-                r.role?.toLowerCase().includes(q) ||
-                r.resume_id_tag?.toLowerCase().includes(q) ||
-                r.original_filename?.toLowerCase().includes(q)
+                (r?.candidate_name || '').toLowerCase().includes(q) ||
+                (r?.company || '').toLowerCase().includes(q) ||
+                (r?.role || '').toLowerCase().includes(q) ||
+                (r?.resume_id_tag || '').toLowerCase().includes(q) ||
+                (r?.original_filename || '').toLowerCase().includes(q)
               );
             }).length === 0 ? (
               <div className="py-12 text-center text-small text-[#64748B]">
@@ -1587,14 +1588,15 @@ export function AIResponseInboxPage() {
             ) : (
               clientResumes
                 .filter(r => {
-                  if (!resumeSearchTerm.trim()) return true;
-                  const q = resumeSearchTerm.toLowerCase();
+                  const term = (resumeSearchTerm || '').trim();
+                  if (!term) return true;
+                  const q = term.toLowerCase();
                   return (
-                    r.candidate_name?.toLowerCase().includes(q) ||
-                    r.company?.toLowerCase().includes(q) ||
-                    r.role?.toLowerCase().includes(q) ||
-                    r.resume_id_tag?.toLowerCase().includes(q) ||
-                    r.original_filename?.toLowerCase().includes(q)
+                    (r?.candidate_name || '').toLowerCase().includes(q) ||
+                    (r?.company || '').toLowerCase().includes(q) ||
+                    (r?.role || '').toLowerCase().includes(q) ||
+                    (r?.resume_id_tag || '').toLowerCase().includes(q) ||
+                    (r?.original_filename || '').toLowerCase().includes(q)
                   );
                 })
                 .map(r => {

@@ -4,7 +4,8 @@
 
 export interface Bindings {
   DATABASE_URL: string;
-  JWT_SECRET_KEY: string;
+  JWT_SECRET_KEY?: string;
+  JWT_SECRET?: string;
   JWT_ALGORITHM?: string;
   ACCESS_TOKEN_EXPIRE_MINUTES?: string;
   REFRESH_TOKEN_EXPIRE_DAYS?: string;

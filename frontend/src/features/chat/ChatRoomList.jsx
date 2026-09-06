@@ -36,8 +36,9 @@ export function ChatRoomList({
   const { user, isAdmin, isEmployee, isClient } = useAuth();
   const [search, setSearch] = useState('');
 
-  const filteredRooms = rooms.filter((r) =>
-    r.client_name.toLowerCase().includes(search.toLowerCase())
+  const term = (search || '').toLowerCase();
+  const filteredRooms = (Array.isArray(rooms) ? rooms : []).filter((r) =>
+    (r?.client_name || '').toLowerCase().includes(term)
   );
 
   const canCreateClient = isAdmin || user?.role === 'sub_admin';

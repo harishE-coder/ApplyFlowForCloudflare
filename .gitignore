@@ -49,6 +49,7 @@ frontend/build/
 frontend/.vite/
 .npm
 .eslintcache
+.wrangler/
 
 # Logs & Runtime
 *.log

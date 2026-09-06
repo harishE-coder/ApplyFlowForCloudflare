@@ -8,6 +8,14 @@ import { sign, verify } from "hono/jwt";
 import type { Context } from "hono";
 import type { Bindings, Variables, UserPayload } from "./types";
 
+export function getJwtSecret(env: Bindings | Record<string, any>): string {
+  const secret = env?.JWT_SECRET_KEY || env?.JWT_SECRET;
+  if (!secret || typeof secret !== "string" || !secret.trim()) {
+    throw new Error("JWT secret is not configured");
+  }
+  return secret.trim();
+}
+
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
   try {
     return bcrypt.compare(plain, hash);
@@ -26,6 +34,9 @@ export async function createAccessToken(
   secret: string,
   expireMinutes: number = 60
 ): Promise<string> {
+  if (!secret || typeof secret !== "string") {
+    throw new Error("JWT secret is not configured");
+  }
   const exp = Math.floor(Date.now() / 1000) + expireMinutes * 60;
   return sign(
     {
@@ -44,6 +55,9 @@ export async function createRefreshToken(
   secret: string,
   expireDays: number = 7
 ): Promise<string> {
+  if (!secret || typeof secret !== "string") {
+    throw new Error("JWT secret is not configured");
+  }
   const exp = Math.floor(Date.now() / 1000) + expireDays * 24 * 60 * 60;
   return sign(
     {
@@ -62,6 +76,9 @@ export async function verifyToken(
   secret: string,
   alg: "HS256" | "HS384" | "HS512" = "HS256"
 ): Promise<any> {
+  if (!token || !secret || typeof secret !== "string") {
+    return null;
+  }
   try {
     return await verify(token, secret, alg);
   } catch {
@@ -77,8 +94,9 @@ export function setAuthCookies(
   expireDays: number = 7
 ) {
   const url = new URL(c.req.url);
-  const proto = c.req.header("x-forwarded-proto") || url.protocol;
-  const isSecure = proto.includes("https") || url.hostname !== "localhost";
+  const headerProto = c.req.header("x-forwarded-proto");
+  const proto = typeof headerProto === "string" ? headerProto : (url.protocol || "");
+  const isSecure = (typeof proto === "string" && proto.includes("https")) || url.hostname !== "localhost";
   const sameSite = isSecure ? "None" : "Lax";
   const secureFlag = isSecure ? "; Secure" : "";
 

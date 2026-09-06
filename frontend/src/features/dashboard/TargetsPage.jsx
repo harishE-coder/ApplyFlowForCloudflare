@@ -229,9 +229,10 @@ export function TargetsPage() {
 
   // Filtered target records
   const filteredTargets = targets.filter((t) => {
+    const term = (search || '').toLowerCase();
     const matchesSearch =
-      t.employee_name?.toLowerCase().includes(search.toLowerCase()) ||
-      t.client_name?.toLowerCase().includes(search.toLowerCase());
+      (t?.employee_name || '').toLowerCase().includes(term) ||
+      (t?.client_name || '').toLowerCase().includes(term);
     const matchesClient = !selectedClientFilter || t.client_id === selectedClientFilter;
     const matchesStatus = statusFilter === 'all' || (t.status || 'active') === statusFilter;
     return matchesSearch && matchesClient && matchesStatus;

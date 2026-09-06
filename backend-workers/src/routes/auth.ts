@@ -4,6 +4,7 @@ import {
   clearAuthCookies,
   createAccessToken,
   createRefreshToken,
+  getJwtSecret,
   setAuthCookies,
   verifyPassword,
   verifyToken,
@@ -62,8 +63,9 @@ authRouter.post("/login", async (c) => {
   const expireMinutes = Number(c.env.ACCESS_TOKEN_EXPIRE_MINUTES) || 60;
   const expireDays = Number(c.env.REFRESH_TOKEN_EXPIRE_DAYS) || 7;
 
-  const accessToken = await createAccessToken(userPayload, c.env.JWT_SECRET_KEY, expireMinutes);
-  const refreshToken = await createRefreshToken(userPayload, c.env.JWT_SECRET_KEY, expireDays);
+  const jwtSecret = getJwtSecret(c.env);
+  const accessToken = await createAccessToken(userPayload, jwtSecret, expireMinutes);
+  const refreshToken = await createRefreshToken(userPayload, jwtSecret, expireDays);
 
   setAuthCookies(c, accessToken, refreshToken, expireMinutes, expireDays);
 
@@ -96,7 +98,8 @@ authRouter.post("/refresh", async (c) => {
     return c.json({ detail: "No refresh token" }, 401);
   }
 
-  const payload = await verifyToken(refreshToken, c.env.JWT_SECRET_KEY);
+  const jwtSecret = getJwtSecret(c.env);
+  const payload = await verifyToken(refreshToken, jwtSecret);
   if (!payload || payload.type !== "refresh" || !payload.sub) {
     return c.json({ detail: "Invalid or expired refresh token" }, 401);
   }
@@ -125,8 +128,8 @@ authRouter.post("/refresh", async (c) => {
   const expireMinutes = Number(c.env.ACCESS_TOKEN_EXPIRE_MINUTES) || 60;
   const expireDays = Number(c.env.REFRESH_TOKEN_EXPIRE_DAYS) || 7;
 
-  const newAccessToken = await createAccessToken(userPayload, c.env.JWT_SECRET_KEY, expireMinutes);
-  const newRefreshToken = await createRefreshToken(userPayload, c.env.JWT_SECRET_KEY, expireDays);
+  const newAccessToken = await createAccessToken(userPayload, jwtSecret, expireMinutes);
+  const newRefreshToken = await createRefreshToken(userPayload, jwtSecret, expireDays);
 
   setAuthCookies(c, newAccessToken, newRefreshToken, expireMinutes, expireDays);
 

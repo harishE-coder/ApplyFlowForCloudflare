@@ -1,230 +1,188 @@
-# Cloudflare Hybrid Deployment Guide — ApplyFlow
+# ApplyFlow — 100% Cloudflare Native Production Deployment Guide
 
-This guide provides step-by-step instructions for deploying ApplyFlow using the **Cloudflare Hybrid Architecture**:
-
-* **Frontend:** Cloudflare Pages (Vite + React SPA)
-* **Backend:** FastAPI on Render / Railway / Fly.io (with 100% preservation of SQLAlchemy 2.0 asyncpg, AI/ML pipelines, ReportLab PDF, and Web Push)
-* **Database:** Neon PostgreSQL (Serverless PostgreSQL with R2 metadata)
-* **Resume Storage:** Cloudflare R2 (S3-compatible zero-egress fee storage with presigned URLs & automated retention cleanup)
-* **Edge Layer:** Cloudflare DNS, Full (Strict) SSL, CDN, WAF, and Edge Caching
+This guide details the complete deployment sequence, secrets configuration, database migrations, and production verification for ApplyFlow's 100% Cloudflare-native architecture.
 
 ---
 
-## Architecture Overview
+## 1. Production Architecture Overview
+
+| Component | Cloudflare / Managed Service | Responsibility |
+| :--- | :--- | :--- |
+| **Frontend** | **Cloudflare Pages** | React 18 + Vite SPA, edge routing, global CDN caching |
+| **Backend API** | **Cloudflare Workers** | Hono TypeScript edge worker, sub-millisecond cold starts |
+| **Real-Time Chat** | **Cloudflare Durable Objects** | Co-located room WebSockets, presence, typing, 30s heartbeats, message replay |
+| **File Storage** | **Cloudflare R2** | Private resume storage, zero egress fees, SHA-256 deduplication |
+| **Database** | **Neon PostgreSQL** | Serverless relational store, absolute source of truth for all business state |
+| **Cron Triggers** | **Workers Scheduled Events** | Daily 03:00 UTC expired resume retention cleanup (120 days) |
+| **Observability** | **Worker `x-request-id`** | Distributed tracing across Workers, Neon, and client logs |
 
 ```
-[Browser / User]
+[ Browser / Client ]
        │
-       ├───► [Cloudflare Pages] (Static Assets, React Router SPA, Edge CDN)
+       ├───► [Cloudflare Pages] (applyflow.pages.dev / custom domain)
        │            │
-       │            ▼
-       ├───► [Cloudflare DNS / Proxy] (api.yourdomain.com / SSL Strict)
+       │            ▼ (HTTP-only JWT Cookie Authentication)
+       ├───► [Cloudflare Workers] (Hono Serverless API)
        │            │
-       │            ▼
-       │     [FastAPI Backend] (Render / Railway / Fly.io Container)
+       │            ├───► [Cloudflare Durable Objects] (ChatRoomDO: WebSockets, Presence, Replay)
        │            │
-       │            ├───► [Neon PostgreSQL] (Users, Clients, Apps, R2 Metadata)
+       │            ├───► [Neon PostgreSQL] (Source of Truth: Relational Data, Messages, Audits)
        │            │
-       │            └───► [Cloudflare R2 API] (Direct Uploads & Presigned URLs)
+       │            └───► [Cloudflare R2] (Private Resume Object Storage: applyflow-resumes)
        │
-       └───► [Cloudflare R2 Presigned CDN] (Direct PDF Previews & Downloads)
+       └───► [Web Push Service] (VAPID Push Notifications for Offline Recipients)
 ```
 
 ---
 
-## Step 1: Cloudflare R2 Bucket Setup (Resume Storage)
+## 2. Pre-Deployment Readiness Check
 
-Cloudflare R2 provides S3-compatible object storage with **zero egress fees**.
+Run the automated production readiness audit in the repository root:
 
-### 1.1 Create R2 Bucket
-1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com/).
-2. In the left navigation, select **R2 Object Storage** > **Overview**.
-3. Click **Create bucket**.
-4. Name the bucket: `applyflow-resumes`.
-5. Select **Automatic** location or your preferred region.
-6. Click **Create Bucket**.
-
-### 1.2 Generate S3-Compatible API Credentials
-1. In the R2 Overview page, click **Manage R2 API Tokens** on the right side.
-2. Click **Create API token**.
-3. Configure the token:
-   * **Token name:** `applyflow-backend-token`
-   * **Permissions:** **Object Read & Write**
-   * **Apply to specific buckets:** Select `applyflow-resumes`
-   * **TTL:** Set to indefinite or your preferred rotation policy.
-4. Click **Create API Token**.
-5. **Save the generated credentials securely:**
-   * **Access Key ID:** `R2_ACCESS_KEY_ID`
-   * **Secret Access Key:** `R2_SECRET_ACCESS_KEY`
-   * **Endpoint URL:** `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` (note the `<ACCOUNT_ID>`)
-
-### 1.3 Configure CORS for R2 Bucket (Required for Presigned URLs)
-1. In the Cloudflare Dashboard, open your bucket `applyflow-resumes` > **Settings** tab.
-2. Scroll to **CORS Policy** and click **Add CORS policy**.
-3. Paste the following JSON:
-```json
-[
-  {
-    "AllowedOrigins": [
-      "https://*.pages.dev",
-      "https://yourdomain.com",
-      "http://localhost:5173"
-    ],
-    "AllowedMethods": [
-      "GET",
-      "PUT",
-      "HEAD"
-    ],
-    "AllowedHeaders": [
-      "*"
-    ],
-    "ExposeHeaders": [
-      "ETag",
-      "Content-Type",
-      "Content-Disposition"
-    ],
-    "MaxAgeSeconds": 3600
-  }
-]
-```
-4. Click **Save**.
-
----
-
-## Step 2: Neon PostgreSQL Database Migration
-
-ApplyFlow uses Neon Serverless PostgreSQL. Ensure the R2 metadata columns exist.
-
-### 2.1 Run SQL Migration
-Connect to your Neon database using your SQL client (e.g., `psql`, DBeaver, or Neon SQL Console) and execute [`migrations/0001_add_r2_metadata.sql`](file:///Users/harish/Downloads/ApplyFlow/migrations/0001_add_r2_metadata.sql):
-
-```sql
--- Migration: Add Cloudflare R2 object storage metadata and retention fields
-ALTER TABLE resumes ADD COLUMN IF NOT EXISTS r2_key VARCHAR(500);
-ALTER TABLE resumes ADD COLUMN IF NOT EXISTS file_size INTEGER;
-ALTER TABLE resumes ADD COLUMN IF NOT EXISTS content_type VARCHAR(100) DEFAULT 'application/pdf';
-ALTER TABLE resumes ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE;
-
--- Create indices for fast R2 key lookups and retention cleanup
-CREATE INDEX IF NOT EXISTS ix_resumes_r2_key ON resumes(r2_key);
-CREATE INDEX IF NOT EXISTS ix_resumes_expires_at ON resumes(expires_at);
+```bash
+./scripts/verify-production-readiness.sh
 ```
 
-*(Note: ApplyFlow's backend startup lifecycle also automatically executes schema checks to verify these columns exist).*
+This verifies:
+1. Database migration files `0001` and `0002` are present.
+2. Vitest test suite passes (127 / 127 tests).
+3. TypeScript compiler validates with 0 errors (`tsc --noEmit`).
+4. Wrangler deploy bundle validates in dry-run mode (`wrangler deploy --dry-run`).
+5. Frontend production assets compile cleanly (`vite build`).
 
 ---
 
-## Step 3: Backend Deployment (Render or Railway)
+## 3. Four-Phase Production Deployment Checklist
 
-Deploy the FastAPI container on Render, Railway, or Fly.io with Cloudflare DNS.
+### Phase 1 — Cloudflare Infrastructure Setup
 
-### 3.1 Option A: Render Deployment
-1. Log in to [Render Dashboard](https://dashboard.render.com/).
-2. Click **New +** > **Web Service**.
-3. Connect your GitHub repository (`ApplyFlow`).
-4. Configure service settings:
-   * **Name:** `applyflow-api`
-   * **Root Directory:** `backend`
-   * **Runtime:** `Python 3`
-   * **Build Command:** `pip install -r requirements.txt`
-   * **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2`
-   * **Instance Type:** Starter or Standard (1GB - 2GB RAM recommended for ML models)
+1. **Create Cloudflare Pages Project**:
+   - In Cloudflare Dashboard, go to **Workers & Pages** > **Create application** > **Pages**.
+   - Connect your GitHub repository: `harishE-coder/ApplyFlowForCloudflare`.
+   - Build settings:
+     - **Framework preset:** Vite
+     - **Build command:** `npm run build`
+     - **Build output directory:** `dist`
+     - **Root directory:** `frontend`
+   - Set environment variable: `VITE_API_BASE_URL` to your Worker URL (or leave blank if routed under same domain via Cloudflare routes).
 
-5. Add Environment Variables in Render:
-   | Variable | Value / Description |
-   |---|---|
-   | `DATABASE_URL` | `postgresql+asyncpg://<user>:<password>@<neon-host>/applyflow?ssl=require` |
-   | `USE_SQLITE` | `false` |
-   | `JWT_SECRET_KEY` | Generate a 64-character random string (`openssl rand -hex 32`) |
-   | `JWT_ALGORITHM` | `HS256` |
-   | `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` |
-   | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` |
-   | `FRONTEND_URL` | `https://applyflow.pages.dev` (or your custom domain) |
-   | `APP_CORS_ORIGINS` | `https://applyflow.pages.dev,https://yourdomain.com,http://localhost:5173` |
-   | `R2_ACCOUNT_ID` | Your Cloudflare Account ID |
-   | `R2_ACCESS_KEY_ID` | Your R2 API Token Access Key |
-   | `R2_SECRET_ACCESS_KEY` | Your R2 API Token Secret Key |
-   | `R2_BUCKET_NAME` | `applyflow-resumes` |
-   | `RESUME_RETENTION_DAYS` | `120` |
-   | `GROQ_API_KEY_1` | Your Groq API key |
-   | `ADMIN_EMAIL` | `admin@applyflow.com` |
-   | `ADMIN_PASSWORD` | `SecureAdminPass2026!` |
+2. **Create Cloudflare R2 Bucket**:
+   - In Cloudflare Dashboard, go to **R2 Object Storage** > **Create bucket**.
+   - Bucket name: `applyflow-resumes`.
+   - Keep bucket private (all downloads and previews are securely streamed through authorization-checked Worker routes).
 
-### 3.2 Option B: Railway Deployment
-1. In Railway, click **New Project** > **Deploy from GitHub repo**.
-2. Set Root Directory to `/backend`.
-3. Set Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2`.
-4. Add the environment variables listed in the table above under the **Variables** tab.
+3. **Verify Durable Object Binding**:
+   - Configured in `backend-workers/wrangler.toml`:
+     ```toml
+     [durable_objects]
+     bindings = [
+       { name = "CHAT_ROOMS", class_name = "ChatRoomDO" }
+     ]
+
+     [[migrations]]
+     tag = "v1"
+     new_classes = ["ChatRoomDO"]
+     ```
+
+4. **Custom Domain & Strict SSL**:
+   - In Cloudflare Dashboard > **SSL/TLS** > Set mode to **Full (strict)**.
+   - Bind custom domains (e.g. `applyflow.yourdomain.com` for Pages and `api.yourdomain.com` for Workers).
 
 ---
 
-## Step 4: Frontend Deployment (Cloudflare Pages)
+### Phase 2 — Neon PostgreSQL Database Migrations
 
-The React/Vite frontend includes [`frontend/public/_redirects`](file:///Users/harish/Downloads/ApplyFlow/frontend/public/_redirects) for SPA routing.
+Apply the migration scripts sequentially against your production Neon PostgreSQL instance:
 
-### 4.1 Deploy via Git Integration (Recommended)
-1. In the Cloudflare Dashboard, navigate to **Compute (Workers) > Pages**.
-2. Click **Create application** > **Pages** > **Connect to Git**.
-3. Select your repository.
-4. Set Build Settings:
-   * **Framework preset:** `Vite`
-   * **Root directory:** `frontend`
-   * **Build command:** `npm run build`
-   * **Build output directory:** `dist`
-5. Configure Environment Variables:
-   * Click **Environment variables (advanced)**.
-   * Add:
-     * **Variable:** `VITE_API_BASE_URL`
-     * **Value:** `https://api.yourdomain.com` (or your Render URL: `https://applyflow-api.onrender.com`)
-6. Click **Save and Deploy**.
+```bash
+# 1. Run R2 metadata migration
+psql "$NEON_DATABASE_URL" -f migrations/0001_add_r2_metadata.sql
 
-### 4.2 Verify SPA Client-Side Routing
-Once deployed:
-1. Visit `https://<your-project>.pages.dev`.
-2. Log in and navigate to `/resumes`, `/applications`, or `/dashboard`.
-3. Press **Refresh (F5)** on any deep route.
-4. Verify the page reloads cleanly without 404 errors (handled by `_redirects`).
+# 2. Run Chat & Notifications performance indexes migration
+psql "$NEON_DATABASE_URL" -f migrations/0002_add_chat_and_notifications_indexes.sql
+```
+
+**Indexes Created:**
+- `ix_resumes_r2_key` on `resumes(r2_key)`
+- `ix_resumes_expires_at` on `resumes(expires_at)`
+- `ix_notifications_user_unread` on `notifications(user_id, is_read)` (O(1) navbar badge)
+- `ix_chat_messages_room_created` on `chat_messages(room_id, created_at DESC)` (instant room load)
+- `ix_chat_messages_client_id` on `chat_messages(room_id, client_message_id)` (message idempotency)
 
 ---
 
-## Step 5: Cloudflare DNS, SSL & Custom Domains
+### Phase 3 — Worker Secrets Configuration
 
-To run both frontend and backend under your own brand (e.g., `app.yourdomain.com` and `api.yourdomain.com`):
+Navigate to `backend-workers/` and configure production secrets using the Wrangler CLI:
 
-### 5.1 Add DNS Records
-In Cloudflare Dashboard > **DNS** > **Records**:
-* **Frontend:**
-  * Type: `CNAME`
-  * Name: `app` (or `@` for apex)
-  * Target: `<your-project>.pages.dev`
-  * Proxy status: **Proxied (Orange Cloud)**
-* **Backend:**
-  * Type: `CNAME`
-  * Name: `api`
-  * Target: `<your-service>.onrender.com` (or Railway domain)
-  * Proxy status: **Proxied (Orange Cloud)**
+```bash
+cd backend-workers
 
-### 5.2 Configure SSL/TLS
-1. In Cloudflare Dashboard, go to **SSL/TLS** > **Overview**.
-2. Select **Full (strict)** encryption mode.
-3. Under **Edge Certificates**, enable **Always Use HTTPS** and **Minimum TLS Version: 1.2**.
+# 1. JWT signing secret (use 32+ character random string)
+wrangler secret put JWT_SECRET_KEY
+
+# 2. Production Neon Serverless PostgreSQL connection string
+wrangler secret put DATABASE_URL
+
+# 3. Primary AI classification key (Groq for ultra-fast intake)
+wrangler secret put GROQ_API_KEY
+
+# 4. Optional secondary AI keys for multi-provider switching
+wrangler secret put OPENAI_API_KEY
+wrangler secret put GEMINI_API_KEY
+
+# 5. Web Push notification keys
+wrangler secret put VAPID_PUBLIC_KEY
+wrangler secret put VAPID_PRIVATE_KEY
+```
+
+**Deploy the Worker:**
+```bash
+npx wrangler deploy
+```
 
 ---
 
-## Step 6: Automated Resume Retention Cleanup
+### Phase 4 — Production Browser Smoke Test Matrix
 
-ApplyFlow includes an automated retention cleanup service that deletes expired resumes from Cloudflare R2 and updates metadata.
+Perform these tests manually in the deployed browser environment to validate all subsystems:
 
-### 6.1 Configurable Retention Window
-* Controlled by environment variable: `RESUME_RETENTION_DAYS` (default: `120`).
-* Resumes older than the retention window or past their `expires_at` timestamp are automatically flagged.
+| Area | Action / Flow | Expected Result | Verified |
+| :--- | :--- | :--- | :---: |
+| **Auth** | Login with valid credentials | 200 OK, HTTP-only `access_token` and `refresh_token` set | [ ] |
+| **Session** | Refresh browser (`F5` / `Cmd+R`) | Stays authenticated via `/api/auth/bootstrap`, navbar loads | [ ] |
+| **Auth Guard** | Click Logout | Cookies cleared with `Max-Age=0`, subsequent API calls return 401 | [ ] |
+| **Clients** | Create Client in Clients table | New client persisted in Neon, reflected immediately in table | [ ] |
+| **Resumes** | Upload PDF resume | File deduplicated by SHA-256, stored in R2, metadata in Neon | [ ] |
+| **Storage** | Preview & Download resume | Authorized streaming through Worker, correct headers | [ ] |
+| **Requirements** | Create Job Requirement | Form submits successfully, status defaults to `active` | [ ] |
+| **Intake AI** | Submit candidate intake / email | AI provider processes text, classifies, and returns structured data | [ ] |
+| **Attendance** | Check-in / Check-out | Guard prevents duplicate active check-ins (409); hours calculated | [ ] |
+| **Targets** | View recruiter targets & progress | Progress calculated via SQL aggregation; past effective dates protected | [ ] |
+| **Chat Sockets** | Open chat in 2 browser windows | WebSocket upgrades via JWT cookie; live messages sync instantly | [ ] |
+| **Chat Reconnect** | Toggle Wi-Fi off for 15s then on | Reconnects automatically; missing messages replayed without duplication | [ ] |
+| **Offline Push** | Send message to offline user | Offline check succeeds; push notification dispatched | [ ] |
+| **Observability** | Inspect Network tab headers | Every response includes `X-Request-Id` for distributed log correlation | [ ] |
 
-### 6.2 Triggering Cleanup
-* **Admin Endpoint:**
-  Send a `POST` request to `/api/resumes/cleanup` with Super Admin JWT token:
-  ```bash
-  curl -X POST "https://api.yourdomain.com/api/resumes/cleanup?retention_days=120" \
-       -H "Authorization: Bearer <ADMIN_JWT_TOKEN>"
-  ```
-* **Scheduled Cron Job:**
-  Set up a daily cron trigger on Render (Render Cron Job) or using a Cloudflare Worker / cron-job.org calling `/api/resumes/cleanup` once every 24 hours.
+---
+
+## 4. Operational Cost Model
+
+For production scale of **20 Clients × ~30 Resumes/day = ~600 Resumes/day** (~70 KB average PDF):
+
+| Resource | Usage at Scale | Cloudflare Free Tier | Surplus Margin |
+| :--- | :--- | :--- | :--- |
+| **Cloudflare R2** | ~1.2 GB/month new storage (~4.8 GB with 120-day retention) | 10 GB storage free | **52% buffer** within 100% Free tier |
+| **R2 Operations** | ~18,000 Class A writes/mo, ~50,000 Class B reads/mo | 1,000,000 Class A / 10,000,000 Class B free | **98%+ free headroom** |
+| **Neon PostgreSQL** | ~20 MB metadata/month | 0.5 GB free storage | Free tier sufficient for years of metadata |
+| **Workers Requests** | ~150,000 requests/day | 100,000/day free or $5/mo Workers Paid (10M requests) | Negligible cost ($0 - $5/mo) |
+| **Cloudflare Pages** | Unlimited static requests & global CDN | Included free | **$0 / month** |
+
+---
+
+## 5. Cutover & Rollback Window
+
+1. **Parallel Run**: Keep the existing FastAPI service running in read-only / standby mode during the initial 48-hour cutover.
+2. **DNS Switch**: Point `api.yourdomain.com` to the Cloudflare Worker.
+3. **Rollback Contingency**: If an unforeseen issue arises, changing DNS back to the FastAPI container restores service in under 60 seconds without data loss, since Neon PostgreSQL remains the single shared source of truth.
+4. **FastAPI Decommission**: After 7 consecutive days of stable production metrics on Cloudflare Workers, archive the FastAPI backend.

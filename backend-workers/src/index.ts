@@ -17,6 +17,7 @@ import { healthRouter } from "./routes/health";
 import { notificationsRouter } from "./routes/notifications";
 import { requirementsRouter } from "./routes/requirements";
 import { resumesRouter } from "./routes/resumes";
+import { targetsRouter } from "./routes/targets";
 import type { Bindings, Variables } from "./types";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -72,6 +73,7 @@ app.route("/api/applications", applicationsRouter);
 app.route("/api/resumes", resumesRouter);
 app.route("/api/notifications", notificationsRouter);
 app.route("/api/attendance", attendanceRouter);
+app.route("/api/targets", targetsRouter);
 app.route("/api", employeesRouter);
 
 // Global 404 Handler

@@ -34,6 +34,23 @@ vi.mock("../src/db", () => {
   };
 });
 
+vi.mock("mammoth", () => {
+  return {
+    default: {
+      extractRawText: vi.fn(async ({ buffer }: { buffer?: any }) => {
+        if (!buffer || buffer.length === 0) {
+          throw new Error("Corrupted DOCX");
+        }
+        return {
+          value:
+            "David Miller\nEmail: david.miller@example.com\nSkills: Python, Django, AWS\nRole: Backend Lead at Acme Corp\n5 years experience.",
+          messages: [],
+        };
+      }),
+    },
+  };
+});
+
 import app from "../src/index";
 
 const mockEnv: Bindings = {
@@ -94,6 +111,7 @@ describe("AI Resume Intake Router (/api/ai/analyze-file)", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.detail).toContain("Missing file");
+    expect(json.request_id).toBeDefined();
   });
 
   it("3. Returns 400 when file type is invalid or unsupported", async () => {
@@ -117,10 +135,35 @@ describe("AI Resume Intake Router (/api/ai/analyze-file)", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.detail).toContain("Unsupported file type");
+    expect(json.request_id).toBeDefined();
   });
 
-  it("4. Returns 200 with structured analysis JSON on successful upload", async () => {
-    // Mock GROQ API fetch
+  it("4. Returns 422 when text extraction fails on corrupted document", async () => {
+    const formData = new FormData();
+    // Non-parseable binary pretending to be PDF
+    const corruptPdf = new File([new Uint8Array([0x00, 0x11, 0x22, 0x33, 0x44])], "broken.pdf", {
+      type: "application/pdf",
+    });
+    formData.append("file", corruptPdf);
+
+    const res = await app.fetch(
+      new Request("http://localhost/api/ai/analyze-file", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+        },
+        body: formData,
+      }),
+      mockEnv
+    );
+
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.detail).toContain("Extraction failed");
+    expect(json.request_id).toBeDefined();
+  });
+
+  it("5. Returns 200 with structured analysis JSON on successful PDF upload", async () => {
     const mockGroqResponse = {
       candidate_name: "Jane Doe",
       email: "jane.doe@example.com",
@@ -130,6 +173,7 @@ describe("AI Resume Intake Router (/api/ai/analyze-file)", () => {
       education: "B.Tech Computer Science",
       current_company: "Innovatech Corp",
       summary: "Experienced frontend developer passionate about accessible UI engineering.",
+      confidence: 0.95,
       role: "Senior Frontend Engineer",
       company: "Innovatech Corp",
       round: "Screening",
@@ -188,12 +232,82 @@ Education: B.Tech Computer Science.
     expect(json.analysis.candidate_name).toBe("Jane Doe");
     expect(json.analysis.skills).toContain("React");
     expect(json.analysis.experience_years).toBe(4);
+    expect(json.analysis.confidence).toBe(0.95);
     expect(json.candidate_name).toBe("Jane Doe");
     expect(json.company).toBe("Innovatech Corp");
     expect(json.role).toBe("Senior Frontend Engineer");
+    expect(json.confidence).toBe(0.95);
+    expect(json.request_id).toBeDefined();
   });
 
-  it("5. Returns 502 when GROQ API fails", async () => {
+  it("6. Returns 200 with structured analysis on DOCX upload using mammoth", async () => {
+    const mockGroqResponse = {
+      candidate_name: "David Miller",
+      email: "david.miller@example.com",
+      phone: "+1-555-123-4567",
+      skills: ["Python", "Django", "AWS"],
+      experience_years: 5,
+      education: "BS Computer Science",
+      current_company: "Acme Corp",
+      summary: "Backend Lead with 5 years experience.",
+      confidence: 0.91,
+      role: "Backend Lead",
+      company: "Acme Corp",
+      round: "Screening",
+      status: "applied",
+      interview_date: "",
+      is_interview_mail: true,
+    };
+
+    globalThis.fetch = vi.fn(async (url: any, opts: any) => {
+      const urlStr = String(url);
+      if (urlStr.includes("api.groq.com")) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify(mockGroqResponse),
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return originalFetch(url, opts);
+    });
+
+    const formData = new FormData();
+    const docxFile = new File(
+      [new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00])],
+      "David_Miller.docx",
+      {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      }
+    );
+    formData.append("file", docxFile);
+
+    const res = await app.fetch(
+      new Request("http://localhost/api/ai/analyze-file", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+        },
+        body: formData,
+      }),
+      mockEnv
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.success).toBe(true);
+    expect(json.candidate_name).toBe("David Miller");
+    expect(json.analysis.skills).toContain("Python");
+    expect(json.confidence).toBe(0.91);
+  });
+
+  it("7. Returns 502 when GROQ API fails", async () => {
     globalThis.fetch = vi.fn(async (url: any, opts: any) => {
       const urlStr = String(url);
       if (urlStr.includes("api.groq.com")) {
@@ -223,6 +337,7 @@ Education: B.Tech Computer Science.
 
     expect(res.status).toBe(502);
     const json = await res.json();
-    expect(json.detail).toContain("AI analysis service failure");
+    expect(json.detail).toContain("Groq AI service failure");
+    expect(json.request_id).toBeDefined();
   });
 });

@@ -4,9 +4,11 @@
  */
 
 import { Hono } from "hono";
+import mammoth from "mammoth";
 import { extractText } from "unpdf";
 import { getDb } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { GroqAnalysisSchema, type GroqAnalysis } from "../schemas/ai";
 import type { Bindings, Variables } from "../types";
 
 export const aiRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -15,23 +17,6 @@ export const aiRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 aiRouter.use("*", requireAuth);
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB limit
-
-interface GroqAnalysisResult {
-  candidate_name?: string;
-  email?: string;
-  phone?: string;
-  skills?: string[];
-  experience_years?: number;
-  education?: string;
-  current_company?: string;
-  summary?: string;
-  role?: string;
-  company?: string;
-  round?: string;
-  status?: string;
-  interview_date?: string;
-  is_interview_mail?: boolean;
-}
 
 function extractRawPdfFallback(buffer: Uint8Array): string {
   try {
@@ -50,14 +35,21 @@ function extractRawPdfFallback(buffer: Uint8Array): string {
   }
 }
 
+/**
+ * Worker-compatible text extraction for PDF, DOCX, TXT, and EML files.
+ */
 export async function extractTextFromFile(file: File): Promise<string> {
   const name = (file.name || "").toLowerCase();
-  const buffer = await file.arrayBuffer();
+  const rawBytes = await file.arrayBuffer();
+  const fileBytes = new Uint8Array(rawBytes);
 
+  // 1. PDF Extraction
   if (name.endsWith(".pdf") || file.type === "application/pdf") {
     try {
-      const result = await extractText(new Uint8Array(buffer));
-      const pagesText = Array.isArray(result.text) ? result.text.join("\n\n").trim() : String(result.text || "").trim();
+      const result = await extractText(fileBytes.slice());
+      const pagesText = Array.isArray(result.text)
+        ? result.text.join("\n\n").trim()
+        : String(result.text || "").trim();
       if (pagesText && pagesText.length >= 10) {
         return pagesText;
       }
@@ -65,51 +57,78 @@ export async function extractTextFromFile(file: File): Promise<string> {
       // Fall through to raw stream extraction
     }
 
-    const rawFallback = extractRawPdfFallback(new Uint8Array(buffer));
+    const rawFallback = extractRawPdfFallback(fileBytes);
     if (rawFallback && rawFallback.length >= 10) {
       return rawFallback;
     }
 
     // Try basic string extraction if structured pdf failed
     try {
-      const rawText = new TextDecoder("utf-8").decode(buffer);
+      const rawText = new TextDecoder("utf-8").decode(fileBytes);
       const cleaned = rawText.replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s+/g, " ").trim();
       if (cleaned && cleaned.length >= 20) {
         return cleaned;
       }
     } catch {}
 
-    throw new Error("Unable to extract readable text from PDF. Ensure the PDF contains text content.");
+    throw new Error("Unable to extract readable text from PDF.");
   }
 
+  // 2. DOCX Extraction via mammoth
+  if (
+    name.endsWith(".docx") ||
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    try {
+      const arrayBuffer = fileBytes.buffer.slice(
+        fileBytes.byteOffset,
+        fileBytes.byteOffset + fileBytes.byteLength
+      ) as ArrayBuffer;
+
+      const result = await mammoth.extractRawText({
+        arrayBuffer,
+        buffer: Buffer.from(fileBytes),
+      });
+      const text = (result?.value || "").trim();
+      if (text && text.length >= 10) {
+        return text;
+      }
+    } catch (docxErr: any) {
+      throw new Error(`Failed to extract text from DOCX: ${docxErr?.message || "Corrupted file"}`);
+    }
+
+    throw new Error("Unable to extract readable text from DOCX.");
+  }
+
+  // 3. Plain Text Files
   if (name.endsWith(".txt") || file.type.startsWith("text/")) {
-    const text = new TextDecoder("utf-8").decode(buffer).trim();
+    const text = new TextDecoder("utf-8").decode(fileBytes).trim();
     if (!text) {
       throw new Error("Text file is empty.");
     }
     return text;
   }
 
+  // 4. Email (.eml) Files
   if (name.endsWith(".eml") || file.type === "message/rfc822") {
-    const text = new TextDecoder("utf-8").decode(buffer).trim();
+    const text = new TextDecoder("utf-8").decode(fileBytes).trim();
     if (!text) {
       throw new Error("Email file is empty.");
     }
     return text;
   }
 
-  // Generic text attempt
-  try {
-    const text = new TextDecoder("utf-8").decode(buffer).trim();
-    if (text && text.length >= 10) {
-      return text;
-    }
-  } catch {}
-
-  throw new Error("Unsupported file type. Please upload a PDF, TXT, or EML file.");
+  throw new Error("Unsupported file format.");
 }
 
-export async function callGroqAi(apiKey: string, documentText: string, modelOverride?: string): Promise<GroqAnalysisResult> {
+/**
+ * Calls Groq AI with model fallback and JSON mode.
+ */
+export async function callGroqAi(
+  apiKey: string,
+  documentText: string,
+  modelOverride?: string
+): Promise<GroqAnalysis> {
   const modelsToTry = [
     modelOverride,
     "openai/gpt-oss-20b",
@@ -129,6 +148,7 @@ Return ONLY valid JSON matching this schema with no markdown formatting, no code
   "education": "Highest degree or university or empty string",
   "current_company": "Current or latest employer or hiring company",
   "summary": "Brief 1-2 sentence executive summary",
+  "confidence": 0.92,
   "role": "Role or designation or title",
   "company": "Target company name or hiring company",
   "round": "Interview round (e.g. Screening, Technical, HR, Final)",
@@ -155,7 +175,7 @@ ${documentText.slice(0, 8000)}`;
           messages: [
             {
               role: "system",
-              content: "You are a specialized recruitment information extraction engine that strictly returns valid JSON with no markdown.",
+              content: "You are a specialized recruitment information extraction engine that strictly returns valid JSON matching the requested schema with no markdown.",
             },
             {
               role: "user",
@@ -175,14 +195,18 @@ ${documentText.slice(0, 8000)}`;
 
       const json: any = await res.json();
       const rawContent = json?.choices?.[0]?.message?.content || "{}";
+      let parsed: any;
 
       try {
-        return JSON.parse(rawContent);
+        parsed = JSON.parse(rawContent);
       } catch {
-        // If response format returned markdown wrapped json, strip fences
+        // Strip fences if any
         const clean = rawContent.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
-        return JSON.parse(clean);
+        parsed = JSON.parse(clean);
       }
+
+      // Validate with Zod schema
+      return GroqAnalysisSchema.parse(parsed);
     } catch (err: any) {
       lastError = err;
     }
@@ -193,152 +217,230 @@ ${documentText.slice(0, 8000)}`;
 
 // POST /api/ai/analyze-file
 aiRouter.post("/analyze-file", async (c) => {
-  const user = c.get("user");
-  const allowedRoles = ["super_admin", "admin", "sub_admin", "recruiter", "employee"];
-  if (user && !allowedRoles.includes(user.role)) {
-    return c.json({ detail: "Forbidden: insufficient permissions" }, 403);
-  }
-
-  let formData: FormData;
-  try {
-    formData = await c.req.formData();
-  } catch {
-    return c.json({ detail: "Invalid multipart/form-data request." }, 400);
-  }
-
-  const file = formData.get("file");
-  if (!file || !(file instanceof File) || typeof file.arrayBuffer !== "function") {
-    return c.json({ detail: "Missing file. Please provide a file in the 'file' field." }, 400);
-  }
-
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    return c.json({ detail: "File size exceeds 10MB project limit." }, 400);
-  }
-
-  if (file.size === 0) {
-    return c.json({ detail: "File is empty." }, 400);
-  }
-
-  const name = (file.name || "").toLowerCase();
-  const isSupported =
-    name.endsWith(".pdf") ||
-    name.endsWith(".txt") ||
-    name.endsWith(".eml") ||
-    file.type === "application/pdf" ||
-    file.type.startsWith("text/") ||
-    file.type === "message/rfc822";
-
-  if (!isSupported) {
-    return c.json({ detail: "Unsupported file type. Please upload a PDF, TXT, or EML file." }, 400);
-  }
-
-  let extractedText: string;
-  try {
-    extractedText = await extractTextFromFile(file);
-  } catch (err: any) {
-    return c.json({ detail: err.message || "Failed to extract text from document." }, 400);
-  }
-
-  if (!extractedText || extractedText.trim().length < 5) {
-    return c.json({ detail: "Unable to extract readable text from document." }, 400);
-  }
-
-  const groqApiKey = c.env.GROQ_API_KEY;
-  if (!groqApiKey || typeof groqApiKey !== "string" || !groqApiKey.trim()) {
-    return c.json({ detail: "AI analysis service is not configured (missing GROQ_API_KEY)." }, 502);
-  }
-
-  let analysis: GroqAnalysisResult;
-  try {
-    analysis = await callGroqAi(groqApiKey.trim(), extractedText);
-  } catch (err: any) {
-    console.error("[AI Intake Error]", err.message);
-    return c.json({ detail: `AI analysis service failure: ${err.message}` }, 502);
-  }
-
-  const rawClientId = formData.get("client_id");
-  const requestedClientId = rawClientId && typeof rawClientId === "string" ? rawClientId.trim() : null;
-
-  let clientName: string | null = null;
-  let matchedResume: any = null;
+  const reqId = c.get("requestId") || c.req.header("X-Request-Id") || "unknown";
 
   try {
-    const sql = getDb(c.env.DATABASE_URL);
-
-    if (requestedClientId) {
-      const clients = await sql`
-        SELECT id, company_name FROM clients WHERE id = ${requestedClientId} LIMIT 1
-      `;
-      if (clients && clients.length > 0) {
-        clientName = clients[0].company_name;
-      }
+    const user = c.get("user");
+    const allowedRoles = ["super_admin", "admin", "sub_admin", "recruiter", "employee"];
+    if (user && !allowedRoles.includes(user.role)) {
+      return c.json(
+        {
+          detail: "Forbidden: insufficient permissions.",
+          request_id: reqId,
+        },
+        403
+      );
     }
 
-    const candName = (analysis.candidate_name || "").trim();
-    if (candName && candName.toLowerCase() !== "candidate") {
-      let resumes: any[] = [];
+    let formData: FormData;
+    try {
+      formData = await c.req.formData();
+    } catch {
+      return c.json(
+        {
+          detail: "Invalid multipart/form-data request.",
+          request_id: reqId,
+        },
+        400
+      );
+    }
+
+    const file = formData.get("file");
+    if (!file || !(file instanceof File) || typeof file.arrayBuffer !== "function") {
+      return c.json(
+        {
+          detail: "Missing file. Please provide a file in the 'file' field.",
+          request_id: reqId,
+        },
+        400
+      );
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return c.json(
+        {
+          detail: "File size exceeds 10MB limit.",
+          request_id: reqId,
+        },
+        400
+      );
+    }
+
+    if (file.size === 0) {
+      return c.json(
+        {
+          detail: "File is empty.",
+          request_id: reqId,
+        },
+        400
+      );
+    }
+
+    const name = (file.name || "").toLowerCase();
+    const isSupported =
+      name.endsWith(".pdf") ||
+      name.endsWith(".docx") ||
+      name.endsWith(".txt") ||
+      name.endsWith(".eml") ||
+      file.type === "application/pdf" ||
+      file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.type.startsWith("text/") ||
+      file.type === "message/rfc822";
+
+    if (!isSupported) {
+      return c.json(
+        {
+          detail: "Unsupported file type. Please upload a PDF or DOCX file.",
+          request_id: reqId,
+        },
+        400
+      );
+    }
+
+    let extractedText: string;
+    try {
+      extractedText = await extractTextFromFile(file);
+    } catch (err: any) {
+      return c.json(
+        {
+          detail: `Extraction failed: ${err.message || "Unable to extract readable text from document."}`,
+          request_id: reqId,
+        },
+        422
+      );
+    }
+
+    if (!extractedText || extractedText.trim().length < 5) {
+      return c.json(
+        {
+          detail: "Extraction failed: Document contains insufficient readable text.",
+          request_id: reqId,
+        },
+        422
+      );
+    }
+
+    const groqApiKey = c.env.GROQ_API_KEY;
+    if (!groqApiKey || typeof groqApiKey !== "string" || !groqApiKey.trim()) {
+      return c.json(
+        {
+          detail: "Groq AI service is not configured (missing GROQ_API_KEY).",
+          request_id: reqId,
+        },
+        502
+      );
+    }
+
+    let analysis: GroqAnalysis;
+    try {
+      analysis = await callGroqAi(groqApiKey.trim(), extractedText, c.env.GROQ_MODEL);
+    } catch (err: any) {
+      console.error("[Groq AI Intake Error]", err.message);
+      return c.json(
+        {
+          detail: `Groq AI service failure: ${err.message}`,
+          request_id: reqId,
+        },
+        502
+      );
+    }
+
+    const rawClientId = formData.get("client_id");
+    const requestedClientId =
+      rawClientId && typeof rawClientId === "string" ? rawClientId.trim() : null;
+
+    let clientName: string | null = null;
+    let matchedResume: any = null;
+
+    try {
+      const sql = getDb(c.env.DATABASE_URL);
+
       if (requestedClientId) {
-        resumes = await sql`
-          SELECT id, original_filename, candidate_name, company, role, resume_id_tag
-          FROM resumes
-          WHERE client_id = ${requestedClientId}
-            AND LOWER(candidate_name) LIKE ${`%${candName.toLowerCase()}%`}
-            AND is_deleted = false
-          LIMIT 1
+        const clients = await sql`
+          SELECT id, company_name FROM clients WHERE id = ${requestedClientId} LIMIT 1
         `;
-      } else {
-        resumes = await sql`
-          SELECT id, original_filename, candidate_name, company, role, resume_id_tag
-          FROM resumes
-          WHERE LOWER(candidate_name) LIKE ${`%${candName.toLowerCase()}%`}
-            AND is_deleted = false
-          LIMIT 1
-        `;
+        if (clients && clients.length > 0) {
+          clientName = clients[0].company_name;
+        }
       }
 
-      if (resumes && resumes.length > 0) {
-        matchedResume = resumes[0];
+      const candName = (analysis.candidate_name || "").trim();
+      if (candName && candName.toLowerCase() !== "candidate") {
+        let resumes: any[] = [];
+        if (requestedClientId) {
+          resumes = await sql`
+            SELECT id, original_filename, candidate_name, company, role, resume_id_tag
+            FROM resumes
+            WHERE client_id = ${requestedClientId}
+              AND LOWER(candidate_name) LIKE ${`%${candName.toLowerCase()}%`}
+              AND is_deleted = false
+            LIMIT 1
+          `;
+        } else {
+          resumes = await sql`
+            SELECT id, original_filename, candidate_name, company, role, resume_id_tag
+            FROM resumes
+            WHERE LOWER(candidate_name) LIKE ${`%${candName.toLowerCase()}%`}
+              AND is_deleted = false
+            LIMIT 1
+          `;
+        }
+
+        if (resumes && resumes.length > 0) {
+          matchedResume = resumes[0];
+        }
       }
+    } catch (dbErr) {
+      console.warn("[AI Intake DB Check Warning]", dbErr);
     }
-  } catch (dbErr) {
-    console.warn("[AI Intake DB Check Warning]", dbErr);
+
+    const normalizedAnalysis = {
+      candidate_name: analysis.candidate_name || "",
+      email: analysis.email || "",
+      phone: analysis.phone || "",
+      skills: Array.isArray(analysis.skills) ? analysis.skills : [],
+      experience_years: typeof analysis.experience_years === "number" ? analysis.experience_years : 0,
+      education: analysis.education || "",
+      summary: analysis.summary || "",
+      confidence: typeof analysis.confidence === "number" ? analysis.confidence : 0.92,
+    };
+
+    return c.json({
+      success: true,
+      analysis: normalizedAnalysis,
+      // Compatibility fields for existing React AI Intake page
+      candidate_name: normalizedAnalysis.candidate_name,
+      company: analysis.company || analysis.current_company || "",
+      role: analysis.role || "Software Engineer",
+      round: analysis.round || "Screening",
+      status: analysis.status || "applied",
+      interview_date: analysis.interview_date || "",
+      confidence: normalizedAnalysis.confidence,
+      client_id: requestedClientId || null,
+      client_name: clientName,
+      raw_filename: file.name,
+      is_interview_mail: analysis.is_interview_mail !== false,
+      matched_resume_id: matchedResume ? String(matchedResume.id) : null,
+      matched_resume_name: matchedResume ? matchedResume.original_filename : null,
+      matched_resume_candidate: matchedResume ? matchedResume.candidate_name : null,
+      matched_resume_company: matchedResume ? matchedResume.company : null,
+      matched_resume_role: matchedResume ? matchedResume.role : null,
+      matched_resume_tag: matchedResume ? matchedResume.resume_id_tag : null,
+      resume_matched: !!matchedResume,
+      match_priority: matchedResume ? 1 : null,
+      match_reason: matchedResume ? "Existing candidate resume match" : null,
+      request_id: reqId,
+    });
+  } catch (err: any) {
+    console.error("[Unexpected AI Error]", err);
+    return c.json(
+      {
+        detail: err?.message || "Unexpected server error during document analysis.",
+        request_id: reqId,
+      },
+      500
+    );
   }
-
-  const normalizedAnalysis = {
-    candidate_name: analysis.candidate_name || "",
-    email: analysis.email || "",
-    phone: analysis.phone || "",
-    skills: Array.isArray(analysis.skills) ? analysis.skills : [],
-    experience_years: typeof analysis.experience_years === "number" ? analysis.experience_years : 0,
-    education: analysis.education || "",
-    current_company: analysis.current_company || analysis.company || "",
-    summary: analysis.summary || "",
-  };
-
-  return c.json({
-    success: true,
-    analysis: normalizedAnalysis,
-    // Flat fields expected by frontend AIResponseInboxPage
-    candidate_name: normalizedAnalysis.candidate_name,
-    company: analysis.company || normalizedAnalysis.current_company || "",
-    role: analysis.role || "Software Engineer",
-    round: analysis.round || "Screening",
-    status: analysis.status || "applied",
-    interview_date: analysis.interview_date || "",
-    client_id: requestedClientId || null,
-    client_name: clientName,
-    raw_filename: file.name,
-    is_interview_mail: analysis.is_interview_mail !== false,
-    matched_resume_id: matchedResume ? String(matchedResume.id) : null,
-    matched_resume_name: matchedResume ? matchedResume.original_filename : null,
-    matched_resume_candidate: matchedResume ? matchedResume.candidate_name : null,
-    matched_resume_company: matchedResume ? matchedResume.company : null,
-    matched_resume_role: matchedResume ? matchedResume.role : null,
-    matched_resume_tag: matchedResume ? matchedResume.resume_id_tag : null,
-    resume_matched: !!matchedResume,
-    match_priority: matchedResume ? 1 : null,
-    match_reason: matchedResume ? "Existing candidate resume match" : null,
-  });
 });
 
 export default aiRouter;

@@ -13,6 +13,7 @@
     "@neondatabase/serverless": "^0.10.4",
     "bcryptjs": "^2.4.3",
     "hono": "^4.6.14",
+    "mammoth": "^1.12.2",
     "unpdf": "^1.8.1",
     "zod": "^4.5.4"
   },

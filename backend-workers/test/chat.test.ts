@@ -230,5 +230,41 @@ describe("Chat Module & Durable Objects Tests", () => {
       expect(closed).toBe(true);
       expect(roomDO.sessions.size).toBe(0);
     });
+
+    it("handles reconnection sync message gracefully without throwing", async () => {
+      const roomDO = new ChatRoomDO(mockState, mockEnv);
+      const mockWs = { send: () => {} } as any;
+      await expect(
+        roomDO.replayMissedMessages(mockWs, "room-1", "msg-1")
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe("Worker Observability (x-request-id)", () => {
+    it("assigns and returns X-Request-Id header on all requests", async () => {
+      const res = await app.fetch(new Request("http://localhost/api/health"), mockEnv);
+      expect(res.headers.has("x-request-id")).toBe(true);
+      const reqId = res.headers.get("x-request-id");
+      expect(typeof reqId).toBe("string");
+      expect(reqId!.length).toBeGreaterThan(0);
+    });
+
+    it("propagates client-supplied X-Request-Id for distributed tracing", async () => {
+      const customId = "trace-client-uuid-999";
+      const res = await app.fetch(
+        new Request("http://localhost/api/health", {
+          headers: { "X-Request-Id": customId },
+        }),
+        mockEnv
+      );
+      expect(res.headers.get("x-request-id")).toBe(customId);
+    });
+
+    it("includes request_id in 404 error responses", async () => {
+      const res = await app.fetch(new Request("http://localhost/nonexistent-route"), mockEnv);
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { request_id?: string };
+      expect(body.request_id).toBeDefined();
+    });
   });
 });

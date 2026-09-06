@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
+import { requestId } from "hono/request-id";
 import { applicationsRouter } from "./routes/applications";
 import { attendanceRouter } from "./routes/attendance";
 import { authRouter } from "./routes/auth";
@@ -25,6 +26,7 @@ import type { Bindings, Variables } from "./types";
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // Global Middleware
+app.use("*", requestId());
 app.use("*", logger());
 app.use("*", prettyJSON());
 
@@ -47,7 +49,7 @@ app.use("*", async (c, next) => {
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-    exposeHeaders: ["Content-Length", "Set-Cookie"],
+    exposeHeaders: ["Content-Length", "Set-Cookie", "X-Request-Id"],
     maxAge: 86400,
   });
 
@@ -86,6 +88,7 @@ app.notFound((c) => {
     {
       detail: `Route ${c.req.method} ${c.req.path} not found on ApplyFlow Workers.`,
       status: 404,
+      request_id: c.get("requestId"),
     },
     404
   );
@@ -93,11 +96,13 @@ app.notFound((c) => {
 
 // Global Error Handler
 app.onError((err, c) => {
-  console.error(`[ApplyFlow Workers Error] ${err.message}`, err.stack);
+  const reqId = c.get("requestId") || "unknown";
+  console.error(`[ApplyFlow Workers Error] [req_id: ${reqId}] ${err.message}`, err.stack);
   return c.json(
     {
       detail: err.message || "Internal server error occurred on Worker.",
       status: 500,
+      request_id: reqId,
     },
     500
   );

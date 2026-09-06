@@ -636,6 +636,7 @@ export async function handleChatWebSocketUpgrade(c: any) {
   forwardHeaders.set("X-User-Id", String(payload.sub));
   forwardHeaders.set("X-User-Name", String(payload.name || "User"));
   forwardHeaders.set("X-User-Role", String(payload.role || "user"));
+  forwardHeaders.set("X-Room-Id", roomId);
 
   return stub.fetch(
     new Request(c.req.url, {

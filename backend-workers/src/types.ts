@@ -33,4 +33,5 @@ export interface UserPayload {
 
 export interface Variables {
   user: UserPayload;
+  requestId: string;
 }

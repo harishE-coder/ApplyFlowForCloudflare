@@ -1,12 +1,14 @@
 /**
  * Cloudflare Durable Object for Chat Room Coordination.
  * Co-locates all WebSockets for a single chat room into a single isolate.
- * Manages live broadcasts, presence, typing indicators, and 30-second heartbeats.
+ * Manages live broadcasts, presence, typing indicators, 30-second heartbeats,
+ * and automatic message replay upon client reconnection.
  * 
  * NOTE: The Neon PostgreSQL database remains the absolute source of truth
  * for message persistence, history, and read state.
  */
 
+import { getDb } from "../db";
 import type { Bindings } from "../types";
 
 export interface SessionMeta {
@@ -70,6 +72,8 @@ export class ChatRoomDO {
     const userId = request.headers.get("X-User-Id") || "";
     const userName = request.headers.get("X-User-Name") || "User";
     const userRole = request.headers.get("X-User-Role") || "user";
+    const roomId = request.headers.get("X-Room-Id") || url.pathname.split("/")[3] || "";
+    const lastMessageId = url.searchParams.get("last_message_id");
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -79,7 +83,12 @@ export class ChatRoomDO {
       name: userName,
       role: userRole,
       lastSeen: Date.now(),
-    });
+    }, roomId);
+
+    // Replay any missed messages if client provided last_message_id on reconnect
+    if (lastMessageId && roomId) {
+      this.replayMissedMessages(server, roomId, lastMessageId);
+    }
 
     // Schedule 30s heartbeat sweep alarm if not already scheduled
     try {
@@ -123,14 +132,14 @@ export class ChatRoomDO {
     }
   }
 
-  handleSession(ws: WebSocket, meta: SessionMeta) {
+  handleSession(ws: WebSocket, meta: SessionMeta, roomId: string) {
     ws.accept();
     this.sessions.set(ws, meta);
 
     // Broadcast presence update when new user connects
     this.broadcastPresence();
 
-    ws.addEventListener("message", (event) => {
+    ws.addEventListener("message", async (event) => {
       try {
         meta.lastSeen = Date.now();
         const data = JSON.parse(event.data as string);
@@ -142,7 +151,12 @@ export class ChatRoomDO {
         }
 
         if (data.type === "pong") {
-          // Pong received from client keepalive
+          return;
+        }
+
+        // Reconnection Message Replay Sync Request
+        if (data.type === "sync" && data.last_message_id && roomId) {
+          await this.replayMissedMessages(ws, roomId, data.last_message_id);
           return;
         }
 
@@ -192,6 +206,65 @@ export class ChatRoomDO {
 
     ws.addEventListener("close", closeHandler);
     ws.addEventListener("error", closeHandler);
+  }
+
+  /**
+   * Replays messages from Neon PostgreSQL sent after lastMessageId
+   * Ensures clients reconnecting after Wi-Fi blips or page refreshes don't miss messages.
+   */
+  async replayMissedMessages(ws: WebSocket, roomId: string, lastMessageId: string) {
+    if (!this.env.DATABASE_URL) return;
+    try {
+      const sql = getDb(this.env.DATABASE_URL);
+      const lastMsg = await sql`
+        SELECT created_at FROM chat_messages WHERE id = ${lastMessageId} LIMIT 1
+      `;
+      if (lastMsg.length === 0) return;
+
+      const lastCreatedAt = lastMsg[0].created_at;
+      const missed = await sql`
+        SELECT
+          m.id, m.room_id, m.sender_id, m.message, m.attachment_type,
+          m.attachment_reference, m.attachment_filename, m.client_message_id,
+          m.created_at, m.edited_at,
+          u.name as sender_name, u.role as sender_role
+        FROM chat_messages m
+        LEFT JOIN users u ON u.id = m.sender_id
+        WHERE m.room_id = ${roomId} AND m.created_at > ${lastCreatedAt}
+        ORDER BY m.created_at ASC
+        LIMIT 50
+      `;
+
+      for (const m of missed) {
+        const formatted = {
+          id: m.id,
+          room_id: m.room_id,
+          sender: {
+            id: m.sender_id,
+            name: m.sender_name || "Deleted User",
+            role: m.sender_role || "user",
+          },
+          message: m.message,
+          attachment_type: m.attachment_type,
+          attachment_reference: m.attachment_reference,
+          attachment_filename: m.attachment_filename,
+          client_id: m.client_message_id,
+          status: "delivered",
+          created_at: m.created_at,
+          edited_at: m.edited_at,
+          is_deleted: false,
+          is_replayed: true,
+        };
+
+        try {
+          ws.send(JSON.stringify({ type: "new_message", message: formatted }));
+        } catch {
+          break;
+        }
+      }
+    } catch (err) {
+      console.error("Error replaying missed messages in ChatRoomDO:", err);
+    }
   }
 
   broadcast(data: any, excludeWs?: WebSocket) {

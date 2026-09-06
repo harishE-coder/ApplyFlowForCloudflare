@@ -18,6 +18,7 @@ export function useChatWebSocket(roomId, callbacks = {}) {
   const reconnectAttemptsRef = useRef(0);
   const isManuallyClosedRef = useRef(false);
   const typingTimersRef = useRef({});
+  const lastMessageIdRef = useRef(null);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -25,6 +26,7 @@ export function useChatWebSocket(roomId, callbacks = {}) {
   const [typingUsers, setTypingUsers] = useState({});
 
   useEffect(() => {
+    lastMessageIdRef.current = null;
     if (!roomId) {
       setIsConnected(false);
       setIsReconnecting(false);
@@ -52,7 +54,10 @@ export function useChatWebSocket(roomId, callbacks = {}) {
 
       if (isManuallyClosedRef.current) return;
 
-      const wsUrl = getWebSocketUrl(`/ws/chat/${roomId}`);
+      const baseWsUrl = getWebSocketUrl(`/ws/chat/${roomId}`);
+      const wsUrl = lastMessageIdRef.current
+        ? `${baseWsUrl}?last_message_id=${encodeURIComponent(lastMessageIdRef.current)}`
+        : baseWsUrl;
       let pingInterval = null;
 
       try {
@@ -64,6 +69,11 @@ export function useChatWebSocket(roomId, callbacks = {}) {
           setIsReconnecting(false);
           reconnectAttemptsRef.current = 0;
           callbacksRef.current.onOpen?.();
+
+          // Request replay of any messages missed while disconnected
+          if (lastMessageIdRef.current) {
+            ws.send(JSON.stringify({ type: 'sync', last_message_id: lastMessageIdRef.current }));
+          }
 
           // 30s Presence Heartbeat
           clearInterval(pingInterval);
@@ -82,6 +92,9 @@ export function useChatWebSocket(roomId, callbacks = {}) {
               // Heartbeat ack
               return;
             } else if (data.type === 'new_message') {
+              if (data.message?.id) {
+                lastMessageIdRef.current = data.message.id;
+              }
               callbacksRef.current.onMessage?.(data.message);
             } else if (data.type === 'room_update') {
               callbacksRef.current.onRoomUpdate?.(data);

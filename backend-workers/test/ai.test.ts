@@ -334,10 +334,37 @@ Education: B.Tech Computer Science.
       }),
       mockEnv
     );
-
     expect(res.status).toBe(502);
     const json = await res.json();
     expect(json.detail).toContain("Groq AI service failure");
     expect(json.request_id).toBeDefined();
+  });
+
+  it("8. Phase 3: AI endpoints return 401 when unauthenticated", async () => {
+    const inboxRes = await app.fetch(new Request("http://localhost/api/ai/inbox"), mockEnv);
+    expect(inboxRes.status).toBe(401);
+
+    const histRes = await app.fetch(new Request("http://localhost/api/ai/history"), mockEnv);
+    expect(histRes.status).toBe(401);
+
+    const analyzeEmailRes = await app.fetch(
+      new Request("http://localhost/api/ai/analyze-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ raw_email: "Candidate update email..." }),
+      }),
+      mockEnv
+    );
+    expect(analyzeEmailRes.status).toBe(401);
+
+    const confirmSaveRes = await app.fetch(
+      new Request("http://localhost/api/ai/confirm-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidate_name: "John Doe" }),
+      }),
+      mockEnv
+    );
+    expect(confirmSaveRes.status).toBe(401);
   });
 });

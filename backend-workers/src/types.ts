@@ -11,6 +11,9 @@ export interface Bindings {
   RESUMES_BUCKET: R2Bucket;
   R2_PUBLIC_URL?: string;
   RESUME_RETENTION_DAYS?: string;
+  CHAT_ROOMS?: DurableObjectNamespace;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
   AI_PROVIDER?: string;
   GROQ_API_KEY?: string;
   OPENAI_API_KEY?: string;

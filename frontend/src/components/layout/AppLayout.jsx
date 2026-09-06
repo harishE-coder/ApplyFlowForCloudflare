@@ -65,18 +65,7 @@ export function AppLayout() {
     async function connectGlobalSocket() {
       if (isCancelled) return;
 
-      let token = null;
-      try {
-        const tokenRes = await api.get('/chat/ws-token', { cache: false });
-        token = tokenRes.data?.token;
-      } catch {
-        // quiet fallback
-      }
-
-      if (isCancelled) return;
-
-      const baseWsUrl = getWebSocketUrl('/ws/chat/global');
-      const wsUrl = token ? `${baseWsUrl}?token=${encodeURIComponent(token)}` : baseWsUrl;
+      const wsUrl = getWebSocketUrl('/ws/chat/global');
 
       try {
         ws = new WebSocket(wsUrl);

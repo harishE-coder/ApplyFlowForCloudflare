@@ -50,19 +50,10 @@ export function useChatWebSocket(roomId, callbacks = {}) {
         }
       }
 
-      // Fetch short-lived token for bulletproof WebSocket handshake
-      let token = null;
-      try {
-        const tokenRes = await api.get('/chat/ws-token', { cache: false });
-        token = tokenRes.data?.token;
-      } catch {
-        // Fallback to cookie authentication if token endpoint temporarily unreachable
-      }
-
       if (isManuallyClosedRef.current) return;
 
-      const baseWsUrl = getWebSocketUrl(`/ws/chat/${roomId}`);
-      const wsUrl = token ? `${baseWsUrl}?token=${encodeURIComponent(token)}` : baseWsUrl;
+      const wsUrl = getWebSocketUrl(`/ws/chat/${roomId}`);
+      let pingInterval = null;
 
       try {
         const ws = new WebSocket(wsUrl);
@@ -73,13 +64,24 @@ export function useChatWebSocket(roomId, callbacks = {}) {
           setIsReconnecting(false);
           reconnectAttemptsRef.current = 0;
           callbacksRef.current.onOpen?.();
+
+          // 30s Presence Heartbeat
+          clearInterval(pingInterval);
+          pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'ping' }));
+            }
+          }, 30000);
         };
 
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
 
-            if (data.type === 'new_message') {
+            if (data.type === 'pong') {
+              // Heartbeat ack
+              return;
+            } else if (data.type === 'new_message') {
               callbacksRef.current.onMessage?.(data.message);
             } else if (data.type === 'room_update') {
               callbacksRef.current.onRoomUpdate?.(data);
@@ -132,6 +134,7 @@ export function useChatWebSocket(roomId, callbacks = {}) {
         };
 
         ws.onclose = (event) => {
+          clearInterval(pingInterval);
           setIsConnected(false);
           // Do not reconnect on intentional close or unmount
           if (!isManuallyClosedRef.current && event.code !== 4003 && roomId) {
@@ -149,9 +152,11 @@ export function useChatWebSocket(roomId, callbacks = {}) {
         };
 
         ws.onerror = () => {
+          clearInterval(pingInterval);
           setIsConnected(false);
         };
       } catch (err) {
+        clearInterval(pingInterval);
         console.error('WS Connection error:', err);
       }
     }

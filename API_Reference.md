@@ -506,12 +506,17 @@
 
 ---
 
-### 5.3 `WS /api/chat/ws/{room_id}`
-- **Description**: Real-time bidirectional WebSocket connection for live messaging, typing indicators, and read receipts.
-- **Events**:
-  - `new_message`: Dispatched when any participant sends a message.
+### 5.3 `WS /api/chat/rooms/{room_id}/ws` (also `/ws/chat/{room_id}`)
+- **Description**: Real-time bidirectional WebSocket connection backed by Cloudflare Durable Objects (`ChatRoomDO`) for live messaging, room co-location, typing indicators, read receipts, and 30-second presence heartbeats.
+- **Authentication**: Authenticated directly via HTTP-only JWT cookie (`access_token`). If missing or expired, Worker returns `401 Unauthorized` before upgrading.
+- **Persistence Guarantee**: Neon PostgreSQL is the absolute source of truth. Every message is persisted to Neon before broadcasting from the Durable Object isolate.
+- **Events & Protocol**:
+  - `ping` / `pong`: Client sends `{ "type": "ping" }` every 30 seconds; Durable Object responds `{ "type": "pong", "timestamp": ... }` and resets presence timer. Disconnects after missed heartbeat (> 35s).
+  - `new_message`: Dispatched to connected room sockets when a message is sent.
   - `typing`: Broadcasts `{ "type": "typing", "user_name": "Harish", "is_typing": true }`.
-  - `read_receipt`: Broadcasts `{ "type": "read_receipt", "user_name": "John", "message_id": "..." }`.
+  - `read`: Dispatches read receipts `{ "type": "read_receipt", "user_name": "John", "message_id": "..." }`.
+  - `presence`: Broadcasts `{ "type": "presence", "online_users": ["user-id-1", ...] }`.
+  - `message_status`: Broadcasts delivery or read acknowledgments.
 
 ---
 

@@ -13,6 +13,16 @@ APP_CORS_ORIGINS = "https://applyflow.pages.dev,http://localhost:5173"
 binding = "RESUMES_BUCKET"
 bucket_name = "applyflow-resumes"
 
+# Cloudflare Durable Objects for Persistent Multi-Room Chat
+[durable_objects]
+bindings = [
+  { name = "CHAT_ROOMS", class_name = "ChatRoomDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ChatRoomDO"]
+
 # Scheduled Background Tasks (Cron Triggers)
 # e.g., Daily resume and notification maintenance at 03:00 UTC
 [triggers]

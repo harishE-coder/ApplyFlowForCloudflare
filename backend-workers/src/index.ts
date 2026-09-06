@@ -10,6 +10,7 @@ import { prettyJSON } from "hono/pretty-json";
 import { applicationsRouter } from "./routes/applications";
 import { attendanceRouter } from "./routes/attendance";
 import { authRouter } from "./routes/auth";
+import { chatRouter, handleChatWebSocketUpgrade } from "./routes/chat";
 import { clientsRouter } from "./routes/clients";
 import { dashboardRouter } from "./routes/dashboard";
 import { employeesRouter } from "./routes/employees";
@@ -18,6 +19,7 @@ import { notificationsRouter } from "./routes/notifications";
 import { requirementsRouter } from "./routes/requirements";
 import { resumesRouter } from "./routes/resumes";
 import { targetsRouter } from "./routes/targets";
+export { ChatRoomDO } from "./durable_objects/ChatRoomDO";
 import type { Bindings, Variables } from "./types";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -74,6 +76,8 @@ app.route("/api/resumes", resumesRouter);
 app.route("/api/notifications", notificationsRouter);
 app.route("/api/attendance", attendanceRouter);
 app.route("/api/targets", targetsRouter);
+app.route("/api/chat", chatRouter);
+app.get("/ws/chat/:room_id", handleChatWebSocketUpgrade);
 app.route("/api", employeesRouter);
 
 // Global 404 Handler

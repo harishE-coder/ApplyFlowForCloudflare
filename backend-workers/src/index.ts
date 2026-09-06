@@ -14,6 +14,7 @@ import { dashboardRouter } from "./routes/dashboard";
 import { employeesRouter } from "./routes/employees";
 import { healthRouter } from "./routes/health";
 import { requirementsRouter } from "./routes/requirements";
+import { resumesRouter } from "./routes/resumes";
 import type { Bindings, Variables } from "./types";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -66,6 +67,7 @@ app.route("/api/dashboard", dashboardRouter);
 app.route("/api/clients", clientsRouter);
 app.route("/api/requirements", requirementsRouter);
 app.route("/api/applications", applicationsRouter);
+app.route("/api/resumes", resumesRouter);
 app.route("/api", employeesRouter);
 
 // Global 404 Handler
@@ -96,6 +98,35 @@ export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log(`[Workers Cron] Triggered scheduled event at ${new Date(event.scheduledTime).toISOString()}`);
-    // Future Wave 5 jobs: e.g. R2 resume cleanup, expired notification purging
+    // Daily resume retention cleanup: purge resumes older than RESUME_RETENTION_DAYS (default 120 days)
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const retentionDays = Number(env.RESUME_RETENTION_DAYS || 120);
+          const { getDb } = await import("./db");
+          const { deleteResumeFile } = await import("./services/r2");
+          const sql = getDb(env.DATABASE_URL);
+
+          const expired = await sql`
+            SELECT id, r2_key FROM resumes
+            WHERE upload_date < NOW() - (${retentionDays} || ' days')::interval
+          `;
+
+          for (const row of expired) {
+            if (row.r2_key) {
+              await deleteResumeFile(env.RESUMES_BUCKET, row.r2_key);
+            }
+          }
+
+          if (expired.length > 0) {
+            const ids = expired.map((r: any) => r.id);
+            await sql`DELETE FROM resumes WHERE id = ANY(${ids})`;
+            console.log(`[Workers Cron] Cleaned ${expired.length} expired resumes from R2 and database.`);
+          }
+        } catch (err) {
+          console.error(`[Workers Cron] Failed resume cleanup job:`, err);
+        }
+      })()
+    );
   },
 };

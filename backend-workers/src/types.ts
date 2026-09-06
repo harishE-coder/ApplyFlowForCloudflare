@@ -9,6 +9,8 @@ export interface Bindings {
   ACCESS_TOKEN_EXPIRE_MINUTES?: string;
   REFRESH_TOKEN_EXPIRE_DAYS?: string;
   RESUMES_BUCKET: R2Bucket;
+  R2_PUBLIC_URL?: string;
+  RESUME_RETENTION_DAYS?: string;
   AI_PROVIDER?: string;
   GROQ_API_KEY?: string;
   OPENAI_API_KEY?: string;
@@ -22,7 +24,7 @@ export interface UserPayload {
   id: string;
   email: string;
   name: string;
-  role: "super_admin" | "sub_admin" | "recruiter" | "client" | "employee";
+  role: "super_admin" | "admin" | "sub_admin" | "recruiter" | "client" | "employee";
   client_id?: string | null;
 }
 

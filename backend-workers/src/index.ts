@@ -20,6 +20,7 @@ import { healthRouter } from "./routes/health";
 import { notificationsRouter } from "./routes/notifications";
 import { requirementsRouter } from "./routes/requirements";
 import { resumesRouter } from "./routes/resumes";
+import { subAdminsRouter } from "./routes/subAdmins";
 import { targetsRouter } from "./routes/targets";
 export { ChatRoomDO } from "./durable_objects/ChatRoomDO";
 import type { Bindings, Variables } from "./types";
@@ -85,6 +86,7 @@ app.route("/api/attendance", attendanceRouter);
 app.route("/api/targets", targetsRouter);
 app.route("/api/chat", chatRouter);
 app.route("/api/ai", aiRouter);
+app.route("/api/sub-admins", subAdminsRouter);
 app.get("/ws/chat/:room_id", handleChatWebSocketUpgrade);
 app.route("/api", employeesRouter);
 

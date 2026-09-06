@@ -279,10 +279,10 @@ clientsRouter.post("/", requireRoles("super_admin", "admin", "sub_admin"), async
 
     await sql`
       INSERT INTO users (
-        id, name, email, phone, password_hash, role, status, client_id, is_active, created_at, updated_at
+        id, name, email, phone, password_hash, hashed_password, role, status, client_id, is_active, created_at, updated_at
       ) VALUES (
         ${userId}, ${contactName}, ${loginEmail}, ${payload.phone || null},
-        ${hashed}, 'client', 'active', ${clientId}, true, NOW(), NOW()
+        ${hashed}, ${hashed}, 'client', 'active', ${clientId}, true, NOW(), NOW()
       )
     `;
   }

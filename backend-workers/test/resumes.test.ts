@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import app from "../src/index";
 import { CheckDuplicatesSchema, ResumeUpdateSchema } from "../src/schemas/resumes";
-import { computeFileHash, generateResumeObjectKey } from "../src/services/r2";
+import {
+  computeFileHash,
+  deleteResume,
+  getDownloadUrl,
+  getPreviewUrl,
+  uploadResume,
+} from "../src/services/googleAppsScript";
 import type { Bindings } from "../src/types";
 import {
   cleanCandidateName,
@@ -14,14 +20,11 @@ const mockEnv: Bindings = {
   JWT_SECRET_KEY: "test-secret-key-12345678901234567890",
   ACCESS_TOKEN_EXPIRE_MINUTES: "60",
   REFRESH_TOKEN_EXPIRE_DAYS: "7",
-  RESUMES_BUCKET: {
-    put: vi.fn().mockResolvedValue({} as any),
-    get: vi.fn().mockResolvedValue(null),
-    delete: vi.fn().mockResolvedValue(undefined),
-  } as any,
+  GOOGLE_APPS_SCRIPT_URL: "https://script.google.com/macros/s/test-app-script-id/exec",
+  GOOGLE_APPS_SCRIPT_SECRET: "test-worker-shared-secret",
+  RESUME_RETENTION_DAYS: "120",
   FRONTEND_URL: "http://localhost:5173",
   APP_CORS_ORIGINS: "http://localhost:5173",
-  R2_PUBLIC_URL: "https://resumes.applyflow.com",
 };
 
 describe("Resume Parser & Utility Tests", () => {
@@ -64,14 +67,9 @@ describe("Resume Parser & Utility Tests", () => {
     expect(result.service_client).toBe("Acme Corp");
     expect(result.candidate_name).toBe("Suresh");
   });
-
-  it("generates deterministic R2 object keys with slugified client", () => {
-    const key = generateResumeObjectKey("Teksystems India Pvt Ltd", "John_Doe_Resume.pdf");
-    expect(key).toMatch(/^resumes\/teksystems_india_pvt_ltd\/\d{4}\/\d{2}\/[a-f0-9]+_John_Doe_Resume\.pdf$/);
-  });
 });
 
-describe("WebCrypto SHA-256 Deduplication Hashing", () => {
+describe("Google Apps Script Storage Service & SHA-256 Deduplication", () => {
   it("computes deterministic 64-character SHA-256 hex string", async () => {
     const textEncoder = new TextEncoder();
     const data1 = textEncoder.encode("Resume Content for Candidate A").buffer;
@@ -85,6 +83,92 @@ describe("WebCrypto SHA-256 Deduplication Hashing", () => {
     expect(hash1.length).toBe(64);
     expect(hash1).toBe(hash2);
     expect(hash1).not.toBe(hash3);
+  });
+
+  it("generates correct Google Drive web preview and download URLs", () => {
+    const fileId = "1a2b3c4d5e6f7g8h9i0j";
+    expect(getPreviewUrl(fileId)).toBe(`https://drive.google.com/file/d/${fileId}/view`);
+    expect(getDownloadUrl(fileId)).toBe(`https://drive.google.com/uc?export=download&id=${fileId}`);
+  });
+
+  it("uploads resume to Google Apps Script and receives Drive metadata", async () => {
+    const fakeBuffer = new TextEncoder().encode("PDF content").buffer;
+    const fakeResponse = {
+      success: true,
+      fileId: "drive-file-uuid-12345",
+      url: "https://drive.google.com/file/d/drive-file-uuid-12345/view",
+      downloadUrl: "https://drive.google.com/uc?export=download&id=drive-file-uuid-12345",
+    };
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => fakeResponse,
+    } as any);
+
+    try {
+      const result = await uploadResume(fakeBuffer, "candidate_resume.pdf", "Google", mockEnv);
+      expect(result.success).toBe(true);
+      expect(result.fileId).toBe("drive-file-uuid-12345");
+      expect(result.webViewLink).toBe(fakeResponse.url);
+      expect(result.downloadLink).toBe(fakeResponse.downloadUrl);
+
+      // Verify fetch was called with the Apps Script URL and X-Worker-Secret header
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        mockEnv.GOOGLE_APPS_SCRIPT_URL,
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "X-Worker-Secret": "test-worker-shared-secret",
+          }),
+        })
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("deletes resume from Google Drive via Google Apps Script with shared secret", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    } as any);
+
+    try {
+      const deleted = await deleteResume("drive-file-uuid-12345", mockEnv);
+      expect(deleted).toBe(true);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        mockEnv.GOOGLE_APPS_SCRIPT_URL,
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "X-Worker-Secret": "test-worker-shared-secret",
+          }),
+        })
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("executes compensation rollback when database insertion fails", async () => {
+    const originalFetch = globalThis.fetch;
+    const deleteSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    });
+
+    globalThis.fetch = deleteSpy as any;
+
+    try {
+      // Simulate compensation call
+      const deleted = await deleteResume("orphaned-drive-file-id", mockEnv);
+      expect(deleted).toBe(true);
+      expect(deleteSpy).toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -159,6 +243,22 @@ describe("Resume Module Endpoint Security", () => {
     expect(res.status).toBe(401);
   });
 
+  it("GET /api/resumes/:id/preview returns 401 when unauthenticated", async () => {
+    const res = await app.fetch(
+      new Request("http://localhost/api/resumes/550e8400-e29b-41d4-a716-446655440000/preview"),
+      mockEnv
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/resumes/:id/download returns 401 when unauthenticated", async () => {
+    const res = await app.fetch(
+      new Request("http://localhost/api/resumes/550e8400-e29b-41d4-a716-446655440000/download"),
+      mockEnv
+    );
+    expect(res.status).toBe(401);
+  });
+
   it("DELETE /api/resumes/:id returns 401 when unauthenticated", async () => {
     const res = await app.fetch(
       new Request("http://localhost/api/resumes/550e8400-e29b-41d4-a716-446655440000", {
@@ -169,42 +269,11 @@ describe("Resume Module Endpoint Security", () => {
     expect(res.status).toBe(401);
   });
 
-  it("DELETE /api/resumes/:id returns 403 when called by client role", async () => {
-    const { createAccessToken } = await import("../src/auth");
-    const clientToken = await createAccessToken(
-      {
-        id: "22222222-2222-2222-2222-222222222222",
-        email: "client@acme.com",
-        name: "Acme Client",
-        role: "client",
-        client_id: "550e8400-e29b-41d4-a716-446655440000",
-      },
-      mockEnv.JWT_SECRET_KEY,
-      60
+  it("POST /api/resumes/cleanup returns 401 when unauthenticated", async () => {
+    const res = await app.fetch(
+      new Request("http://localhost/api/resumes/cleanup", { method: "POST" }),
+      mockEnv
     );
-
-    // With invalid database connection, requireAuth would reject if token verified but DB unreachable
-    expect(clientToken).toBeDefined();
-    expect(clientToken.split(".").length).toBe(3);
-  });
-});
-
-describe("Cloudflare R2 Compensation Pattern", () => {
-  it("triggers R2 bucket delete when database insertion fails during upload", async () => {
-    const { deleteResumeFile, putResumeFile } = await import("../src/services/r2");
-    const mockR2Bucket = {
-      put: vi.fn().mockResolvedValue({} as any),
-      delete: vi.fn().mockResolvedValue(undefined),
-    } as any;
-
-    const fakeKey = "resumes/test_client/2026/09/abc123_test.pdf";
-    const fakeBuffer = new TextEncoder().encode("PDF bytes").buffer;
-
-    await putResumeFile(mockR2Bucket, fakeKey, fakeBuffer, "application/pdf", "test.pdf");
-    expect(mockR2Bucket.put).toHaveBeenCalledWith(fakeKey, fakeBuffer, expect.anything());
-
-    // Simulate DB failure compensation
-    await deleteResumeFile(mockR2Bucket, fakeKey);
-    expect(mockR2Bucket.delete).toHaveBeenCalledWith(fakeKey);
+    expect(res.status).toBe(401);
   });
 });

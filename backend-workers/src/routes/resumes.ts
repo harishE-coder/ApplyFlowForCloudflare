@@ -8,11 +8,11 @@ import {
 } from "../schemas/resumes";
 import {
   computeFileHash,
-  deleteResumeFile,
-  generateResumeObjectKey,
-  getResumeFile,
-  putResumeFile,
-} from "../services/r2";
+  deleteResume,
+  getDownloadUrl,
+  getPreviewUrl,
+  uploadResume,
+} from "../services/googleAppsScript";
 import type { Bindings, UserPayload, Variables } from "../types";
 import { parseResumeFilename } from "../utils/resumeParser";
 
@@ -100,88 +100,80 @@ resumesRouter.post("/check-duplicates", async (c) => {
     );
   }
 
-  const { client_id, items } = parseResult.data;
+  const { client_id, items: fileItems } = parseResult.data;
   const sql = getDb(c.env.DATABASE_URL);
 
-  const results = [];
+  const clientRows = await sql`
+    SELECT id, company_name FROM clients WHERE id = ${client_id} LIMIT 1
+  `;
+  if (clientRows.length === 0) {
+    return c.json({ detail: "Client not found" }, 404);
+  }
 
-  for (const item of items) {
-    const company = (item.company || "").trim();
-    const candidate = (item.candidate_name || "").trim();
-    const tag = (item.resume_id_tag || "").trim() || null;
-    const fileHash = item.file_hash || null;
+  const clientName = clientRows[0].company_name;
+  const duplicates = [];
+
+  for (const item of fileItems) {
+    const filename = item.filename;
+    const parsed = parseResumeFilename(filename, clientName);
+    const candidateName = item.candidate_name || parsed.candidate_name;
+    const company = item.company || parsed.company;
+
+    if (!candidateName && !item.file_hash) continue;
 
     let existing: any[] = [];
-
-    // Priority 1: Exact binary file hash match
-    if (fileHash) {
+    if (item.file_hash) {
       existing = await sql`
-        SELECT id, candidate_name, company, resume_id_tag
+        SELECT id, candidate_name, company, role, resume_id_tag, original_filename
         FROM resumes
-        WHERE client_id = ${client_id} AND file_hash = ${fileHash}
+        WHERE client_id = ${client_id} AND file_hash = ${item.file_hash}
         LIMIT 1
       `;
     }
 
-    // Priority 2: Resume Tag match
-    if (existing.length === 0 && tag) {
+    if (existing.length === 0 && candidateName && company) {
       existing = await sql`
-        SELECT id, candidate_name, company, resume_id_tag
-        FROM resumes
-        WHERE client_id = ${client_id} AND LOWER(resume_id_tag) = ${tag.toLowerCase()}
-        LIMIT 1
-      `;
-    }
-
-    // Priority 3: Candidate name + Company match
-    if (existing.length === 0 && candidate && company) {
-      existing = await sql`
-        SELECT id, candidate_name, company, resume_id_tag
+        SELECT id, candidate_name, company, role, resume_id_tag, original_filename
         FROM resumes
         WHERE client_id = ${client_id}
-          AND LOWER(candidate_name) = ${candidate.toLowerCase()}
+          AND LOWER(candidate_name) = ${candidateName.toLowerCase()}
           AND LOWER(company) = ${company.toLowerCase()}
         LIMIT 1
       `;
     }
 
     if (existing.length > 0) {
-      const match = existing[0];
-      results.push({
-        filename: item.filename,
+      duplicates.push({
+        filename,
         is_duplicate: true,
-        duplicate_type: fileHash && match.file_hash === fileHash ? "exact_file_hash" : "metadata",
-        existing_resume_id: match.id,
-        candidate_name: match.candidate_name,
-        company: match.company,
-        resume_id_tag: match.resume_id_tag,
-      });
-    } else {
-      results.push({
-        filename: item.filename,
-        is_duplicate: false,
+        candidate_name: candidateName,
+        company: company,
+        role: item.resume_id_tag || parsed.role,
+        existing_resume: existing[0],
       });
     }
   }
 
-  return c.json({ results });
+  return c.json({
+    duplicates_found: duplicates.length,
+    items: duplicates,
+  });
 });
 
-// 3. GET /api/resumes/find-match (Intake smart linking)
+// 3. GET /api/resumes/find-match
 resumesRouter.get("/find-match", async (c) => {
   const clientId = c.req.query("client_id");
+  const candidateName = (c.req.query("candidate_name") || "").trim();
+  const company = (c.req.query("company") || "").trim();
+  const role = (c.req.query("role") || "").trim();
+  const tag = (c.req.query("tag") || "").trim();
+
   if (!clientId) {
     return c.json({ detail: "client_id is required" }, 400);
   }
 
-  const candidateName = (c.req.query("candidate_name") || "").trim();
-  const company = (c.req.query("company") || "").trim();
-  const role = (c.req.query("role") || "").trim();
-  const tag = (c.req.query("resume_id_tag") || "").trim();
-
   const sql = getDb(c.env.DATABASE_URL);
-
-  let match: any = null;
+  let match = null;
 
   // 1. Tag match
   if (tag) {
@@ -367,7 +359,9 @@ resumesRouter.get("/", async (c) => {
       r.resume_date,
       r.client_notes,
       r.is_note_shared,
-      r.r2_key,
+      r.drive_file_id,
+      r.drive_web_view_link,
+      r.drive_download_link,
       r.file_size,
       r.content_type,
       r.upload_date,
@@ -400,7 +394,9 @@ resumesRouter.get("/", async (c) => {
     resume_date: r.resume_date,
     client_notes: r.client_notes,
     is_note_shared: r.is_note_shared || false,
-    r2_key: r.r2_key,
+    drive_file_id: r.drive_file_id,
+    drive_web_view_link: r.drive_web_view_link || (r.drive_file_id ? getPreviewUrl(r.drive_file_id) : null),
+    drive_download_link: r.drive_download_link || (r.drive_file_id ? getDownloadUrl(r.drive_file_id) : null),
     file_size: r.file_size,
     content_type: r.content_type || "application/pdf",
     upload_date: r.upload_date,
@@ -416,11 +412,11 @@ resumesRouter.get("/", async (c) => {
   });
 });
 
-// 5. POST /api/resumes/upload (Multipart upload to Cloudflare R2 with compensation rollback)
+// 5. POST /api/resumes/upload (Multipart upload to Google Apps Script with compensation rollback)
 resumesRouter.post("/upload", async (c) => {
   const user = c.get("user");
 
-  // Only employees/recruiters can upload (matching FastAPI policy)
+  // Only employees/recruiters can upload (matching ApplyFlow RBAC policy)
   if (user.role !== "employee" && user.role !== "recruiter") {
     return c.json({ detail: "Forbidden: Only Recruiters can upload resumes." }, 403);
   }
@@ -519,20 +515,19 @@ resumesRouter.post("/upload", async (c) => {
       continue;
     }
 
-    // Step 1: Upload to Cloudflare R2
-    const r2Key = generateResumeObjectKey(clientName, filename);
-    await putResumeFile(
-      c.env.RESUMES_BUCKET,
-      r2Key,
-      fileBuffer,
-      file.type || "application/pdf",
-      filename,
-      {
-        clientId,
-        uploadedBy: user.id,
-        fileHash,
-      }
-    );
+    // Step 1: Upload to Google Apps Script -> Google Drive
+    let uploadRes;
+    try {
+      uploadRes = await uploadResume(fileBuffer, filename, clientName, c.env);
+    } catch (uploadErr) {
+      rejectedCount++;
+      items.push({
+        filename,
+        status: "rejected",
+        message: `Upload failure: ${(uploadErr as Error).message}`,
+      });
+      continue;
+    }
 
     // Step 2: Insert row into Neon with Compensation Pattern
     const resumeId = crypto.randomUUID();
@@ -541,12 +536,14 @@ resumesRouter.post("/upload", async (c) => {
         INSERT INTO resumes (
           id, candidate_name, company, role, resume_id_tag,
           requirement_id, client_id, uploaded_by,
-          r2_key, file_hash, file_size, content_type,
+          drive_file_id, drive_web_view_link, drive_download_link,
+          file_hash, file_size, content_type,
           original_filename, resume_date, upload_date
         ) VALUES (
           ${resumeId}, ${parsed.candidate_name}, ${parsed.company}, ${parsed.role}, ${parsed.resume_id_tag},
           ${requirementId}, ${clientId}, ${user.id},
-          ${r2Key}, ${fileHash}, ${fileBuffer.byteLength}, ${file.type || "application/pdf"},
+          ${uploadRes.fileId}, ${uploadRes.webViewLink}, ${uploadRes.downloadLink},
+          ${fileHash}, ${fileBuffer.byteLength}, ${file.type || "application/pdf"},
           ${filename}, ${resumeDate}, NOW()
         )
       `;
@@ -555,18 +552,20 @@ resumesRouter.post("/upload", async (c) => {
       items.push({
         filename,
         status: "saved",
-        message: "Successfully uploaded to Cloudflare R2 and saved",
+        message: "Successfully uploaded to Google Drive via Apps Script and saved",
         saved_resume_id: resumeId,
         candidate_name: parsed.candidate_name,
         company: parsed.company,
         role: parsed.role,
         resume_id_tag: parsed.resume_id_tag,
-        r2_key: r2Key,
+        drive_file_id: uploadRes.fileId,
+        drive_web_view_link: uploadRes.webViewLink,
+        drive_download_link: uploadRes.downloadLink,
         file_size: fileBuffer.byteLength,
       });
     } catch (err) {
-      // COMPENSATION PATTERN: Delete orphaned R2 object if DB insertion fails
-      await deleteResumeFile(c.env.RESUMES_BUCKET, r2Key);
+      // COMPENSATION PATTERN: Delete orphaned Google Drive file if DB insertion fails
+      await deleteResume(uploadRes.fileId, c.env);
       rejectedCount++;
       items.push({
         filename,
@@ -636,7 +635,9 @@ resumesRouter.get("/:id", async (c) => {
     resume_date: r.resume_date,
     client_notes: r.client_notes,
     is_note_shared: r.is_note_shared || false,
-    r2_key: r.r2_key,
+    drive_file_id: r.drive_file_id,
+    drive_web_view_link: r.drive_web_view_link || (r.drive_file_id ? getPreviewUrl(r.drive_file_id) : null),
+    drive_download_link: r.drive_download_link || (r.drive_file_id ? getDownloadUrl(r.drive_file_id) : null),
     file_size: r.file_size,
     content_type: r.content_type || "application/pdf",
     upload_date: r.upload_date,
@@ -651,7 +652,7 @@ resumesRouter.get("/:id/preview", async (c) => {
   const sql = getDb(c.env.DATABASE_URL);
 
   const rows = await sql`
-    SELECT id, client_id, r2_key, original_filename, content_type
+    SELECT id, client_id, drive_file_id, drive_web_view_link, original_filename
     FROM resumes
     WHERE id = ${resumeId}
     LIMIT 1
@@ -667,23 +668,15 @@ resumesRouter.get("/:id/preview", async (c) => {
     return c.json({ detail: "Forbidden" }, 403);
   }
 
-  // Authorization check passed: Stream securely from private Cloudflare R2 bucket
-  if (!resume.r2_key) {
-    return c.json({ detail: "File not available in R2 storage" }, 404);
+  const fileId = resume.drive_file_id;
+  const webViewLink = resume.drive_web_view_link || (fileId ? getPreviewUrl(fileId) : null);
+
+  if (!webViewLink) {
+    return c.json({ detail: "File not available in Google Drive storage" }, 404);
   }
 
-  const r2Object = await getResumeFile(c.env.RESUMES_BUCKET, resume.r2_key);
-  if (!r2Object) {
-    return c.json({ detail: "Object not found in R2 bucket" }, 404);
-  }
-
-  const headers = new Headers();
-  r2Object.writeHttpMetadata(headers);
-  headers.set("Content-Type", r2Object.httpMetadata?.contentType || "application/pdf");
-  headers.set("Content-Disposition", `inline; filename="${resume.original_filename}"`);
-  headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
-
-  return new Response(r2Object.body, { headers });
+  // Authorization check passed: HTTP 307 redirect to Google Drive web view link
+  return c.redirect(webViewLink, 307);
 });
 
 // 8. GET /api/resumes/:id/download
@@ -693,7 +686,7 @@ resumesRouter.get("/:id/download", async (c) => {
   const sql = getDb(c.env.DATABASE_URL);
 
   const rows = await sql`
-    SELECT id, client_id, r2_key, original_filename, content_type
+    SELECT id, client_id, drive_file_id, drive_download_link, original_filename
     FROM resumes
     WHERE id = ${resumeId}
     LIMIT 1
@@ -709,23 +702,15 @@ resumesRouter.get("/:id/download", async (c) => {
     return c.json({ detail: "Forbidden" }, 403);
   }
 
-  // Authorization check passed: Stream binary download from private Cloudflare R2 bucket
-  if (!resume.r2_key) {
-    return c.json({ detail: "File not available in R2 storage" }, 404);
+  const fileId = resume.drive_file_id;
+  const downloadLink = resume.drive_download_link || (fileId ? getDownloadUrl(fileId) : null);
+
+  if (!downloadLink) {
+    return c.json({ detail: "File not available in Google Drive storage" }, 404);
   }
 
-  const r2Object = await getResumeFile(c.env.RESUMES_BUCKET, resume.r2_key);
-  if (!r2Object) {
-    return c.json({ detail: "Object not found in R2 bucket" }, 404);
-  }
-
-  const headers = new Headers();
-  r2Object.writeHttpMetadata(headers);
-  headers.set("Content-Type", r2Object.httpMetadata?.contentType || "application/pdf");
-  headers.set("Content-Disposition", `attachment; filename="${resume.original_filename}"`);
-  headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
-
-  return new Response(r2Object.body, { headers });
+  // Authorization check passed: HTTP 307 redirect to Google Drive direct download link
+  return c.redirect(downloadLink, 307);
 });
 
 // 9. PUT / PATCH /api/resumes/:id
@@ -804,7 +789,9 @@ const updateHandler = async (c: any) => {
     resume_date: r.resume_date,
     client_notes: r.client_notes,
     is_note_shared: r.is_note_shared || false,
-    r2_key: r.r2_key,
+    drive_file_id: r.drive_file_id,
+    drive_web_view_link: r.drive_web_view_link || (r.drive_file_id ? getPreviewUrl(r.drive_file_id) : null),
+    drive_download_link: r.drive_download_link || (r.drive_file_id ? getDownloadUrl(r.drive_file_id) : null),
     file_size: r.file_size,
     content_type: r.content_type || "application/pdf",
     upload_date: r.upload_date,
@@ -825,7 +812,7 @@ resumesRouter.delete(
     const sql = getDb(c.env.DATABASE_URL);
 
     const rows = await sql`
-      SELECT id, client_id, r2_key FROM resumes WHERE id = ${resumeId} LIMIT 1
+      SELECT id, client_id, drive_file_id FROM resumes WHERE id = ${resumeId} LIMIT 1
     `;
 
     if (rows.length === 0) {
@@ -838,9 +825,9 @@ resumesRouter.delete(
       return c.json({ detail: "Forbidden" }, 403);
     }
 
-    // Delete from Cloudflare R2
-    if (resume.r2_key) {
-      await deleteResumeFile(c.env.RESUMES_BUCKET, resume.r2_key);
+    // Delete from Google Drive via Google Apps Script
+    if (resume.drive_file_id) {
+      await deleteResume(resume.drive_file_id, c.env);
     }
 
     // Delete from database
@@ -856,13 +843,13 @@ resumesRouter.post("/cleanup", requireRoles("super_admin", "admin"), async (c) =
   const sql = getDb(c.env.DATABASE_URL);
 
   const expiredRows = await sql`
-    SELECT id, r2_key FROM resumes
+    SELECT id, drive_file_id FROM resumes
     WHERE upload_date < NOW() - (${retentionDays} || ' days')::interval
   `;
 
   for (const row of expiredRows) {
-    if (row.r2_key) {
-      await deleteResumeFile(c.env.RESUMES_BUCKET, row.r2_key);
+    if (row.drive_file_id) {
+      await deleteResume(row.drive_file_id, c.env);
     }
   }
 

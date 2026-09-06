@@ -119,24 +119,25 @@ export default {
         try {
           const retentionDays = Number(env.RESUME_RETENTION_DAYS || 120);
           const { getDb } = await import("./db");
-          const { deleteResumeFile } = await import("./services/r2");
+          const { deleteResume } = await import("./services/googleAppsScript");
           const sql = getDb(env.DATABASE_URL);
 
           const expired = await sql`
-            SELECT id, r2_key FROM resumes
+            SELECT id, drive_file_id, r2_key FROM resumes
             WHERE upload_date < NOW() - (${retentionDays} || ' days')::interval
           `;
 
           for (const row of expired) {
-            if (row.r2_key) {
-              await deleteResumeFile(env.RESUMES_BUCKET, row.r2_key);
+            const fileId = row.drive_file_id || row.r2_key;
+            if (fileId) {
+              await deleteResume(fileId, env);
             }
           }
 
           if (expired.length > 0) {
             const ids = expired.map((r: any) => r.id);
             await sql`DELETE FROM resumes WHERE id = ANY(${ids})`;
-            console.log(`[Workers Cron] Cleaned ${expired.length} expired resumes from R2 and database.`);
+            console.log(`[Workers Cron] Cleaned ${expired.length} expired resumes from Google Drive and database.`);
           }
         } catch (err) {
           console.error(`[Workers Cron] Failed resume cleanup job:`, err);

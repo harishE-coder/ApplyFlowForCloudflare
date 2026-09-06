@@ -8,8 +8,8 @@ export interface Bindings {
   JWT_ALGORITHM?: string;
   ACCESS_TOKEN_EXPIRE_MINUTES?: string;
   REFRESH_TOKEN_EXPIRE_DAYS?: string;
-  RESUMES_BUCKET: R2Bucket;
-  R2_PUBLIC_URL?: string;
+  GOOGLE_APPS_SCRIPT_URL?: string;
+  GOOGLE_APPS_SCRIPT_SECRET?: string;
   RESUME_RETENTION_DAYS?: string;
   CHAT_ROOMS?: DurableObjectNamespace;
   VAPID_PUBLIC_KEY?: string;

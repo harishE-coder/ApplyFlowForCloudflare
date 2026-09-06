@@ -8,10 +8,6 @@ ENVIRONMENT = "production"
 FRONTEND_URL = "https://applyflow.pages.dev"
 APP_CORS_ORIGINS = "https://applyflow.pages.dev,http://localhost:5173"
 
-# Cloudflare R2 Bucket Binding for Resumes
-[[r2_buckets]]
-binding = "RESUMES_BUCKET"
-bucket_name = "applyflow-resumes"
 
 # Cloudflare Durable Objects for Persistent Multi-Room Chat
 [durable_objects]

@@ -323,16 +323,16 @@
 ---
 
 ### 3.3 `GET /api/resumes/{resume_id}/preview`
-- **Description**: Streams raw PDF binary bytes inline with `Content-Disposition: inline`. Never leaks public URLs.
-- **Auth**: Authenticated (Must have access to the resume's client).
-- **Response (`200 OK`)**: Binary PDF Stream (`application/pdf`).
+- **Description**: Verifies caller authentication and client scope, then returns HTTP 307 redirect to Google Drive web view link (`drive_web_view_link`).
+- **Auth**: Authenticated (Scoped to resume's client).
+- **Response (`307 Temporary Redirect`)**: Redirects to Google Drive web view link.
 
 ---
 
 ### 3.4 `GET /api/resumes/{resume_id}/download`
-- **Description**: Downloads resume as an attachment (`Content-Disposition: attachment`).
-- **Auth**: Authenticated (Scoped).
-- **Response (`200 OK`)**: Binary PDF Stream (`application/pdf`).
+- **Description**: Verifies caller authentication and client scope, then returns HTTP 307 redirect to Google Drive direct download link (`drive_download_link`).
+- **Auth**: Authenticated (Scoped to resume's client).
+- **Response (`307 Temporary Redirect`)**: Redirects to Google Drive download link.
 
 ---
 

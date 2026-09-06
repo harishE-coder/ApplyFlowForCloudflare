@@ -56,7 +56,7 @@ const mockEnv: Bindings = {
   JWT_SECRET_KEY: "super-secret-jwt-key-for-testing-only-1234567890",
   ACCESS_TOKEN_EXPIRE_MINUTES: "60",
   REFRESH_TOKEN_EXPIRE_DAYS: "7",
-  RESUMES_BUCKET: {} as any,
+  GOOGLE_APPS_SCRIPT_URL: "https://script.google.com/macros/s/test/exec",
   FRONTEND_URL: "http://localhost:5173",
   APP_CORS_ORIGINS: "http://localhost:5173",
 };

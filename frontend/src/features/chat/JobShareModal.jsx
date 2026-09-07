@@ -81,7 +81,7 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
           <input
             type="text"
-            placeholder="Search job title, company, or location..."
+            placeholder="Search job title, hiring organization, or location..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] text-small font-medium text-[#081226] focus:bg-white focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 transition-all outline-hidden"
@@ -100,7 +100,7 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
               <Briefcase className="w-10 h-10 mx-auto text-[#CBD5E1] mb-2" />
               <p className="text-small font-semibold text-[#081226]">No Job Openings Found</p>
               <p className="text-caption mt-0.5">
-                {search ? 'Try adjusting your search query' : 'No active requirements found.'}
+                {search ? 'Try adjusting your search query' : 'No active job openings found.'}
               </p>
             </div>
           ) : (
@@ -188,7 +188,7 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
           </label>
           <input
             type="text"
-            placeholder="e.g., Urgent requirement — Need 3 React developers this week..."
+            placeholder="e.g., Urgent opening — Need 3 React developers this week..."
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             className="w-full px-3.5 py-2 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] text-small font-medium text-[#081226] focus:bg-white focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 transition-all outline-hidden"

@@ -126,7 +126,7 @@ export function RequirementsPage() {
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!company.trim() || !jobTitle.trim()) {
-      toastError('Validation Error', 'Hiring Company and Job Title are required.');
+      toastError('Validation Error', 'Hiring Organization and Job Title are required.');
       return;
     }
 
@@ -329,7 +329,7 @@ export function RequirementsPage() {
           )}
         >
           <Briefcase className="w-4 h-4" />
-          <span>Active Jobs</span>
+          <span>Active Job Openings</span>
           {activeTab === 'active' && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-[#2563EB] text-white">
               {requirements.length}
@@ -348,7 +348,7 @@ export function RequirementsPage() {
           )}
         >
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <span>Completed History</span>
+          <span>Fulfilled Openings</span>
           {activeTab === 'done' && (
             <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-600 text-white">
               {requirements.length}
@@ -367,7 +367,7 @@ export function RequirementsPage() {
           )}
         >
           <Archive className="w-4 h-4" />
-          <span>Archived Jobs</span>
+          <span>Archived Openings</span>
         </button>
       </div>
 
@@ -380,7 +380,7 @@ export function RequirementsPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by company, role, or title..."
+              placeholder="Search by hiring organization, role, or title..."
               className="w-full pl-10 pr-4 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
             />
           </div>
@@ -433,15 +433,15 @@ export function RequirementsPage() {
               {activeTab === 'active'
                 ? 'No Active Job Openings'
                 : activeTab === 'done'
-                ? 'No Completed Jobs'
-                : 'No Archived Jobs'}
+                ? 'No Fulfilled Openings'
+                : 'No Archived Openings'}
             </h3>
             <p className="text-small text-[#64748B] max-w-md mx-auto">
               {activeTab === 'active'
                 ? canCreate
                   ? 'Create your first Job Opening to assign recruitment tasks to team members.'
                   : 'All assigned recruitment tasks are currently completed.'
-                : 'Jobs marked as Done will appear in this history list.'}
+                : 'Openings marked as Fulfilled will appear in this history list.'}
             </p>
             {activeTab === 'active' && canCreate && (
               <Button variant="primary" size="md" onClick={handleOpenCreate} className="mt-2">
@@ -455,13 +455,13 @@ export function RequirementsPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-caption font-bold uppercase tracking-wider text-[#64748B]">
-                  <th className="py-4 px-5">Hiring Company</th>
+                  <th className="py-4 px-5">Hiring Organization</th>
                   <th className="py-4 px-5">Job Title</th>
                   <th className="py-4 px-5">Job Link</th>
                   <th className="py-4 px-5">Service Client</th>
                   <th className="py-4 px-5">Priority</th>
                   {activeTab === 'done' ? (
-                    <th className="py-4 px-5">Completed By</th>
+                    <th className="py-4 px-5">Fulfilled By</th>
                   ) : (
                     <th className="py-4 px-5">Status</th>
                   )}
@@ -475,7 +475,7 @@ export function RequirementsPage() {
                   if (canEdit) {
                     menuItems.push({
                       icon: Edit2,
-                      label: 'Edit Opening',
+                      label: 'Edit Job Opening',
                       onClick: () => handleOpenEdit(req),
                     });
                   }
@@ -484,14 +484,14 @@ export function RequirementsPage() {
                     if (isAdmin || isSubAdmin) {
                       menuItems.push({
                         icon: Archive,
-                        label: 'Archive Opening',
+                        label: 'Archive Job Opening',
                         onClick: () => handleArchive(req),
                       });
                     }
                   } else if (activeTab === 'done' || activeTab === 'archived') {
                     menuItems.push({
                       icon: RotateCcw,
-                      label: 'Reopen Job',
+                      label: 'Reopen Job Opening',
                       onClick: () => handleReopen(req),
                     });
                   }
@@ -500,7 +500,7 @@ export function RequirementsPage() {
                     menuItems.push({ divider: true });
                     menuItems.push({
                       icon: Trash2,
-                      label: 'Delete Opening',
+                      label: 'Delete Job Opening',
                       danger: true,
                       onClick: () => setDeleteConfirmReq(req),
                     });
@@ -599,7 +599,7 @@ export function RequirementsPage() {
                               className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-caption shadow-sm flex items-center gap-1.5 transition-all transform active:scale-95 cursor-pointer"
                             >
                               <Check className="w-3.5 h-3.5" />
-                              <span>Mark Done</span>
+                              <span>Mark as Fulfilled</span>
                             </button>
                           )}
 
@@ -660,7 +660,7 @@ export function RequirementsPage() {
           )}
 
           <Input
-            label="Hiring Company"
+            label="Hiring Organization"
             required
             placeholder="e.g. TCS, Infosys, Amazon, Google"
             value={company}
@@ -699,7 +699,7 @@ export function RequirementsPage() {
 
           <div>
             <label className="text-small font-semibold text-[#081226] block mb-1.5">
-              Recruiter Guidance Notes (Optional)
+              Job Opening Description & Notes (Optional)
             </label>
             <textarea
               rows={3}
@@ -726,11 +726,11 @@ export function RequirementsPage() {
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
         title="Edit Job Opening"
-        subtitle="Update company, role title, job URL, or guidance notes."
+        subtitle="Update hiring organization, job title, URL, or guidance notes."
       >
         <form onSubmit={handleUpdate} className="space-y-4">
           <Input
-            label="Hiring Company"
+            label="Hiring Organization"
             required
             value={editCompany}
             onChange={(e) => setEditCompany(e.target.value)}
@@ -767,7 +767,7 @@ export function RequirementsPage() {
 
           <div>
             <label className="text-small font-semibold text-[#081226] block mb-1.5">
-              Recruiter Guidance Notes (Optional)
+              Job Opening Description & Notes (Optional)
             </label>
             <textarea
               rows={3}
@@ -792,18 +792,18 @@ export function RequirementsPage() {
       <Modal
         isOpen={!!doneConfirmReq}
         onClose={() => setDoneConfirmReq(null)}
-        title="Mark Job Opening as Completed"
-        subtitle="Move this recruitment task to Completed History."
+        title="Mark Job Opening as Fulfilled"
+        subtitle="Move this opening to Fulfilled Openings."
       >
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-small text-emerald-900 flex items-start gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-bold">
-                Mark {doneConfirmReq?.company} – {doneConfirmReq?.job_title || doneConfirmReq?.role} as completed?
+                Mark {doneConfirmReq?.company} – {doneConfirmReq?.job_title || doneConfirmReq?.role} as fulfilled?
               </p>
               <p className="text-caption text-emerald-700 mt-1 leading-relaxed">
-                This job will automatically leave the Active task board and move to Completed History. Admins and Client contacts will receive instant completion notifications.
+                This opening will automatically leave the Active board and move to Fulfilled Openings. Admins and Service Client contacts will receive instant completion notifications.
               </p>
             </div>
           </div>
@@ -823,7 +823,7 @@ export function RequirementsPage() {
               ) : (
                 <>
                   <Check className="w-4 h-4" />
-                  <span>Confirm & Mark Done</span>
+                  <span>Confirm & Mark Fulfilled</span>
                 </>
               )}
             </button>

@@ -438,7 +438,7 @@ export function AdminDashboard() {
               onChange={(e) => handleClientChange(e.target.value)}
               className="w-full h-[44px] px-3.5 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
             >
-              <option value="">All Assigned Clients ({clients.length})</option>
+              <option value="">All Service Clients ({clients.length})</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.company_name}
@@ -533,9 +533,9 @@ export function AdminDashboard() {
         isAdmin ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-6" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
       )}>
         <KPICard
-          title="Daily Target"
+          title="Daily Recruiter Target"
           value={totalDailyTarget}
-          subtitle={selectedClientId ? `${currentClient?.company_name || 'Client'} Goal` : 'Combined Goal'}
+          subtitle={selectedClientId ? `${currentClient?.company_name || 'Service Client'} Target` : 'Combined Target'}
           icon={Target}
           variant="orange"
         />
@@ -590,9 +590,9 @@ export function AdminDashboard() {
       {/* 2.5 JOB OPENINGS TASK BOARD CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <KPICard
-          title="Active Jobs"
+          title="Active Job Openings"
           value={overview?.active_jobs ?? 0}
-          subtitle="Open recruitment tasks"
+          subtitle="Open positions"
           icon={Briefcase}
           variant="blue"
         />
@@ -604,14 +604,14 @@ export function AdminDashboard() {
           variant="success"
         />
         <KPICard
-          title="High Priority Jobs"
+          title="High Priority Openings"
           value={overview?.high_priority_jobs ?? 0}
-          subtitle="Urgent hiring tasks"
+          subtitle="Urgent job openings"
           icon={AlertCircle}
           variant="orange"
         />
         <KPICard
-          title="Jobs Without URL"
+          title="Openings Without URL"
           value={overview?.jobs_without_url ?? 0}
           subtitle="No direct posting link"
           icon={Layers}
@@ -662,7 +662,7 @@ export function AdminDashboard() {
         <div className="sm:hidden space-y-3">
           {recruiterRows.length === 0 ? (
             <div className="py-8 text-center text-[#64748B] text-small">
-              No recruiters match the selected client filter.
+              No recruiters match the selected service client filter.
             </div>
           ) : (
             recruiterRows.map((r) => {
@@ -732,7 +732,7 @@ export function AdminDashboard() {
             <thead className="sticky top-0 z-10 bg-[#F8FAFC]/95 backdrop-blur-xs">
               <tr className="border-b border-[#E2E8F0] text-caption font-bold text-[#64748B] uppercase">
                 <th className="px-4 py-3">Recruiter</th>
-                <th className="px-4 py-3 text-center">Daily Target</th>
+                <th className="px-4 py-3 text-center">Daily Recruiter Target</th>
                 <th className="px-4 py-3 text-center">Submitted</th>
                 <th className="px-4 py-3 text-center">Remaining</th>
                 <th className="px-4 py-3">Completion %</th>
@@ -742,7 +742,7 @@ export function AdminDashboard() {
               {recruiterRows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-[#64748B]">
-                    No recruiters match the selected client filter.
+                    No recruiters match the selected service client filter.
                   </td>
                 </tr>
               ) : (
@@ -809,7 +809,7 @@ export function AdminDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <ChartSkeleton className="lg:col-span-6 h-64" title="1. Daily Target vs Applications" />
             <ChartSkeleton className="lg:col-span-6 h-64" title="2. Target Completion Trend" />
-            <ChartSkeleton className="lg:col-span-6 h-64" title="3. Client Performance Comparison" />
+            <ChartSkeleton className="lg:col-span-6 h-64" title="3. Service Client Performance" />
             <ChartSkeleton className="lg:col-span-6 h-64" title="4. Application Pipeline Distribution" />
             <ChartSkeleton className="lg:col-span-12 h-64" title="5. Daily Application Events" />
           </div>

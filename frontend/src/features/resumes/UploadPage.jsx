@@ -79,7 +79,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
         />
       </td>
 
-      {/* 3. Target Company (Editable) */}
+      {/* 3. Hiring Organization (Editable) */}
       <td className="px-4 py-3 w-32">
         <input
           type="text"
@@ -101,7 +101,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
         />
       </td>
 
-      {/* 5. Resume Identifier (Editable) */}
+      {/* 5. Candidate Identifier (Editable) */}
       <td className="px-4 py-3 w-32">
         <input
           type="text"
@@ -117,7 +117,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
         {row.status === 'valid' && (
           <div className="flex flex-col gap-0.5">
             <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0] inline-flex items-center gap-1 w-fit">
-              ✅ ServiceClient Verified
+              ✅ Service Client Verified
             </span>
           </div>
         )}
@@ -131,19 +131,19 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
         )}
         {row.status === 'needs_review' && (
           <div className="flex flex-col gap-0.5">
-            {row.error === 'ServiceClient Mismatch' ? (
+            {row.error === 'ServiceClient Mismatch' || row.error === 'Service Client Mismatch' ? (
               <span
                 className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA] inline-flex items-center gap-1 w-fit"
                 title="The first segment in the filename does not match the selected Service Client."
               >
-                ❌ ServiceClient Mismatch
+                ❌ Service Client Mismatch
               </span>
             ) : (
               <span
                 className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A] inline-flex items-center gap-1 w-fit"
-                title="Cannot detect ServiceClient from filename. Correct inline or select client."
+                title="Cannot detect Service Client from filename. Correct inline or select client."
               >
-                ⚠ Cannot detect ServiceClient from filename
+                ⚠ Cannot detect Service Client from filename
               </span>
             )}
           </div>
@@ -647,7 +647,7 @@ export function UploadPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-h1 font-extrabold text-[#081226] tracking-tight">
-              Upload Resumes
+              Upload Candidate Resumes
             </h1>
             <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#FF8A00] border border-[#FFEDD5]">
               Recruiter Ingestion Only
@@ -663,7 +663,7 @@ export function UploadPage() {
           size="md"
           onClick={() => navigate('/candidates')}
         >
-          Candidate Workspace →
+          Candidate Bank →
         </Button>
       </div>
 
@@ -763,7 +763,7 @@ export function UploadPage() {
           </h4>
 
           <p className="text-small text-[#081226] font-semibold max-w-lg mt-2 mb-2">
-            Use the format <code className="font-mono text-caption text-[#0D6EFD] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">ServiceClient_Company_RoleOrRoleID_ResumeIdentifier.pdf</code>
+            Use the format <code className="font-mono text-caption text-[#0D6EFD] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">ServiceClient_HiringOrg_RoleOrRoleID_CandidateIdentifier.pdf</code>
           </p>
 
           {/* Direct Standard Examples */}
@@ -860,9 +860,9 @@ export function UploadPage() {
                 <tr>
                   <th className="px-4 py-3">File Name</th>
                   <th className="px-4 py-3">Service Client</th>
-                  <th className="px-4 py-3">Target Company</th>
+                  <th className="px-4 py-3">Hiring Organization</th>
                   <th className="px-4 py-3">Role / Role ID</th>
-                  <th className="px-4 py-3">Resume Identifier</th>
+                  <th className="px-4 py-3">Candidate Identifier</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Action</th>
                 </tr>
@@ -999,7 +999,7 @@ export function UploadPage() {
                           {upItem.candidate_name || upItem.file_name || 'Candidate Resume'}
                         </p>
                         <p className="text-[11px] text-[#64748B] truncate">
-                          {upItem.role || 'Role'} • {upItem.company || 'Company'}
+                          {upItem.role || 'Role'} • {upItem.company || 'Hiring Organization'}
                         </p>
                       </div>
                     </div>
@@ -1009,7 +1009,7 @@ export function UploadPage() {
                         type="button"
                         onClick={() => openResumePreview(upItem)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-bold border border-[#BFDBFE] transition-colors cursor-pointer"
-                        title="Preview on Google Drive"
+                        title="Preview Resume"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         <span>Preview</span>
@@ -1019,7 +1019,7 @@ export function UploadPage() {
                         type="button"
                         onClick={() => openResumeDownload(upItem)}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#081226] text-caption font-bold border border-[#CBD5E1] transition-colors cursor-pointer"
-                        title="Direct Download"
+                        title="Download Candidate Resume"
                       >
                         <Download className="w-3.5 h-3.5" />
                       </button>
@@ -1027,8 +1027,8 @@ export function UploadPage() {
                       <button
                         type="button"
                         onClick={() => copyResumeShareLink(upItem, success)}
-                        className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors cursor-pointer"
-                        title="Copy Share Link"
+                        className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
+                        title="Copy Resume Share Link"
                       >
                         <Share2 className="w-3.5 h-3.5" />
                       </button>
@@ -1053,7 +1053,7 @@ export function UploadPage() {
               icon={ArrowRight}
               onClick={() => navigate('/candidates')}
             >
-              View Candidates Workspace
+              View Candidate Bank
             </Button>
           </div>
         </motion.div>

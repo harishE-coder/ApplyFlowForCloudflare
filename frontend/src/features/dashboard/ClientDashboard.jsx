@@ -160,7 +160,7 @@ export function ClientDashboard() {
   };
 
   if (loading && !data) {
-    return <BrandedLoader size="lg" label="Loading Client Talent Dashboard..." />;
+    return <BrandedLoader size="lg" label="Loading Service Client Dashboard..." />;
   }
 
   const clientName = data?.company_name || user?.name || 'ABC Staffing';
@@ -181,7 +181,7 @@ export function ClientDashboard() {
               </span>
             </div>
             <p className="text-small text-[#64748B] mt-1">
-              Real-time candidate submissions, global date filtering, and interview progress for your organization.
+              Monitor candidate activity and hiring progress in real time.
             </p>
           </div>
 
@@ -220,7 +220,7 @@ export function ClientDashboard() {
         <KPICard
           title="Applied"
           value={data?.applied_count ?? 0}
-          subtitle="All resumes uploaded"
+          subtitle="All candidates submitted"
           icon={FileText}
           variant="blue"
         />
@@ -257,21 +257,21 @@ export function ClientDashboard() {
         <KPICard
           title="Active Job Openings"
           value={data?.active_jobs ?? 0}
-          subtitle="Open candidate requirements"
+          subtitle="Open job openings"
           icon={Briefcase}
           variant="blue"
         />
         <KPICard
-          title="Completed Job Openings"
+          title="Fulfilled Job Openings"
           value={data?.completed_jobs ?? 0}
-          subtitle="Fulfilled requirements"
+          subtitle="Fulfilled job openings"
           icon={CheckCircle2}
           variant="success"
         />
         <KPICard
           title="Job Completion Rate"
           value={`${data?.completion_rate ?? 0}%`}
-          subtitle="Requisitions completed"
+          subtitle="Job openings completed"
           icon={TrendingUp}
           variant={data?.completion_rate >= 80 ? 'success' : 'orange'}
         />
@@ -296,7 +296,7 @@ export function ClientDashboard() {
           <div>
             <h3 className="text-h3 font-bold text-[#081226]">Application Timeline</h3>
             <p className="text-caption text-[#64748B] mt-0.5">
-              Live candidate progression stages across hiring companies.
+              Live candidate progression stages across hiring organizations.
             </p>
           </div>
 
@@ -313,14 +313,14 @@ export function ClientDashboard() {
               />
             </div>
 
-            {/* Hiring Company Filter (Renamed from Target Company) */}
+            {/* Hiring Organization Filter */}
             <div className="w-full sm:w-auto">
               <select
                 value={selectedHiringCompany}
                 onChange={(e) => setSelectedHiringCompany(e.target.value)}
                 className="w-full sm:w-auto h-[40px] px-3.5 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
               >
-                <option value="all">All Hiring Companies</option>
+                <option value="all">All Hiring Organizations</option>
                 {(data?.hiring_companies || ['TCS', 'Infosys', 'Amazon', 'Deloitte', 'Google']).map((hc) => (
                   <option key={hc} value={hc}>
                     {hc}
@@ -337,7 +337,7 @@ export function ClientDashboard() {
             <div className="p-12 text-center bg-white rounded-3xl border border-[#E2E8F0] space-y-3">
               <Users className="w-10 h-10 text-[#2563EB] mx-auto" />
               <h4 className="text-h3 font-bold text-[#081226]">No candidates match this filter</h4>
-              <p className="text-small text-[#64748B]">Try selecting "All Hiring Companies" or adjusting your search.</p>
+              <p className="text-small text-[#64748B]">Try selecting "All Hiring Organizations" or adjusting your search.</p>
             </div>
           ) : (
             filteredTimeline.map((item) => {
@@ -382,7 +382,7 @@ export function ClientDashboard() {
                           <button
                             type="button"
                             onClick={() => openResumePreview(item)}
-                            title="Preview Candidate Resume in Google Drive"
+                            title="Preview Resume"
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-bold border border-[#BFDBFE] transition-colors shadow-xs cursor-pointer"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -392,7 +392,7 @@ export function ClientDashboard() {
                           <button
                             type="button"
                             onClick={() => openResumeDownload(item)}
-                            title="Download Original Resume File"
+                            title="Download Candidate Resume"
                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#081226] text-caption font-bold border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
                           >
                             <Download className="w-3.5 h-3.5" />
@@ -401,7 +401,7 @@ export function ClientDashboard() {
                           <button
                             type="button"
                             onClick={() => copyResumeShareLink(item, success)}
-                            title="Copy Public Google Drive Share Link"
+                            title="Copy Resume Share Link"
                             className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
                           >
                             <Share2 className="w-3.5 h-3.5" />
@@ -464,7 +464,6 @@ export function ClientDashboard() {
                         </div>
 
                         {/* Resume document bar in expanded view */}
-                        {/* Resume document bar in expanded view */}
                         {item.drive_file_id || item.drive_view_url || item.resume_id ? (
                           <div className="mt-5 pt-4 border-t border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#E2E8F0]">
                             <div className="flex items-center gap-2.5 min-w-0">
@@ -489,7 +488,7 @@ export function ClientDashboard() {
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-bold transition-colors shadow-xs cursor-pointer"
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
-                                View Full PDF
+                                Preview Resume
                               </button>
                               <button
                                 type="button"
@@ -503,7 +502,7 @@ export function ClientDashboard() {
                                 type="button"
                                 onClick={() => copyResumeShareLink(item, success)}
                                 className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
-                                title="Copy Public Google Drive Share Link"
+                                title="Copy Resume Share Link"
                               >
                                 <Share2 className="w-3.5 h-3.5" />
                               </button>

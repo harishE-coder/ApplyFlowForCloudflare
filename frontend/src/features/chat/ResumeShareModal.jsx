@@ -62,8 +62,8 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Share Candidate Bank Resume"
-      description={`Select a verified resume from Candidate Bank${clientName ? ` for ${clientName}` : ''} to share directly in chat.`}
+      title="Share Candidate Resume"
+      description={`Select a candidate resume from the Candidate Bank${clientName ? ` for ${clientName}` : ''} to share directly in chat.`}
       maxWidth="max-w-xl"
     >
       <div className="space-y-4 pt-2">
@@ -72,7 +72,7 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
           <input
             type="text"
-            placeholder="Search candidate, company, or role..."
+            placeholder="Search candidate, hiring organization, or role..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] text-small font-medium text-[#081226] focus:bg-white focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 transition-all outline-hidden"
@@ -84,7 +84,7 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
           {loading ? (
             <div className="py-12 flex flex-col items-center justify-center gap-2 text-[#64748B]">
               <Loader2 className="w-6 h-6 animate-spin text-[#2563EB]" />
-              <p className="text-caption font-medium">Loading candidate bank...</p>
+              <p className="text-caption font-medium">Loading Candidate Bank...</p>
             </div>
           ) : filteredResumes.length === 0 ? (
             <div className="py-12 text-center text-[#64748B]">

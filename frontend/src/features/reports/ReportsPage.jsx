@@ -134,23 +134,23 @@ export function ReportsPage() {
       {/* KPI Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          title="Active Clients"
+          title="Active Service Clients"
           value={clients.filter((c) => c.status === 'active').length}
-          subtitle="Customer accounts"
+          subtitle="Service Client accounts"
           icon={Building2}
           color="blue"
         />
         <KPICard
-          title="Total Resumes"
+          title="Total Candidate Resumes"
           value={clients.reduce((sum, c) => sum + (c.total_resumes || 0), 0)}
-          subtitle="Processed candidates"
+          subtitle="In Candidate Bank"
           icon={UploadCloud}
           color="navy"
         />
         <KPICard
-          title="Submissions"
+          title="Applications Submitted"
           value={clients.reduce((sum, c) => sum + (c.total_applications || 0), 0)}
-          subtitle="Recruitment pipeline"
+          subtitle="Applications pipeline"
           icon={Briefcase}
           color="orange"
         />
@@ -179,7 +179,7 @@ export function ReportsPage() {
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="block text-caption font-bold text-[#081226]">Filter by Client</label>
+              <label className="block text-caption font-bold text-[#081226]">Filter by Service Client</label>
               <select
                 value={selectedClient}
                 onChange={(e) => setSelectedClient(e.target.value)}
@@ -221,7 +221,7 @@ export function ReportsPage() {
 
           <div className="space-y-4">
             <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#F1F5F9] text-caption text-[#64748B]">
-              Includes executive summary, company distribution chart, and high-priority candidate pipeline status.
+              Includes executive summary, hiring organization distribution chart, and high-priority candidate pipeline status.
             </div>
 
             <Button
@@ -258,8 +258,8 @@ export function ReportsPage() {
             className="justify-start text-left h-auto py-3"
           >
             <div>
-              <p className="font-bold text-[#081226]">Active Clients</p>
-              <p className="text-caption text-[#64748B]">Active customer accounts</p>
+              <p className="font-bold text-[#081226]">Active Service Clients</p>
+              <p className="text-caption text-[#64748B]">Active Service Client accounts</p>
             </div>
           </Button>
 
@@ -273,8 +273,8 @@ export function ReportsPage() {
             className="justify-start text-left h-auto py-3"
           >
             <div>
-              <p className="font-bold text-[#081226]">Archived Clients</p>
-              <p className="text-caption text-[#64748B]">Past service history</p>
+              <p className="font-bold text-[#081226]">Archived Service Clients</p>
+              <p className="text-caption text-[#64748B]">Past Service Client history</p>
             </div>
           </Button>
 
@@ -303,8 +303,8 @@ export function ReportsPage() {
             className="justify-start text-left h-auto py-3"
           >
             <div>
-              <p className="font-bold text-[#081226]">Completed Targets</p>
-              <p className="text-caption text-[#64748B]">Ended daily targets</p>
+              <p className="font-bold text-[#081226]">Fulfilled Targets</p>
+              <p className="text-caption text-[#64748B]">Ended recruiter targets</p>
             </div>
           </Button>
         </div>

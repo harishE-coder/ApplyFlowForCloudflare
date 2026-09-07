@@ -37,7 +37,7 @@ export const AdminCharts = React.memo(function AdminCharts({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-h3 font-bold text-[#081226]">
-              1. Daily Target vs Applications
+              1. Daily Recruiter Target vs Applications
             </h3>
             <p className="text-caption text-[#64748B] mt-0.5">
               Recruiter goal vs actual submissions for {formatDate(selectedDate)}.
@@ -46,7 +46,7 @@ export const AdminCharts = React.memo(function AdminCharts({
 
           <div className="flex items-center gap-3 text-caption font-semibold">
             <span className="flex items-center gap-1 text-[#64748B]">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#CBD5E1]" /> Target
+              <span className="w-2.5 h-2.5 rounded-full bg-[#CBD5E1]" /> Recruiter Target
             </span>
             <span className="flex items-center gap-1 text-[#0D6EFD]">
               <span className="w-2.5 h-2.5 rounded-full bg-[#0D6EFD]" /> Submitted
@@ -68,7 +68,7 @@ export const AdminCharts = React.memo(function AdminCharts({
                   color: '#FFF',
                 }}
               />
-              <Bar dataKey="target" name="Daily Target" fill="#CBD5E1" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="target" name="Daily Recruiter Target" fill="#CBD5E1" radius={[4, 4, 0, 0]} />
               <Bar dataKey="submitted" name="Applications Submitted" fill="#0D6EFD" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -126,18 +126,18 @@ export const AdminCharts = React.memo(function AdminCharts({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-h3 font-bold text-[#081226]">
-                3. Client Performance Comparison
+                3. Service Client Performance
               </h3>
               <p className="text-caption text-[#64748B] mt-0.5">
                 Completion percentage by Service Client account.
               </p>
             </div>
-            <span className="text-caption font-bold text-[#0D6EFD]">All Clients View</span>
+            <span className="text-caption font-bold text-[#0D6EFD]">All Service Clients View</span>
           </div>
 
           <div className="h-64 w-full flex items-center justify-center">
             {clientComparisonData.length === 0 ? (
-              <p className="text-caption text-[#94A3B8]">No active client telemetry to display</p>
+              <p className="text-caption text-[#94A3B8]">No active service client telemetry to display</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart layout="vertical" data={clientComparisonData}>
@@ -167,7 +167,7 @@ export const AdminCharts = React.memo(function AdminCharts({
               <Avatar name={currentClient?.company_name || 'Client'} size="md" variant="blue" />
               <div>
                 <h3 className="text-h3 font-bold text-[#081226]">{currentClient?.company_name}</h3>
-                <p className="text-caption text-[#64748B]">Client-Specific Target Telemetry</p>
+                <p className="text-caption text-[#64748B]">Service Client Target Telemetry</p>
               </div>
             </div>
             <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#0D6EFD]">
@@ -177,7 +177,7 @@ export const AdminCharts = React.memo(function AdminCharts({
 
           <div className="grid grid-cols-2 gap-3 py-2">
             <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-center">
-              <p className="text-caption font-bold uppercase text-[#64748B]">Target Quota</p>
+              <p className="text-caption font-bold uppercase text-[#64748B]">Recruiter Target Quota</p>
               <p className="text-h2 font-extrabold text-[#081226] mt-0.5">{totalDailyTarget}</p>
             </div>
             <div className="p-3.5 rounded-xl bg-[#EFF6FF]/60 border border-[#BFDBFE] text-center">
@@ -256,7 +256,7 @@ export const AdminCharts = React.memo(function AdminCharts({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-[#2563EB] px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE]">
-                AI Email Intake
+                AI Intake
               </span>
               <h3 className="text-h3 font-bold text-[#081226]">
                 5. Daily Application Events (New Applications vs Follow-up Updates)

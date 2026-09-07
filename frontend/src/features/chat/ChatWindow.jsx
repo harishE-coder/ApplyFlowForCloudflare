@@ -310,7 +310,7 @@ export function ChatWindow({
         <div className="w-16 h-16 rounded-2xl bg-[#E2E8F0] flex items-center justify-center text-[#94A3B8] mb-3 shadow-inner">
           <Building2 className="w-8 h-8" />
         </div>
-        <h3 className="text-h3 font-bold text-[#081226]">Select a Client Chat</h3>
+        <h3 className="text-h3 font-bold text-[#081226]">Select a Service Client Chat</h3>
         <p className="text-small text-[#64748B] max-w-sm text-center mt-1">
           Pick a Service Client conversation from the left to review messages, coordinate targets,
           and share candidate profiles.
@@ -803,7 +803,7 @@ export function ChatWindow({
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 text-caption font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
                           >
-                            View Job <ExternalLink className="w-3.5 h-3.5" />
+                            View Job Opening <ExternalLink className="w-3.5 h-3.5" />
                           </a>
                         </div>
                       </div>

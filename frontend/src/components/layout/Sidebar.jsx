@@ -47,7 +47,7 @@ export function Sidebar({
       ],
     },
     {
-      label: 'Recruitment',
+      label: 'Talent',
       items: [
         {
           label: 'Upload Resumes',
@@ -57,7 +57,7 @@ export function Sidebar({
           badge: 'Batch',
         },
         {
-          label: 'Candidates',
+          label: 'Candidate Bank',
           path: '/candidates',
           icon: Users,
           roles: ['admin', 'sub_admin', 'employee', 'client'],
@@ -71,7 +71,7 @@ export function Sidebar({
           badgeColor: 'blue',
         },
         {
-          label: 'Chats',
+          label: 'Workspace Chat',
           path: '/chats',
           icon: MessageSquare,
           roles: ['admin', 'sub_admin', 'employee', 'client'],
@@ -108,7 +108,7 @@ export function Sidebar({
           roles: ['admin', 'sub_admin'],
         },
         {
-          label: 'Targets & Goals',
+          label: 'Recruiter Targets',
           path: '/targets',
           icon: Target,
           roles: ['admin', 'sub_admin', 'employee'],
@@ -119,7 +119,7 @@ export function Sidebar({
       label: 'Insights',
       items: [
         {
-          label: 'Reports & Analytics',
+          label: 'Reports',
           path: '/reports',
           icon: BarChart3,
           roles: ['admin', 'sub_admin', 'employee', 'client'],
@@ -244,7 +244,7 @@ export function Sidebar({
               <Sparkles className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-[12px] font-bold text-white leading-tight">Daily Target</p>
+              <p className="text-[12px] font-bold text-white leading-tight">Daily Recruiter Target</p>
               <p className="text-[11px] text-[#94A3B8]">Active Session</p>
             </div>
           </div>

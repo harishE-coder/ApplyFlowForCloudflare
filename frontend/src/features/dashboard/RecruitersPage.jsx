@@ -285,8 +285,8 @@ export function RecruitersPage() {
       });
 
       success(
-        'Target Configured',
-        `Daily application target of ${targetValue} set for ${selectedRecruiterForTarget.name}.`
+        'Target Saved',
+        `Daily recruiter target of ${targetValue} set for ${selectedRecruiterForTarget.name}.`
       );
       setIsTargetModalOpen(false);
       fetchData();
@@ -409,7 +409,7 @@ export function RecruitersPage() {
       ),
     },
     {
-      title: 'Daily Target',
+      title: 'Daily Recruiter Target',
       key: 'daily_target',
       render: (val, row) => {
         const isInactive = !row.is_active || row.status === 'inactive' || row.status === 'archived';
@@ -435,7 +435,7 @@ export function RecruitersPage() {
       },
     },
     {
-      title: "Today's Submissions",
+      title: "Today's Applications Submitted",
       key: 'total_applications',
       render: (val, row) => (
         <div className="flex items-center gap-2">
@@ -514,7 +514,7 @@ export function RecruitersPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-h2 font-extrabold text-[#081226] tracking-tight">
-              Recruiters Team Management
+              Recruiters Management
             </h1>
             <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#0D6EFD] border border-[#BFDBFE]">
               {employees.length} Recruiters
@@ -554,8 +554,8 @@ export function RecruitersPage() {
         {[
           { key: 'active', label: 'Active Recruiters' },
           { key: 'inactive', label: 'Inactive' },
-          { key: 'archived', label: 'Archived Team' },
-          { key: 'all', label: 'All Team Members' },
+          { key: 'archived', label: 'Archived Recruiters' },
+          { key: 'all', label: 'All Recruiters' },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -674,7 +674,7 @@ export function RecruitersPage() {
           </div>
 
           <Input
-            label="Initial Daily Target Quota"
+            label="Daily Recruiter Target"
             type="number"
             min="1"
             max="200"
@@ -827,7 +827,7 @@ export function RecruitersPage() {
           </div>
 
           <Input
-            label="Daily Application Target"
+            label="Daily Recruiter Target"
             type="number"
             min="1"
             max="300"

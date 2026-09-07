@@ -24,14 +24,14 @@ export const ClientCharts = React.memo(function ClientCharts({
         <div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[#2563EB] px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE]">
-              Recruitment Funnel
+              Talent Pipeline
             </span>
             <h3 className="text-h3 font-bold text-[#081226]">
               Application Progress
             </h3>
           </div>
           <p className="text-caption text-[#64748B] mt-0.5">
-            Candidate volume at each stage for your service account ({clientName}).
+            Candidate progression across your hiring pipeline ({clientName}).
           </p>
         </div>
 

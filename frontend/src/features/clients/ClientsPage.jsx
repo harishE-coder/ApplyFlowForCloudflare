@@ -120,7 +120,7 @@ const ClientCard = React.memo(function ClientCard({
         </div>
 
         <div className="p-3 rounded-xl bg-[#FFF7ED]/60 border border-[#FFEDD5] text-center">
-          <p className="text-caption font-bold uppercase text-[#F97316]">Submissions</p>
+          <p className="text-caption font-bold uppercase text-[#F97316]">Applications Submitted</p>
           <p className="text-h2 font-extrabold text-[#081226] mt-0.5">{totalApps}</p>
         </div>
       </div>
@@ -487,10 +487,10 @@ export function ClientsPage() {
       {/* Lifecycle Status Filter Tabs */}
       <div className="flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
         {[
-          { key: 'active', label: 'Active Clients' },
+          { key: 'active', label: 'Active Service Clients' },
           { key: 'inactive', label: 'Inactive' },
-          { key: 'archived', label: 'Archived Clients' },
-          { key: 'all', label: 'All Clients' },
+          { key: 'archived', label: 'Archived Service Clients' },
+          { key: 'all', label: 'All Service Clients' },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -709,10 +709,10 @@ export function ClientsPage() {
 
       {/* Deactivate Confirmation Modal */}
       <Modal
-        isOpen={!!deactivateClientTarget}
+        isOpen={Boolean(deactivateClientTarget)}
         onClose={() => setDeactivateClientTarget(null)}
-        title="Deactivate Service Client?"
-        subtitle="Review the effects of deactivating this customer account."
+        title={`Deactivate / Archive Service Client: ${deactivateClientTarget?.company_name || ''}`}
+        subtitle="Review the effects of deactivating this service client account."
       >
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-[#FFFBEB] border border-[#FDE68A] text-small text-[#92400E] space-y-2">
@@ -721,9 +721,9 @@ export function ClientsPage() {
               <span>Deactivation Effects:</span>
             </div>
             <ul className="list-disc list-inside space-y-1 text-caption text-[#78350F]">
-              <li>Client user will no longer be able to log in.</li>
+              <li>Service client user will no longer be able to log in.</li>
               <li>Chat room will switch to <strong>read-only mode</strong>.</li>
-              <li>Resumes, candidate submissions, and reports remain searchable.</li>
+              <li>Candidate resumes, applications submitted, and reports remain searchable.</li>
               <li>Dashboard telemetry and history are fully preserved.</li>
             </ul>
           </div>
@@ -748,7 +748,7 @@ export function ClientsPage() {
       <Modal
         isOpen={!!deleteClientTarget}
         onClose={() => setDeleteClientTarget(null)}
-        title="Safe Delete Client Account?"
+        title="Safe Delete Service Client?"
         subtitle="Permanently delete client only if no historical records exist."
       >
         <div className="space-y-4">
@@ -756,7 +756,7 @@ export function ClientsPage() {
             Are you sure you want to delete <strong>{deleteClientTarget?.company_name}</strong>?
           </p>
           <div className="p-3.5 rounded-xl bg-[#FEF2F2] border border-[#FCA5A5] text-caption text-[#991B1B]">
-            <strong>Note:</strong> If this client has historical resumes, job requirements, applications, or chat messages, the system will block deletion and advise archiving instead.
+            <strong>Note:</strong> If this service client has historical resumes, job openings, applications, or chat messages, the system will block deletion and advise archiving instead.
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

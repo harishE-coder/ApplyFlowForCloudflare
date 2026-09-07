@@ -152,11 +152,11 @@ export function ApplicationsPage() {
       ),
     },
     {
-      title: 'Client & Target Company',
+      title: 'Service Client & Hiring Organization',
       key: 'client_name',
       render: (val, row) => (
         <div>
-          <p className="font-semibold text-[#081226] text-small">{val || 'Client'}</p>
+          <p className="font-semibold text-[#081226] text-small">{val || 'Service Client'}</p>
           <p className="text-caption text-[#64748B]">{row.company || 'Enterprise'}</p>
         </div>
       ),
@@ -263,7 +263,7 @@ export function ApplicationsPage() {
             <SearchBar
               value={search}
               onChange={setSearch}
-              placeholder="Search candidate name, role, or company..."
+              placeholder="Search candidate, role, or hiring organization..."
             />
           </div>
 
@@ -360,7 +360,7 @@ export function ApplicationsPage() {
 
                       <div className="pt-2 border-t border-[#F1F5F9] flex items-center justify-between text-caption text-[#64748B]">
                         <span className="truncate max-w-[110px] font-semibold text-[#334155]">
-                          {app.company || app.client_name || 'Client'}
+                          {app.company || app.client_name || 'Hiring Organization'}
                         </span>
                         <ChevronRight className="w-3.5 h-3.5 text-[#94A3B8]" />
                       </div>
@@ -434,10 +434,10 @@ export function ApplicationsPage() {
             <div className="space-y-3 p-4 rounded-xl border border-[#E2E8F0] text-small">
               <div className="flex items-center justify-between pb-2 border-b border-[#F1F5F9]">
                 <span className="text-[#64748B]">Service Client:</span>
-                <span className="font-semibold text-[#081226]">{selectedApp.client_name || 'Client'}</span>
+                <span className="font-semibold text-[#081226]">{selectedApp.client_name || 'Service Client'}</span>
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-[#F1F5F9]">
-                <span className="text-[#64748B]">Target Account:</span>
+                <span className="text-[#64748B]">Hiring Organization:</span>
                 <span className="font-semibold text-[#081226]">{selectedApp.company || 'Enterprise'}</span>
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-[#F1F5F9]">
@@ -459,14 +459,14 @@ export function ApplicationsPage() {
                 onClick={() => openResumePreview(selectedApp)}
                 className="flex-1 font-bold text-xs"
               >
-                Preview Resume (Drive)
+                Preview Resume
               </Button>
               <Button
                 variant="outline"
                 size="md"
                 icon={Download}
                 onClick={() => openResumeDownload(selectedApp)}
-                title="Download Original Resume"
+                title="Download Candidate Resume"
                 className="px-3"
               />
               <Button
@@ -474,7 +474,7 @@ export function ApplicationsPage() {
                 size="md"
                 icon={Share2}
                 onClick={() => copyResumeShareLink(selectedApp, success)}
-                title="Copy Public Share Link"
+                title="Copy Resume Share Link"
                 className="px-3"
               />
             </div>

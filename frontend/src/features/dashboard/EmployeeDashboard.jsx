@@ -235,7 +235,7 @@ export function EmployeeDashboard() {
               onChange={(e) => setSelectedClientId(e.target.value)}
               className="w-full h-[44px] px-3.5 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
             >
-              <option value="">All Assigned Clients ({assignedClients.length})</option>
+              <option value="">All Service Clients ({assignedClients.length})</option>
               {assignedClients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.company_name}
@@ -274,7 +274,7 @@ export function EmployeeDashboard() {
         <KPICard
           title="Active Job Openings"
           value={data?.active_jobs ?? 0}
-          subtitle="Assigned recruitment tasks"
+          subtitle="Assigned job openings"
           icon={Briefcase}
           variant="default"
         />
@@ -288,7 +288,7 @@ export function EmployeeDashboard() {
         <KPICard
           title="High Priority Openings"
           value={data?.high_priority_jobs ?? 0}
-          subtitle="Urgent client needs"
+          subtitle="Urgent hiring needs"
           icon={Sparkles}
           variant="danger"
         />
@@ -336,9 +336,9 @@ export function EmployeeDashboard() {
           <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#F1F5F9]">
               <div>
-                <h3 className="text-h3 font-bold text-[#081226]">Active Client Openings</h3>
+                <h3 className="text-h3 font-bold text-[#081226]">Active Job Openings</h3>
                 <p className="text-caption text-[#64748B] mt-0.5">
-                  High-priority requirements with open candidate slots
+                  High-priority openings with open candidate slots
                 </p>
               </div>
 
@@ -354,7 +354,7 @@ export function EmployeeDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {(data?.client_requirements || []).length === 0 ? (
                 <div className="sm:col-span-2 py-6 text-center text-caption text-[#94A3B8]">
-                  No active job requirements assigned to your account.
+                  No active job openings assigned to your account.
                 </div>
               ) : (
                 (data?.client_requirements || []).slice(0, 4).map((req, idx) => (
@@ -372,7 +372,7 @@ export function EmployeeDashboard() {
                           {req.role_code}
                         </span>
                         <span>•</span>
-                        <span>{req.resumes_count || 0} resumes</span>
+                        <span>{req.resumes_count || 0} candidates</span>
                       </div>
                     </div>
 
@@ -391,7 +391,7 @@ export function EmployeeDashboard() {
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#16A34A] px-2.5 py-0.5 rounded-full bg-[#F0FDF4] border border-[#BBF7D0]">
                     Drive Sync Active
                   </span>
-                  <h3 className="text-h3 font-bold text-[#081226]">Uploaded Resumes</h3>
+                  <h3 className="text-h3 font-bold text-[#081226]">Uploaded Candidate Resumes</h3>
                 </div>
                 <p className="text-caption text-[#64748B] mt-0.5">
                   Recently ingested candidates with verified Google Drive preview and direct download links
@@ -446,7 +446,7 @@ export function EmployeeDashboard() {
                           )}
                         </div>
                         <p className="text-caption text-[#64748B] truncate mt-0.5">
-                          <strong className="text-[#081226]">{resItem.company || resItem.client_name || 'Client'}</strong> · {resItem.role || 'Role'}
+                          <strong className="text-[#081226]">{resItem.company || resItem.client_name || 'Service Client'}</strong> · {resItem.role || 'Role'}
                         </p>
                       </div>
                     </div>
@@ -455,7 +455,7 @@ export function EmployeeDashboard() {
                       <button
                         type="button"
                         onClick={() => openResumePreview(resItem)}
-                        title="Preview Candidate Resume in Google Drive"
+                        title="Preview Candidate Resume"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-bold border border-[#BFDBFE] transition-colors shadow-xs cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -465,7 +465,7 @@ export function EmployeeDashboard() {
                       <button
                         type="button"
                         onClick={() => openResumeDownload(resItem)}
-                        title="Download Original Resume File"
+                        title="Download Candidate Resume"
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#081226] text-caption font-bold border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />
@@ -474,7 +474,7 @@ export function EmployeeDashboard() {
                       <button
                         type="button"
                         onClick={() => copyResumeShareLink(resItem, success)}
-                        title="Copy Public Google Drive Share Link"
+                        title="Copy Resume Share Link"
                         className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
@@ -492,9 +492,9 @@ export function EmployeeDashboard() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[#2563EB] px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE]">
-                    Groq AI Inbox
+                    AI Intake
                   </span>
-                  <h3 className="text-h3 font-bold text-[#081226]">AI Email Intake Telemetry</h3>
+                  <h3 className="text-h3 font-bold text-[#081226]">AI Intake Telemetry</h3>
                 </div>
                 <p className="text-caption text-[#64748B] mt-0.5">
                   Recruiter positive response emails processed and upcoming interview rounds
@@ -547,7 +547,7 @@ export function EmployeeDashboard() {
           <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 text-center">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#F1F5F9]">
               <h4 className="text-small font-bold uppercase tracking-wider text-[#64748B]">
-                Daily Target Quota
+                Daily Recruiter Target
               </h4>
               <span className={cn('text-[11px] font-bold px-2 py-0.5 rounded-full border', targetColor.badgeBg, targetColor.badgeText, targetColor.badgeBorder)}>
                 {summary.completion}%
@@ -581,7 +581,7 @@ export function EmployeeDashboard() {
                 onClick={() => navigate('/upload')}
                 className="w-full"
               >
-                Upload Resumes to Progress Target →
+                Upload Resumes to Progress Recruiter Target →
               </Button>
             </div>
           </div>

@@ -65,7 +65,7 @@ export function ChatRoomList({
             </div>
             <div>
               <h2 className="text-small font-bold text-white leading-tight">
-                {isAdmin ? 'All Client Chats' : isClient ? 'Client Conversation' : 'Assigned Clients'}
+                {isAdmin ? 'All Service Client Chats' : isClient ? 'Client Conversation' : 'Assigned Service Clients'}
               </h2>
               <p className="text-[11px] text-[#94A3B8]">
                 {isAdmin ? 'Admin oversight across all accounts' : 'Internal Service Client rooms'}

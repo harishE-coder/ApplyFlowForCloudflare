@@ -253,7 +253,7 @@ export function ResumesPage() {
     setDeleting(true);
     try {
       await api.delete(`/resumes/${deleteResumeTarget.id}`);
-      success('Resume Deleted', 'Resume record and Google Drive file removed.');
+      success('Resume Deleted', 'Candidate resume record and Google Drive file removed.');
       setDeleteResumeTarget(null);
       if (selectedResume?.id === deleteResumeTarget.id) {
         setSelectedResume(null);
@@ -272,19 +272,19 @@ export function ResumesPage() {
 
       items.push({
         icon: Eye,
-        label: 'Preview Resume (Drive)',
+        label: 'Preview Resume',
         onClick: () => openResumePreview(resume),
       });
 
       items.push({
         icon: Download,
-        label: 'Download Original File',
+        label: 'Download Candidate Resume',
         onClick: () => openResumeDownload(resume),
       });
 
       items.push({
         icon: Share2,
-        label: 'Copy Public Share Link',
+        label: 'Copy Resume Share Link',
         onClick: () => copyResumeShareLink(resume, success),
       });
 
@@ -301,7 +301,7 @@ export function ResumesPage() {
 
       items.push({
         icon: Trash2,
-        label: 'Delete Resume',
+        label: 'Delete Candidate Resume',
         danger: true,
         onClick: () => setDeleteResumeTarget(resume),
       });
@@ -330,7 +330,7 @@ export function ResumesPage() {
               </span>
             </div>
             <p className="text-small text-[#64748B] mt-0.5">
-              Enterprise candidate repository with instant preview, auto-synchronized pipelines, and global date filtering.
+              Centralized candidate records with resume previews and synchronized hiring activity.
             </p>
           </div>
 
@@ -369,7 +369,7 @@ export function ResumesPage() {
                   setSearch(val);
                   setPage(1);
                 }}
-                placeholder="Search candidate name, role, tag ID (e.g. RES101), or target company..."
+                placeholder="Search candidate, role, or hiring organization..."
               />
             </div>
 
@@ -383,7 +383,7 @@ export function ResumesPage() {
                   }}
                   className="w-full h-[44px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
                 >
-                  <option value="">{isAdmin ? 'All Service Clients' : 'All Assigned Clients'}</option>
+                  <option value="">All Service Clients</option>
                   {clients.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.company_name}
@@ -402,7 +402,7 @@ export function ResumesPage() {
                 }}
                 className="w-full h-[44px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
               >
-                <option value="">All Target Companies</option>
+                <option value="">All Hiring Organizations</option>
                 {companies.map((comp) => (
                   <option key={comp} value={comp}>
                     {comp}
@@ -455,10 +455,10 @@ export function ResumesPage() {
         <div className="lg:col-span-7 bg-white rounded-2xl border border-[#E2E8F0] shadow-card overflow-hidden flex flex-col">
           <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between text-caption font-semibold text-[#64748B] uppercase tracking-wider select-none">
             <div className="flex items-center gap-3">
-              <span>Candidate & Target Role</span>
+              <span>Candidate & Hiring Organization</span>
             </div>
             <div className="flex items-center gap-6">
-              <span className="hidden sm:inline">Client</span>
+              <span className="hidden sm:inline">Service Client</span>
               <span>Actions</span>
             </div>
           </div>
@@ -585,14 +585,14 @@ export function ResumesPage() {
                       <span>Service Client</span>
                     </div>
                     <p className="text-small font-bold text-[#081226] mt-1 truncate">
-                      {selectedResume.client_name || 'Client Account'}
+                      {selectedResume.client_name || 'Service Client'}
                     </p>
                   </div>
 
                   <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
                     <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
                       <Briefcase className="w-3.5 h-3.5 text-[#FF8A00]" />
-                      <span>Target Company</span>
+                      <span>Hiring Organization</span>
                     </div>
                     <p className="text-small font-bold text-[#081226] mt-1 truncate">
                       {selectedResume.company || 'Direct Hiring'}
@@ -602,7 +602,7 @@ export function ResumesPage() {
                   <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
                     <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
                       <Tag className="w-3.5 h-3.5 text-[#16A34A]" />
-                      <span>Target Role / Code</span>
+                      <span>Role / Code</span>
                     </div>
                     <p className="text-small font-bold text-[#081226] mt-1 truncate">
                       {selectedResume.role || 'Software Engineer'}
@@ -649,7 +649,7 @@ export function ResumesPage() {
                   <div className="pt-3 border-t border-[#F1F5F9] flex items-center justify-between text-caption text-[#64748B]">
                     <span className="flex items-center gap-1 text-[#16A34A] font-semibold">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      ATS Validated PDF
+                      Resume PDF
                     </span>
                     <a
                       href={getResumeDownloadUrl(selectedResume)}
@@ -658,7 +658,7 @@ export function ResumesPage() {
                       className="text-[#2563EB] font-semibold hover:underline flex items-center gap-1"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      Download File
+                      Download Resume
                     </a>
                   </div>
                 </div>
@@ -685,7 +685,7 @@ export function ResumesPage() {
                     title="Open Document Preview in Google Drive"
                     className="flex-1 h-[44px] font-bold text-xs"
                   >
-                    Preview File
+                    Preview Resume
                   </Button>
 
                   <Button
@@ -693,7 +693,7 @@ export function ResumesPage() {
                     size="md"
                     icon={Download}
                     onClick={() => openResumeDownload(selectedResume)}
-                    title="Download Original File"
+                    title="Download Candidate Resume"
                     className="h-[44px] px-3.5"
                   />
 
@@ -702,7 +702,7 @@ export function ResumesPage() {
                     size="md"
                     icon={Share2}
                     onClick={() => copyResumeShareLink(selectedResume, success)}
-                    title="Copy Public Share Link"
+                    title="Copy Resume Share Link"
                     className="h-[44px] px-3.5"
                   />
                 </div>
@@ -741,7 +741,7 @@ export function ResumesPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-small font-semibold text-[#081226] block mb-1">
-                  Target Company
+                  Hiring Organization
                 </label>
                 <Input
                   value={editCompany}
@@ -752,7 +752,7 @@ export function ResumesPage() {
 
               <div>
                 <label className="text-small font-semibold text-[#081226] block mb-1">
-                  Target Role
+                  Role
                 </label>
                 <Input
                   value={editRole}
@@ -825,7 +825,7 @@ export function ResumesPage() {
                 isLoading={deleting}
                 onClick={handleDeleteResume}
               >
-                Delete Resume
+                Delete Candidate Resume
               </Button>
             </div>
           </div>

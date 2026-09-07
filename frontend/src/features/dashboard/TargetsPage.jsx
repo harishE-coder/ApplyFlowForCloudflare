@@ -126,7 +126,7 @@ export function TargetsPage() {
 
       success(
         editingTarget ? 'Target Updated' : 'Target Created',
-        `Daily application target of ${formDailyTarget} configured with effective date preserved.`
+        `Daily recruiter target of ${formDailyTarget} configured with effective date preserved.`
       );
       setIsModalOpen(false);
       fetchTargets();
@@ -263,7 +263,7 @@ export function TargetsPage() {
       ),
     },
     {
-      title: 'Daily Application Target',
+      title: 'Daily Recruiter Target',
       key: 'daily_target',
       render: (val) => (
         <div className="flex items-center gap-2">
@@ -339,7 +339,7 @@ export function TargetsPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-h1 font-extrabold text-[#081226] tracking-tight">
-              Recruiter Target Management
+              Recruiter Targets
             </h1>
             <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#FF8A00] border border-[#FFEDD5]">
               {targets.length} Active Targets
@@ -433,7 +433,7 @@ export function TargetsPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingTarget ? 'Edit Target Quota' : 'Assign Employee Client Target'}
+        title={editingTarget ? 'Edit Target Quota' : 'Assign Recruiter Target'}
         subtitle="Set the required daily submitted applications quota for an employee under a specific client."
       >
         <form onSubmit={handleSaveTarget} className="space-y-4">
@@ -476,14 +476,14 @@ export function TargetsPage() {
           </div>
 
           <Input
-            label="Daily Application Target (Applications / Day)"
+            label="Daily Recruiter Target (Applications / Day)"
             type="number"
             min="1"
             max="300"
             required
             value={formDailyTarget}
             onChange={(e) => setFormDailyTarget(e.target.value)}
-            helperText="Number of candidate applications required to be submitted to this client each day."
+            helperText="Number of candidate applications required to be submitted to this service client each day."
           />
 
           <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-caption text-[#64748B]">
@@ -508,7 +508,7 @@ export function TargetsPage() {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         title={`Target History: ${historyTarget?.employee_name} (${historyTarget?.client_name})`}
-        subtitle="Audit timeline of daily application targets and effective dates."
+        subtitle="Audit timeline of daily recruiter targets and effective dates."
       >
         {historyTarget && (
           <div className="space-y-4">

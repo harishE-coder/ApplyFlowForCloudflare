@@ -10,7 +10,7 @@
  * - Request ID tracking & structured telemetry logging
  * - Timeout protection (20s AbortController)
  * - Zod schema validation (GroqAnalysisSchema)
- * - AI usage analytics persistence (ai_request_logs)
+ * - AI usage analytics & token cost tracking via ctx.waitUntil (ai_request_logs)
  */
 
 import { GroqAnalysisSchema, type GroqAnalysis } from "../schemas/ai";
@@ -35,6 +35,10 @@ export interface AiUsageLogEntry {
   requestId: string;
   provider: string;
   model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCost: number;
   latencyMs: number;
   success: boolean;
   fallbackCount: number;
@@ -242,6 +246,46 @@ ${documentText.slice(0, 8000)}`;
 }
 
 /**
+ * Estimates token count from text using standard character heuristic (~4 chars per token)
+ */
+export function estimateTokenCount(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Calculates estimated USD cost based on provider, model, and token counts.
+ * - Groq: ~$0.05 / 1M tokens ($0.00000005/token)
+ * - OpenAI (gpt-4o-mini): $0.15 / 1M prompt tokens, $0.60 / 1M completion tokens
+ * - OpenAI (gpt-3.5-turbo): $0.50 / 1M prompt tokens, $1.50 / 1M completion tokens
+ * - Gemini (gemini-1.5-flash): $0.075 / 1M prompt tokens, $0.30 / 1M completion tokens
+ * - Gemini (gemini-2.0-flash): $0.10 / 1M prompt tokens, $0.40 / 1M completion tokens
+ */
+export function calculateEstimatedCost(
+  provider: string,
+  model: string,
+  promptTokens: number,
+  completionTokens: number
+): number {
+  if (provider === "OpenAI") {
+    if (model.includes("gpt-4o-mini")) {
+      return (promptTokens * 0.15 + completionTokens * 0.60) / 1_000_000;
+    }
+    return (promptTokens * 0.50 + completionTokens * 1.50) / 1_000_000;
+  }
+
+  if (provider === "Gemini") {
+    if (model.includes("gemini-2.0")) {
+      return (promptTokens * 0.10 + completionTokens * 0.40) / 1_000_000;
+    }
+    return (promptTokens * 0.075 + completionTokens * 0.30) / 1_000_000;
+  }
+
+  // Groq (approx $0.05 / 1M tokens)
+  return (promptTokens + completionTokens) * 0.00000005;
+}
+
+/**
  * Checks if an HTTP status code is recoverable (transient server/rate errors)
  */
 function isRecoverableStatus(status: number): boolean {
@@ -296,8 +340,8 @@ function parseAndValidateResponse(rawContent: string): GroqAnalysis {
 }
 
 /**
- * Asynchronously persists AI usage telemetry into ai_request_logs table.
- * Non-blocking: will never throw or interrupt the main request flow.
+ * Persists AI usage telemetry and token cost metrics into ai_request_logs.
+ * Non-blocking: executed via ctx.waitUntil so it NEVER adds latency to the request.
  */
 export async function recordAiUsageLog(
   env: Bindings,
@@ -307,23 +351,14 @@ export async function recordAiUsageLog(
   try {
     const sql = getDb(env.DATABASE_URL);
     await sql`
-      CREATE TABLE IF NOT EXISTS ai_request_logs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        request_id VARCHAR(64) NOT NULL,
-        provider VARCHAR(32) NOT NULL,
-        model VARCHAR(64) NOT NULL,
-        latency_ms INT NOT NULL,
-        success BOOLEAN NOT NULL,
-        fallback_count INT NOT NULL DEFAULT 0,
-        error_message TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `;
-    await sql`
       INSERT INTO ai_request_logs (
         request_id,
         provider,
         model,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        estimated_cost,
         latency_ms,
         success,
         fallback_count,
@@ -332,6 +367,10 @@ export async function recordAiUsageLog(
         ${entry.requestId},
         ${entry.provider},
         ${entry.model},
+        ${entry.promptTokens},
+        ${entry.completionTokens},
+        ${entry.totalTokens},
+        ${entry.estimatedCost},
         ${entry.latencyMs},
         ${entry.success},
         ${entry.fallbackCount},
@@ -339,7 +378,6 @@ export async function recordAiUsageLog(
       )
     `;
   } catch (err: any) {
-    // Non-blocking telemetry warning
     console.warn(`[AI Analytics Log Warning] Failed to persist telemetry: ${err?.message}`);
   }
 }
@@ -360,7 +398,11 @@ export async function getAiUsageAnalytics(env: Bindings) {
         COUNT(*) FILTER (WHERE success = true)::int AS successful_requests,
         ROUND((COUNT(*) FILTER (WHERE success = true)::numeric / NULLIF(COUNT(*), 0) * 100), 1)::float AS success_rate,
         ROUND(AVG(latency_ms)::numeric, 1)::float AS avg_latency_ms,
-        SUM(fallback_count)::int AS total_fallbacks
+        SUM(fallback_count)::int AS total_fallbacks,
+        COALESCE(SUM(prompt_tokens), 0)::int AS total_prompt_tokens,
+        COALESCE(SUM(completion_tokens), 0)::int AS total_completion_tokens,
+        COALESCE(SUM(total_tokens), 0)::int AS total_tokens,
+        ROUND(COALESCE(SUM(estimated_cost), 0)::numeric, 4)::float AS total_estimated_cost_usd
       FROM ai_request_logs
       WHERE created_at >= NOW() - INTERVAL '30 days'
     `;
@@ -370,17 +412,19 @@ export async function getAiUsageAnalytics(env: Bindings) {
         COUNT(*)::int AS requests,
         COUNT(*) FILTER (WHERE success = true)::int AS successes,
         ROUND((COUNT(*) FILTER (WHERE success = true)::numeric / NULLIF(COUNT(*), 0) * 100), 1)::float AS success_rate,
-        ROUND(AVG(latency_ms)::numeric, 1)::float AS avg_latency_ms
+        ROUND(AVG(latency_ms)::numeric, 1)::float AS avg_latency_ms,
+        COALESCE(SUM(total_tokens), 0)::int AS total_tokens,
+        ROUND(COALESCE(SUM(estimated_cost), 0)::numeric, 4)::float AS estimated_cost_usd
       FROM ai_request_logs
       WHERE created_at >= NOW() - INTERVAL '30 days'
       GROUP BY provider
       ORDER BY requests DESC
     `;
     const recentLogs = await sql`
-      SELECT request_id, provider, model, latency_ms, success, fallback_count, created_at
+      SELECT request_id, provider, model, total_tokens, estimated_cost, latency_ms, success, fallback_count, created_at
       FROM ai_request_logs
       ORDER BY created_at DESC
-      LIMIT 20
+      LIMIT 25
     `;
     return {
       telemetry,
@@ -405,13 +449,15 @@ export async function getAiUsageAnalytics(env: Bindings) {
  * @param modelOverride Optional specific model request
  * @param timeoutMs Request timeout per attempt (default: 20000ms)
  * @param requestId Optional request ID for end-to-end tracing
+ * @param ctx Optional Cloudflare ExecutionContext for non-blocking ctx.waitUntil()
  */
 export async function callAiGateway(
   env: Bindings,
   promptOrDocText: string,
   modelOverride?: string,
   timeoutMs: number = 20000,
-  requestId?: string
+  requestId?: string,
+  ctx?: { waitUntil: (p: Promise<any>) => void }
 ): Promise<GroqAnalysis> {
   const reqId = requestId || `ai_${crypto.randomUUID().slice(0, 8)}`;
   const providers = resolveConfiguredProviders(env, modelOverride);
@@ -550,11 +596,21 @@ export async function callAiGateway(
         const latency = Date.now() - startTime;
         traceSteps.push(`${provider.providerName} (${provider.keyId}) → Success (${latency}ms)`);
 
+        // Compute token usage & estimated cost
+        const promptTokens = json?.usage?.prompt_tokens ?? estimateTokenCount(prompt);
+        const completionTokens = json?.usage?.completion_tokens ?? estimateTokenCount(rawContent);
+        const totalTokens = json?.usage?.total_tokens ?? (promptTokens + completionTokens);
+        const estimatedCost = Number(
+          calculateEstimatedCost(provider.providerName, model, promptTokens, completionTokens).toFixed(6)
+        );
+
         console.log(
           `[Request: ${reqId}]\n` +
           `Provider: ${provider.providerName}\n` +
           `Key: ${provider.keyId}\n` +
           `Model: ${model}\n` +
+          `Tokens: ${totalTokens} (Prompt: ${promptTokens}, Completion: ${completionTokens})\n` +
+          `Estimated Cost: $${estimatedCost.toFixed(6)}\n` +
           `Final successful provider: ${provider.providerName}\n` +
           `Latency: ${latency}ms\n` +
           `Trace:\n${traceSteps.map((s) => `  - ${s}`).join("\n")}`
@@ -562,15 +618,25 @@ export async function callAiGateway(
 
         recordSuccess(provider.keyId);
 
-        // Record telemetry asynchronously without blocking return
-        recordAiUsageLog(env, {
+        // Record telemetry non-blockingly via ctx.waitUntil (zero latency overhead)
+        const logPromise = recordAiUsageLog(env, {
           requestId: reqId,
           provider: provider.providerName,
           model,
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          estimatedCost,
           latencyMs: latency,
           success: true,
           fallbackCount,
-        }).catch(() => {});
+        });
+
+        if (ctx && typeof ctx.waitUntil === "function") {
+          ctx.waitUntil(logPromise);
+        } else {
+          logPromise.catch(() => {});
+        }
 
         return analysis;
       } catch (err: any) {
@@ -607,16 +673,27 @@ export async function callAiGateway(
     `[Request: ${reqId}] AI Gateway Exhausted after ${fallbackCount} fallbacks.\nTrace:\n${traceSteps.map((s) => `  - ${s}`).join("\n")}`
   );
 
-  // Record failure telemetry asynchronously
-  recordAiUsageLog(env, {
+  // Record failure telemetry non-blockingly via ctx.waitUntil
+  const failurePromptTokens = estimateTokenCount(prompt);
+  const failLogPromise = recordAiUsageLog(env, {
     requestId: reqId,
     provider: "Exhausted",
     model: "None",
+    promptTokens: failurePromptTokens,
+    completionTokens: 0,
+    totalTokens: failurePromptTokens,
+    estimatedCost: 0,
     latencyMs: Date.now() - overallStartTime,
     success: false,
     fallbackCount,
     errorMessage: lastError?.message || "All providers exhausted",
-  }).catch(() => {});
+  });
+
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(failLogPromise);
+  } else {
+    failLogPromise.catch(() => {});
+  }
 
   throw (
     lastError ||

@@ -476,4 +476,30 @@ describe("AI Gateway Service (Cloudflare Workers)", () => {
     expect(json.telemetry).toBeDefined();
     expect(json.summary).toBeDefined();
   });
+
+  it("11. Offloads telemetry logging to ctx.waitUntil without delaying response", async () => {
+    let waitUntilCalled = false;
+    let backgroundPromise: Promise<any> | null = null;
+
+    const mockCtx = {
+      waitUntil: vi.fn((promise: Promise<any>) => {
+        waitUntilCalled = true;
+        backgroundPromise = promise;
+      }),
+    };
+
+    globalThis.fetch = vi.fn(async () => {
+      return createLlmCompletionResponse(mockValidAiResponse);
+    });
+
+    const env: Bindings = {
+      DATABASE_URL: "postgres://mock",
+      GROQ_API_KEY: "gsk_test_waituntil",
+    };
+
+    const result = await callAiGateway(env, "Sample candidate text", undefined, 20000, "ai_test_ctx", mockCtx);
+    expect(result.candidate_name).toBe("Jane Smith");
+    expect(waitUntilCalled).toBe(true);
+    expect(backgroundPromise).not.toBeNull();
+  });
 });

@@ -360,10 +360,12 @@ aiRouter.post("/analyze-email", async (c) => {
   }
 
   const reqId = c.get("requestId") || c.req.header("X-Request-Id") || `ai_${crypto.randomUUID().slice(0, 8)}`;
+  let execCtx: any = undefined;
+  try { execCtx = c.executionCtx; } catch {}
 
   let analysis: GroqAnalysis;
   try {
-    analysis = await callAiGateway(c.env, rawEmail, c.env.GROQ_MODEL, 20000, reqId);
+    analysis = await callAiGateway(c.env, rawEmail, c.env.GROQ_MODEL, 20000, reqId, execCtx);
   } catch (err: any) {
     console.error("[AI Analyze Email Error]", err.message);
     const prefix = err?.message?.includes("Groq") ? "Groq AI service failure" : "AI service failure";
@@ -790,9 +792,12 @@ const analyzeFileHandler = async (c: any) => {
       );
     }
 
+    let execCtx: any = undefined;
+    try { execCtx = c.executionCtx; } catch {}
+
     let analysis: GroqAnalysis;
     try {
-      analysis = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL, 20000, reqId);
+      analysis = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL, 20000, reqId, execCtx);
     } catch (err: any) {
       console.error("[AI Intake Error]", err.message);
       const prefix = err?.message?.includes("Groq") ? "Groq AI service failure" : "AI service failure";

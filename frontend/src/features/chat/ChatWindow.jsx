@@ -21,9 +21,12 @@ import {
   ZoomIn,
   X,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { Dropdown } from '@/components/ui/Dropdown';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 import { ChatInput } from './ChatInput';
 import { ResumeShareModal } from './ResumeShareModal';
 import { JobShareModal } from './JobShareModal';
@@ -109,6 +112,8 @@ export function ChatWindow({
   const [previewImageModal, setPreviewImageModal] = useState(null);
   const [fetchingResumeId, setFetchingResumeId] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(null);
+  const [deletingMessage, setDeletingMessage] = useState(false);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
@@ -866,7 +871,7 @@ export function ChatWindow({
                     {canDelete && (
                       <button
                         type="button"
-                        onClick={() => onDeleteMessage(msg.id)}
+                        onClick={() => setDeleteConfirmMessage(msg)}
                         title={
                           isAdmin && !isOwn
                             ? 'Delete message (Admin oversight)'
@@ -948,6 +953,75 @@ export function ChatWindow({
         onClose={() => setPreviewResumeInfo(null)}
         resumeInfo={previewResumeInfo}
       />
+
+      {/* Delete Message Confirmation Modal */}
+      {deleteConfirmMessage && (
+        <Modal
+          isOpen={!!deleteConfirmMessage}
+          onClose={() => {
+            if (!deletingMessage) setDeleteConfirmMessage(null);
+          }}
+          title="Delete Message"
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-small font-bold">
+                  {deleteConfirmMessage.sender?.id === user?.id
+                    ? 'Are you sure you want to delete this message?'
+                    : `Delete message sent by ${deleteConfirmMessage.sender?.name || 'User'}?`}
+                </p>
+                <p className="text-caption text-rose-700 leading-relaxed">
+                  This message will be soft-deleted. Team members will see &quot;This message was deleted&quot;, while Admins retain full audit history.
+                </p>
+              </div>
+            </div>
+
+            {/* Message preview snippet */}
+            <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-small text-[#081226] max-h-24 overflow-y-auto break-words font-medium">
+              {deleteConfirmMessage.message ||
+                deleteConfirmMessage.attachment_name ||
+                deleteConfirmMessage.attachment_filename ||
+                (deleteConfirmMessage.attachment_type === 'resume'
+                  ? 'Candidate Resume'
+                  : deleteConfirmMessage.attachment_type === 'job'
+                  ? 'Job Opening'
+                  : 'Attachment')}
+            </div>
+
+            <div className="pt-2 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                size="md"
+                disabled={deletingMessage}
+                onClick={() => setDeleteConfirmMessage(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="md"
+                isLoading={deletingMessage}
+                onClick={async () => {
+                  setDeletingMessage(true);
+                  try {
+                    await onDeleteMessage(deleteConfirmMessage.id);
+                    setDeleteConfirmMessage(null);
+                  } catch (err) {
+                    console.error('Delete message error:', err);
+                  } finally {
+                    setDeletingMessage(false);
+                  }
+                }}
+              >
+                Delete Message
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Lightbox Modal for Image Preview */}
       {previewImageModal && (

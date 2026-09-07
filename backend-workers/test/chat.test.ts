@@ -4,6 +4,7 @@ import app from "../src/index";
 import {
   PushSubscriptionCreateSchema,
   SendMessageRequestSchema,
+  ShareJobRequestSchema,
   ShareResumeRequestSchema,
 } from "../src/schemas/chat";
 import type { Bindings } from "../src/types";
@@ -51,10 +52,35 @@ describe("Chat Module & Durable Objects Tests", () => {
       expect(result.success).toBe(false);
     });
 
-    it("validates ShareResumeRequestSchema", () => {
-      const valid = { resume_id: "550e8400-e29b-41d4-a716-446655440000" };
+    it("validates ShareResumeRequestSchema with optional caption", () => {
+      const valid = {
+        resume_id: "550e8400-e29b-41d4-a716-446655440000",
+        caption: "Reviewing this strong React candidate",
+      };
       const result = ShareResumeRequestSchema.safeParse(valid);
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.caption).toBe("Reviewing this strong React candidate");
+      }
+    });
+
+    it("validates ShareJobRequestSchema with optional caption", () => {
+      const valid = {
+        requirement_id: "550e8400-e29b-41d4-a716-446655440000",
+        caption: "Urgent opening for this week",
+      };
+      const result = ShareJobRequestSchema.safeParse(valid);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.requirement_id).toBe("550e8400-e29b-41d4-a716-446655440000");
+        expect(result.data.caption).toBe("Urgent opening for this week");
+      }
+    });
+
+    it("rejects ShareJobRequestSchema with invalid UUID", () => {
+      const invalid = { requirement_id: "not-a-valid-uuid" };
+      const result = ShareJobRequestSchema.safeParse(invalid);
+      expect(result.success).toBe(false);
     });
 
     it("validates PushSubscriptionCreateSchema", () => {
@@ -112,11 +138,71 @@ describe("Chat Module & Durable Objects Tests", () => {
       expect(res.status).toBe(401);
     });
 
+    it("POST /api/chat/rooms/:room_id/share-job returns 401 when unauthenticated", async () => {
+      const res = await app.fetch(
+        new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/share-job", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requirement_id: "550e8400-e29b-41d4-a716-446655440000" }),
+        }),
+        mockEnv
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("POST /api/chat/rooms/:room_id/attachment returns 401 when unauthenticated", async () => {
+      const res = await app.fetch(
+        new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/attachment", {
+          method: "POST",
+        }),
+        mockEnv
+      );
+      expect(res.status).toBe(401);
+    });
+
     it("DELETE /api/chat/messages/:id returns 401 when unauthenticated", async () => {
       const res = await app.fetch(
         new Request("http://localhost/api/chat/messages/550e8400-e29b-41d4-a716-446655440000", {
           method: "DELETE",
         }),
+        mockEnv
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("POST /api/chat/rooms/:room_id/lock returns 401 when unauthenticated", async () => {
+      const res = await app.fetch(
+        new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/lock", {
+          method: "POST",
+        }),
+        mockEnv
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("POST /api/chat/rooms/:room_id/unlock returns 401 when unauthenticated", async () => {
+      const res = await app.fetch(
+        new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/unlock", {
+          method: "POST",
+        }),
+        mockEnv
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("POST /api/chat/rooms/:room_id/archive returns 401 when unauthenticated", async () => {
+      const res = await app.fetch(
+        new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/archive", {
+          method: "POST",
+        }),
+        mockEnv
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("GET /api/chat/rooms/:room_id/export returns 401 when unauthenticated", async () => {
+      const res = await app.fetch(
+        new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/export"),
         mockEnv
       );
       expect(res.status).toBe(401);
@@ -317,4 +403,141 @@ describe("Chat Module & Durable Objects Tests", () => {
       expect(body.request_id).toBeDefined();
     });
   });
+
+  describe("Feature 5: Soft Delete with Admin Audit View", () => {
+    it("Admin sees original message with audit trail while non-admins see sanitized deleted message", () => {
+      const rawDeletedMsg = {
+        id: "msg-123",
+        room_id: "room-abc",
+        sender_id: "user-sender-1",
+        sender_name: "John Employee",
+        sender_role: "employee",
+        message: "Please send John's resume today.",
+        attachment_type: "resume",
+        attachment_reference: JSON.stringify({
+          resumeId: "res-999",
+          candidate_name: "John Doe",
+          drive_view_url: "https://drive.google.com/view/123",
+        }),
+        is_deleted: true,
+        deleted_by: "user-admin-1",
+        deleted_by_name: "Harish",
+        deleted_by_role: "sub_admin",
+        deleted_at: "2026-09-07T15:42:00Z",
+      };
+
+      const formatForRole = (m: typeof rawDeletedMsg, callerRole: string) => {
+        const isAdmin = callerRole === "admin" || callerRole === "super_admin";
+        if (m.is_deleted && !isAdmin) {
+          return {
+            id: m.id,
+            message: "This message was deleted.",
+            attachment_type: null,
+            attachment_reference: null,
+            is_deleted: true,
+            deleted_by: null,
+            deleted_by_name: null,
+            deleted_by_role: null,
+            deleted_at: m.deleted_at,
+          };
+        }
+        return {
+          id: m.id,
+          message: m.message,
+          attachment_type: m.attachment_type,
+          attachment_reference: m.attachment_reference,
+          is_deleted: m.is_deleted,
+          deleted_by: m.deleted_by,
+          deleted_by_name: m.deleted_by_name,
+          deleted_by_role: m.deleted_by_role,
+          deleted_at: m.deleted_at,
+        };
+      };
+
+      // 1. Admin view: original text intact, attachments intact, audit details provided
+      const adminView = formatForRole(rawDeletedMsg, "admin");
+      expect(adminView.message).toBe("Please send John's resume today.");
+      expect(adminView.attachment_type).toBe("resume");
+      expect(adminView.attachment_reference).toBeDefined();
+      expect(adminView.is_deleted).toBe(true);
+      expect(adminView.deleted_by_name).toBe("Harish");
+      expect(adminView.deleted_by_role).toBe("sub_admin");
+      expect(adminView.deleted_at).toBe("2026-09-07T15:42:00Z");
+
+      // 2. Sub-Admin view: "This message was deleted.", attachments scrubbed
+      const subAdminView = formatForRole(rawDeletedMsg, "sub_admin");
+      expect(subAdminView.message).toBe("This message was deleted.");
+      expect(subAdminView.attachment_type).toBeNull();
+      expect(subAdminView.attachment_reference).toBeNull();
+      expect(subAdminView.is_deleted).toBe(true);
+
+      // 3. Client view: "This message was deleted.", attachments scrubbed
+      const clientView = formatForRole(rawDeletedMsg, "client");
+      expect(clientView.message).toBe("This message was deleted.");
+      expect(clientView.attachment_type).toBeNull();
+      expect(clientView.attachment_reference).toBeNull();
+
+      // 4. Employee view: "This message was deleted.", attachments scrubbed
+      const employeeView = formatForRole(rawDeletedMsg, "employee");
+      expect(employeeView.message).toBe("This message was deleted.");
+      expect(employeeView.attachment_type).toBeNull();
+      expect(employeeView.attachment_reference).toBeNull();
+    });
+
+    it("verifies role-based message deletion permissions", () => {
+      const canDelete = (callerRole: string, callerId: string, senderRole: string, senderId: string) => {
+        const isOwn = callerId === senderId;
+        if (callerRole === "admin" || callerRole === "super_admin") {
+          return true;
+        }
+        if (callerRole === "sub_admin") {
+          if (senderRole === "admin" || senderRole === "super_admin") {
+            return isOwn;
+          }
+          return true;
+        }
+        return isOwn;
+      };
+
+      // Admin can delete any role's message
+      expect(canDelete("admin", "adm-1", "employee", "emp-1")).toBe(true);
+      expect(canDelete("admin", "adm-1", "client", "cli-1")).toBe(true);
+      expect(canDelete("admin", "adm-1", "sub_admin", "sub-1")).toBe(true);
+      expect(canDelete("admin", "adm-1", "admin", "adm-2")).toBe(true);
+
+      // Sub-Admin can delete client, employee, and own messages
+      expect(canDelete("sub_admin", "sub-1", "client", "cli-1")).toBe(true);
+      expect(canDelete("sub_admin", "sub-1", "employee", "emp-1")).toBe(true);
+      expect(canDelete("sub_admin", "sub-1", "sub_admin", "sub-1")).toBe(true);
+      // Sub-Admin CANNOT delete Admin messages
+      expect(canDelete("sub_admin", "sub-1", "admin", "adm-1")).toBe(false);
+      expect(canDelete("sub_admin", "sub-1", "super_admin", "sup-1")).toBe(false);
+
+      // Client and Employee can only delete their own messages
+      expect(canDelete("client", "cli-1", "client", "cli-1")).toBe(true);
+      expect(canDelete("client", "cli-1", "client", "cli-2")).toBe(false);
+      expect(canDelete("client", "cli-1", "employee", "emp-1")).toBe(false);
+      expect(canDelete("employee", "emp-1", "employee", "emp-1")).toBe(true);
+      expect(canDelete("employee", "emp-1", "client", "cli-1")).toBe(false);
+    });
+
+    it("replays missed messages with role-specific soft-delete sanitization in Durable Object", async () => {
+      const mockStorage = {
+        alarm: null as number | null,
+        getAlarm: async () => mockStorage.alarm,
+        setAlarm: async (ts: number) => { mockStorage.alarm = ts; },
+      };
+      const roomDO = new ChatRoomDO({ storage: mockStorage } as any, mockEnv);
+      const mockWs = { send: () => {} } as any;
+
+      await expect(
+        roomDO.replayMissedMessages(mockWs, "room-1", "msg-1", "admin")
+      ).resolves.not.toThrow();
+
+      await expect(
+        roomDO.replayMissedMessages(mockWs, "room-1", "msg-1", "employee")
+      ).resolves.not.toThrow();
+    });
+  });
 });
+

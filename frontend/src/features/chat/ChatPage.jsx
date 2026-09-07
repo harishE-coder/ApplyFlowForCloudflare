@@ -273,14 +273,51 @@ export function ChatPage() {
     }
   }, []);
 
-  // Handle deleted messages
+  // Handle deleted messages with Admin Audit View support
   const handleWsMessageDeleted = useCallback((delData) => {
-    const { message_id } = delData;
+    const { message_id, deleted_by, deleted_by_name, deleted_by_role, deleted_at } = delData || {};
     if (message_id) {
+      const isAdminUser = user?.role === 'admin' || user?.role === 'super_admin';
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === message_id ? { ...m, is_deleted: true, message: '[Message deleted]' } : m
-        )
+        prev.map((m) => {
+          if (m.id !== message_id) return m;
+          if (isAdminUser) {
+            // Admin retains original message text and attachments for audit trail
+            return {
+              ...m,
+              is_deleted: true,
+              deleted_by: deleted_by || m.deleted_by || user?.id,
+              deleted_by_name: deleted_by_name || m.deleted_by_name || 'Staff',
+              deleted_by_role: deleted_by_role || m.deleted_by_role || 'admin',
+              deleted_at: deleted_at || m.deleted_at || new Date().toISOString(),
+            };
+          }
+          // Non-admin viewers see sanitized deleted placeholder with attachments stripped
+          return {
+            ...m,
+            is_deleted: true,
+            message: 'This message was deleted.',
+            attachment_type: null,
+            attachment_url: null,
+            attachment_download_url: null,
+            attachment_reference: null,
+            attachment_name: null,
+            attachment_filename: null,
+            attachment_thumbnail_url: null,
+            resume_data: null,
+            job_data: null,
+          };
+        })
+      );
+    }
+  }, [user?.id, user?.role]);
+
+  // Handle live room status changes (lock/unlock/archive)
+  const handleRoomStatusChanged = useCallback((statusData) => {
+    const { room_id, status } = statusData;
+    if (room_id && status) {
+      setRooms((prev) =>
+        prev.map((r) => (r.id === room_id ? { ...r, status } : r))
       );
     }
   }, []);
@@ -293,11 +330,13 @@ export function ChatPage() {
     typingUsers,
     sendTyping: wsSendTyping,
   } = useChatWebSocket(activeRoomId, {
+    onOpen: fetchRooms,
     onMessage: handleIncomingMessage,
     onRoomUpdate: handleRoomUpdate,
     onMessageStatus: handleMessageStatus,
     onReadReceipt: handleReadReceipt,
     onMessageDeleted: handleWsMessageDeleted,
+    onRoomStatusChanged: handleRoomStatusChanged,
   });
 
   // Action handlers
@@ -384,11 +423,12 @@ export function ChatPage() {
   );
 
   const handleShareResume = useCallback(
-    async (resumeId) => {
+    async (resumeId, caption) => {
       if (!activeRoomId || !resumeId) return;
       try {
         const res = await api.post(`/chat/rooms/${activeRoomId}/share-resume`, {
           resume_id: resumeId,
+          caption: caption || null,
         });
         const savedMsg = res.data;
         setMessages((prev) => {
@@ -396,7 +436,7 @@ export function ChatPage() {
           return [...prev, savedMsg];
         });
         updateRoomAndSort(activeRoomId, {
-          last_message: savedMsg.message,
+          last_message: '📄 ' + (savedMsg.message || 'Candidate Resume Shared'),
           last_message_sender: savedMsg.sender?.name || user?.name || 'You',
           last_message_at: savedMsg.created_at,
         });
@@ -409,14 +449,67 @@ export function ChatPage() {
     [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort]
   );
 
+  const handleShareJob = useCallback(
+    async (requirementId, caption) => {
+      if (!activeRoomId || !requirementId) return;
+      try {
+        const res = await api.post(`/chat/rooms/${activeRoomId}/share-job`, {
+          requirement_id: requirementId,
+          caption: caption || null,
+        });
+        const savedMsg = res.data;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === savedMsg.id)) return prev;
+          return [...prev, savedMsg];
+        });
+        updateRoomAndSort(activeRoomId, {
+          last_message: '💼 ' + (savedMsg.message || 'Job Opening Shared'),
+          last_message_sender: savedMsg.sender?.name || user?.name || 'You',
+          last_message_at: savedMsg.created_at,
+        });
+        toastSuccess('Job opening shared to chat');
+      } catch (err) {
+        console.error('Failed to share job opening:', err);
+        toastError('Failed to share job opening');
+      }
+    },
+    [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort]
+  );
+
   const handleDeleteMessage = useCallback(
     async (messageId) => {
       try {
-        await api.delete(`/chat/messages/${messageId}`);
+        const res = await api.delete(`/chat/messages/${messageId}`);
+        const delInfo = res?.data || {};
+        const isAdminUser = user?.role === 'admin' || user?.role === 'super_admin';
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === messageId ? { ...m, is_deleted: true, message: '[Message deleted]' } : m
-          )
+          prev.map((m) => {
+            if (m.id !== messageId) return m;
+            if (isAdminUser) {
+              return {
+                ...m,
+                is_deleted: true,
+                deleted_by: delInfo.deleted_by || user?.id,
+                deleted_by_name: delInfo.deleted_by_name || user?.name || 'Admin',
+                deleted_by_role: delInfo.deleted_by_role || user?.role || 'admin',
+                deleted_at: delInfo.deleted_at || new Date().toISOString(),
+              };
+            }
+            return {
+              ...m,
+              is_deleted: true,
+              message: 'This message was deleted.',
+              attachment_type: null,
+              attachment_url: null,
+              attachment_download_url: null,
+              attachment_reference: null,
+              attachment_name: null,
+              attachment_filename: null,
+              attachment_thumbnail_url: null,
+              resume_data: null,
+              job_data: null,
+            };
+          })
         );
         toastSuccess('Message deleted');
       } catch (err) {
@@ -424,7 +517,7 @@ export function ChatPage() {
         toastError('Failed to delete message');
       }
     },
-    [toastError, toastSuccess]
+    [user?.id, user?.name, user?.role, toastError, toastSuccess]
   );
 
   const handleEnablePush = useCallback(async () => {
@@ -519,10 +612,12 @@ export function ChatPage() {
           onSendMessage={handleSendMessage}
           onUploadAttachment={handleUploadAttachment}
           onShareResume={handleShareResume}
+          onShareJob={handleShareJob}
           onDeleteMessage={handleDeleteMessage}
           onTypingChange={wsSendTyping}
           loadingMessages={loadingMessages}
           onBackMobile={() => setIsMobileViewingChat(false)}
+          onRefreshRoom={fetchRooms}
         />
       </div>
     </div>

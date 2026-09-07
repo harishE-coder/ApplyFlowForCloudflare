@@ -11,6 +11,12 @@ export const SendMessageRequestSchema = z.object({
 
 export const ShareResumeRequestSchema = z.object({
   resume_id: z.string().uuid("Invalid resume ID"),
+  caption: z.string().trim().optional().nullable(),
+});
+
+export const ShareJobRequestSchema = z.object({
+  requirement_id: z.string().uuid("Invalid requirement ID"),
+  caption: z.string().trim().optional().nullable(),
 });
 
 export const MarkReadRequestSchema = z.object({

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { motion } from 'framer-motion';
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ShieldCheck,
   Zap,
+  Loader2,
 } from 'lucide-react';
 import { ApplyFlowLogo } from '@/assets/logo/ApplyFlowLogo';
 import { LoginBrandIllustration } from '@/assets/illustrations/ATSIllustrations';
@@ -16,13 +17,57 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from './AuthContext';
 import { useToast } from '@/components/ui/Toast';
+import api from '@/services/api';
+
+const RETRY_DELAYS = [1000, 2000, 4000];
+const STATUS_MESSAGES = [
+  'Signing in...',
+  'Server is reconnecting. Retrying (1/3)...',
+  'Connecting to workspace. Retrying (2/3)...',
+  'Waking up database. Retrying (3/3)...',
+];
+const MAX_ATTEMPTS = 4; // Initial attempt + up to 3 retries
+const FINAL_NETWORK_ERROR_MSG =
+  'Unable to reach the server. Please check your internet connection or try again in a moment.';
+
+function shouldRetry(err) {
+  if (!err) return false;
+  const status = err.response?.status;
+
+  // Never retry client, validation, or authentication rejection errors
+  if ([400, 401, 403, 404, 422].includes(status)) {
+    return false;
+  }
+
+  // Retry on transient server/gateway errors and rate limits
+  if ([408, 429, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
+  // Retry on network disconnect, cold-start drops, and request timeouts
+  if (
+    err.message === 'Network Error' ||
+    err.code === 'ECONNABORTED' ||
+    !err.response
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const { success, error: toastError } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
   const [authError, setAuthError] = useState('');
+
+  // Background non-blocking warm-up call on page mount
+  useEffect(() => {
+    api.get('/health', { timeout: 10000, cache: false }).catch(() => {});
+  }, []);
 
   const {
     register,
@@ -38,51 +83,99 @@ export function LoginPage() {
   const onSubmit = async (data) => {
     setIsLoading(true);
     setAuthError('');
-    try {
-      const user = await login(data.email, data.password);
-      success('Welcome back', `Signed in as ${user?.name || 'User'}`);
-      navigate('/dashboard');
-    } catch (err) {
-      const status = err?.response?.status;
-      const resData = err?.response?.data;
+    setStatusMessage(STATUS_MESSAGES[0]);
 
-      let msg = 'Invalid email or password';
+    const totalStartTime = performance.now();
 
-      if (status === 401) {
-        msg = 'Invalid email or password';
-      } else if (status === 403) {
-        msg = 'Account is disabled. Please contact an administrator.';
-      } else {
-        const rawDetail =
-          resData?.detail ??
-          resData?.message ??
-          resData?.error ??
-          err?.message ??
-          '';
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const attemptStartTime = performance.now();
+      try {
+        const user = await login(data.email, data.password, { timeout: 30000 });
+        const elapsed = Math.round(performance.now() - attemptStartTime);
+        const totalElapsed = Math.round(performance.now() - totalStartTime);
+        console.info(
+          `[Auth] Login attempt ${attempt}/${MAX_ATTEMPTS} succeeded in ${elapsed}ms (total: ${totalElapsed}ms)`
+        );
+        success('Welcome back', `Signed in as ${user?.name || 'User'}`);
+        navigate('/dashboard');
+        return;
+      } catch (err) {
+        const elapsed = Math.round(performance.now() - attemptStartTime);
+        const canRetry = attempt < MAX_ATTEMPTS && shouldRetry(err);
 
-        if (typeof rawDetail === 'string' && rawDetail.trim()) {
-          msg = rawDetail.trim();
-        } else if (Array.isArray(rawDetail)) {
-          msg = rawDetail
-            .map((d) => {
-              if (typeof d === 'string') return d;
-              if (d && typeof d === 'object') return d.msg || d.message || JSON.stringify(d);
-              return String(d);
-            })
-            .filter(Boolean)
-            .join('; ') || 'Invalid email or password';
-        } else if (rawDetail && typeof rawDetail === 'object') {
-          msg = rawDetail.msg || rawDetail.message || rawDetail.error || JSON.stringify(rawDetail);
-        } else if (rawDetail) {
-          msg = String(rawDetail);
+        console.warn(
+          `[Auth] Login attempt ${attempt}/${MAX_ATTEMPTS} failed after ${elapsed}ms: ${
+            err?.response?.status
+              ? `HTTP ${err.response.status}`
+              : err.message || 'Unknown error'
+          }. ${canRetry ? 'Scheduling retry...' : 'No further retries.'}`
+        );
+
+        if (canRetry) {
+          const baseDelay = RETRY_DELAYS[attempt - 1];
+          // Jitter of ±250ms prevents synchronized retry storms if multiple users face server restart
+          const jitter = Math.floor(Math.random() * 500) - 250;
+          const delay = Math.max(500, baseDelay + jitter);
+          setStatusMessage(STATUS_MESSAGES[attempt]);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
         }
-      }
 
-      setAuthError(msg);
-      toastError('Authentication Failed', msg);
-    } finally {
-      setIsLoading(false);
+        // Final failure handling (no further retries)
+        const totalElapsed = Math.round(performance.now() - totalStartTime);
+        console.error(`[Auth] Login sequence completed with failure after ${totalElapsed}ms`);
+
+        const status = err?.response?.status;
+        const resData = err?.response?.data;
+
+        let msg = 'Invalid email or password';
+
+        if (status === 401) {
+          msg = 'Invalid email or password';
+        } else if (status === 403) {
+          msg = 'Account is disabled. Please contact an administrator.';
+        } else if (
+          !err.response ||
+          err.message === 'Network Error' ||
+          err.code === 'ECONNABORTED' ||
+          [408, 502, 503, 504].includes(status)
+        ) {
+          msg = FINAL_NETWORK_ERROR_MSG;
+        } else {
+          const rawDetail =
+            resData?.detail ??
+            resData?.message ??
+            resData?.error ??
+            err?.message ??
+            '';
+
+          if (typeof rawDetail === 'string' && rawDetail.trim()) {
+            msg = rawDetail.trim();
+          } else if (Array.isArray(rawDetail)) {
+            msg =
+              rawDetail
+                .map((d) => {
+                  if (typeof d === 'string') return d;
+                  if (d && typeof d === 'object') return d.msg || d.message || JSON.stringify(d);
+                  return String(d);
+                })
+                .filter(Boolean)
+                .join('; ') || 'Invalid email or password';
+          } else if (rawDetail && typeof rawDetail === 'object') {
+            msg = rawDetail.msg || rawDetail.message || rawDetail.error || JSON.stringify(rawDetail);
+          } else if (rawDetail) {
+            msg = String(rawDetail);
+          }
+        }
+
+        setAuthError(msg);
+        toastError('Authentication Failed', msg);
+        break;
+      }
     }
+
+    setIsLoading(false);
+    setStatusMessage('');
   };
 
   return (
@@ -172,6 +265,13 @@ export function LoginPage() {
             </div>
           )}
 
+          {isLoading && statusMessage && statusMessage !== STATUS_MESSAGES[0] && (
+            <div className="mb-6 p-3.5 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] text-[#1E40AF] text-small font-medium flex items-center gap-2.5 animate-fadeIn">
+              <Loader2 className="w-4 h-4 animate-spin text-[#2563EB] shrink-0" />
+              <span>{statusMessage}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             <Input
               label="Work Email Address"
@@ -210,12 +310,20 @@ export function LoginPage() {
                 type="submit"
                 variant="primary"
                 size="lg"
-                isLoading={isLoading}
-                icon={ArrowRight}
-                iconPosition="right"
+                disabled={isLoading}
                 className="w-full h-[48px] text-body font-bold"
               >
-                Sign In to ApplyFlow
+                {isLoading ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                    <span>{statusMessage || 'Signing in...'}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <span>Sign In to ApplyFlow</span>
+                    <ArrowRight className="w-4 h-4 shrink-0" />
+                  </span>
+                )}
               </Button>
             </div>
           </form>

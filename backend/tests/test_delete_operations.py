@@ -179,3 +179,86 @@ async def test_employee_delete_slack_and_audit_patterns(admin_auth):
             # Notification cascaded and removed
             saved_notif = (await db.execute(select(Notification).where(Notification.id == notif_id))).scalar_one_or_none()
             assert saved_notif is None
+
+
+@pytest.mark.anyio
+async def test_chat_message_soft_delete_and_admin_audit_view(admin_auth):
+    headers = admin_auth
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+        # 1. Setup client, employee, and room
+        async with db_session_factory() as db:
+            c = Client(company_name=f"AuditCorp_{uuid.uuid4().hex[:6]}")
+            db.add(c)
+            await db.flush()
+
+            emp = User(
+                name="Harish Employee",
+                email=f"emp_{uuid.uuid4().hex[:6]}@test.com",
+                password_hash=hash_password("EmpPass123"),
+                role="employee",
+                status="active",
+                is_active=True,
+            )
+            db.add(emp)
+            await db.flush()
+
+            room = ChatRoom(client_id=c.id)
+            db.add(room)
+            await db.flush()
+
+            msg = ChatMessage(
+                room_id=room.id,
+                sender_id=emp.id,
+                message="Please send John's resume today.",
+                attachment_type="resume",
+                attachment_reference="resume-uuid-123",
+            )
+            db.add(msg)
+            await db.commit()
+            room_id = room.id
+            msg_id = msg.id
+            emp_id = emp.id
+
+        # 2. Admin soft-deletes the message
+        del_res = await client.delete(f"/api/chat/messages/{msg_id}", headers=headers)
+        assert del_res.status_code == 200
+        del_data = del_res.json()
+        assert del_data["success"] is True
+        assert del_data["message_id"] == str(msg_id)
+        assert del_data["deleted_by_name"] == "Super Admin"
+
+        # 3. Database row is NOT hard-deleted
+        async with db_session_factory() as db:
+            db_msg = (await db.execute(select(ChatMessage).where(ChatMessage.id == msg_id))).scalar_one_or_none()
+            assert db_msg is not None
+            assert db_msg.is_deleted is True
+            assert db_msg.deleted_at is not None
+            assert db_msg.message == "Please send John's resume today."
+            assert db_msg.attachment_type == "resume"
+
+        # 4. Admin GET room messages -> sees original text, attachments, and audit metadata
+        admin_get = await client.get(f"/api/chat/rooms/{room_id}/messages", headers=headers)
+        assert admin_get.status_code == 200
+        admin_items = admin_get.json()["items"]
+        assert len(admin_items) == 1
+        assert admin_items[0]["id"] == str(msg_id)
+        assert admin_items[0]["is_deleted"] is True
+        assert admin_items[0]["message"] == "Please send John's resume today."
+        assert admin_items[0]["attachment_type"] == "resume"
+        assert admin_items[0]["deleted_by_name"] == "Super Admin"
+
+        # 5. Employee GET room messages -> sees sanitized "This message was deleted." and nullified attachments
+        emp_token = create_access_token(user_id=emp_id, role="employee")
+        emp_headers = {"Authorization": f"Bearer {emp_token}", "Cookie": f"access_token={emp_token}"}
+        emp_get = await client.get(f"/api/chat/rooms/{room_id}/messages", headers=emp_headers)
+        assert emp_get.status_code == 200
+        emp_items = emp_get.json()["items"]
+        assert len(emp_items) == 1
+        assert emp_items[0]["id"] == str(msg_id)
+        assert emp_items[0]["is_deleted"] is True
+        assert emp_items[0]["message"] == "This message was deleted."
+        assert emp_items[0]["attachment_type"] is None
+        assert emp_items[0]["attachment_reference"] is None
+        assert emp_items[0]["deleted_by"] is None
+        assert emp_items[0]["deleted_by_name"] is None
+

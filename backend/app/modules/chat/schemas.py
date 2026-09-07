@@ -41,12 +41,22 @@ class ChatMessageResponse(BaseModel):
     message: str
     attachment_type: str | None = None  # "resume", "pdf", "image", etc.
     attachment_reference: str | None = None  # Resume ID, drive file ID, or download URL
+    attachment_name: str | None = None
     attachment_filename: str | None = None
+    attachment_url: str | None = None
+    attachment_download_url: str | None = None
+    attachment_thumbnail_url: str | None = None
+    resume_data: dict | None = None
+    job_data: dict | None = None
     client_id: str | None = None
     status: str = "sent"  # "pending", "sent", "delivered", "read"
     created_at: datetime
     edited_at: datetime | None = None
     is_deleted: bool = False
+    deleted_by: uuid.UUID | None = None
+    deleted_by_name: str | None = None
+    deleted_by_role: str | None = None
+    deleted_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

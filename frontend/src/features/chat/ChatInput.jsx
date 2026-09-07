@@ -3,6 +3,7 @@ import {
   Send,
   Paperclip,
   FileText,
+  Briefcase,
   Smile,
   Loader2,
   X,
@@ -15,6 +16,7 @@ export function ChatInput({
   onSendMessage,
   onUploadAttachment,
   onOpenResumeModal,
+  onOpenJobModal,
   onTypingChange,
   typingText = '',
   disabled = false,
@@ -167,7 +169,7 @@ export function ChatInput({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.doc,.docx,application/pdf"
+          accept=".pdf,.doc,.docx,application/pdf,image/*"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -179,7 +181,7 @@ export function ChatInput({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading || disabled}
-            title="Attach PDF or Document"
+            title="Attach Document or Image"
             className="p-2 min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center text-[#64748B] hover:text-[#2563EB] hover:bg-[#E2E8F0]/60 rounded-xl transition-colors cursor-pointer"
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin text-[#2563EB]" /> : <Paperclip className="w-4 h-4" />}
@@ -195,6 +197,19 @@ export function ChatInput({
               className="p-2 min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center text-[#64748B] hover:text-[#F97316] hover:bg-[#F97316]/10 rounded-xl transition-colors cursor-pointer"
             >
               <FileText className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Share Job Opening Button (Available for all roles) */}
+          {onOpenJobModal && (
+            <button
+              type="button"
+              onClick={onOpenJobModal}
+              disabled={disabled}
+              title="Share Job Opening"
+              className="p-2 min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center text-[#64748B] hover:text-[#0D9488] hover:bg-[#0D9488]/10 rounded-xl transition-colors cursor-pointer"
+            >
+              <Briefcase className="w-4 h-4" />
             </button>
           )}
 

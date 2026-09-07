@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -63,10 +63,18 @@ class ChatMessage(Base):
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     room: Mapped[ChatRoom] = relationship(back_populates="messages")
-    sender: Mapped[User | None] = relationship(lazy="selectin")
+    sender: Mapped[User | None] = relationship(foreign_keys=[sender_id], lazy="selectin")
+    deleted_by_user: Mapped[User | None] = relationship(foreign_keys=[deleted_by], lazy="selectin")
 
 
 class ChatRead(Base):

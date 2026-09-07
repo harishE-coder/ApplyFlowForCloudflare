@@ -87,7 +87,7 @@ export class ChatRoomDO {
 
     // Replay any missed messages if client provided last_message_id on reconnect
     if (lastMessageId && roomId) {
-      this.replayMissedMessages(server, roomId, lastMessageId);
+      this.replayMissedMessages(server, roomId, lastMessageId, userRole);
     }
 
     // Schedule 30s heartbeat sweep alarm if not already scheduled
@@ -212,7 +212,7 @@ export class ChatRoomDO {
    * Replays messages from Neon PostgreSQL sent after lastMessageId
    * Ensures clients reconnecting after Wi-Fi blips or page refreshes don't miss messages.
    */
-  async replayMissedMessages(ws: WebSocket, roomId: string, lastMessageId: string) {
+  async replayMissedMessages(ws: WebSocket, roomId: string, lastMessageId: string, role?: string) {
     if (!this.env.DATABASE_URL) return;
     try {
       const sql = getDb(this.env.DATABASE_URL);
@@ -221,21 +221,106 @@ export class ChatRoomDO {
       `;
       if (lastMsg.length === 0) return;
 
+      const isAdmin = role === "admin" || role === "super_admin";
       const lastCreatedAt = lastMsg[0].created_at;
       const missed = await sql`
         SELECT
           m.id, m.room_id, m.sender_id, m.message, m.attachment_type,
-          m.attachment_reference, m.attachment_filename, m.client_message_id,
+          m.attachment_reference, m.client_message_id,
           m.created_at, m.edited_at,
-          u.name as sender_name, u.role as sender_role
+          COALESCE(m.is_deleted, false) as is_deleted,
+          m.deleted_by, m.deleted_at,
+          u.name as sender_name, u.role as sender_role,
+          ud.name as deleted_by_name, ud.role as deleted_by_role
         FROM chat_messages m
         LEFT JOIN users u ON u.id = m.sender_id
+        LEFT JOIN users ud ON ud.id = m.deleted_by
         WHERE m.room_id = ${roomId} AND m.created_at > ${lastCreatedAt}
         ORDER BY m.created_at ASC
         LIMIT 50
       `;
 
       for (const m of missed) {
+        const isDeleted = Boolean(
+          m.is_deleted ||
+          m.message === "[Message deleted]" ||
+          m.message === "This message was deleted."
+        );
+
+        if (isDeleted && !isAdmin) {
+          try {
+            ws.send(
+              JSON.stringify({
+                type: "new_message",
+                message: {
+                  id: m.id,
+                  room_id: m.room_id,
+                  sender: {
+                    id: m.sender_id,
+                    name: m.sender_name || "Deleted User",
+                    role: m.sender_role || "user",
+                  },
+                  message: "This message was deleted.",
+                  attachment_type: null,
+                  attachment_reference: null,
+                  attachment_name: null,
+                  attachment_filename: null,
+                  attachment_url: null,
+                  attachment_download_url: null,
+                  attachment_thumbnail_url: null,
+                  resume_data: null,
+                  job_data: null,
+                  client_id: m.client_message_id,
+                  status: "delivered",
+                  created_at: m.created_at,
+                  edited_at: m.edited_at,
+                  is_deleted: true,
+                  deleted_by: null,
+                  deleted_by_name: null,
+                  deleted_by_role: null,
+                  deleted_at: m.deleted_at || null,
+                  is_replayed: true,
+                },
+              })
+            );
+          } catch {
+            break;
+          }
+          continue;
+        }
+
+        let attachmentRef = m.attachment_reference;
+        let attachmentName = null;
+        let attachmentUrl = null;
+        let attachmentDownloadUrl = null;
+        let attachmentThumbnailUrl = null;
+        let resumeData = null;
+        let jobData = null;
+
+        if (m.attachment_reference && typeof m.attachment_reference === "string" && m.attachment_reference.trim().startsWith("{")) {
+          try {
+            const parsed = JSON.parse(m.attachment_reference);
+            if (m.attachment_type === "resume") {
+              attachmentRef = parsed.resumeId || m.attachment_reference;
+              attachmentName = parsed.filename || parsed.candidate_name;
+              attachmentUrl = parsed.drive_view_url;
+              attachmentDownloadUrl = parsed.drive_download_url;
+              resumeData = parsed;
+            } else if (m.attachment_type === "job") {
+              attachmentRef = parsed.id || m.attachment_reference;
+              attachmentName = parsed.title;
+              attachmentUrl = parsed.job_url;
+              jobData = parsed;
+            } else if (m.attachment_type === "image" || m.attachment_type === "pdf" || m.attachment_type === "file") {
+              attachmentRef = parsed.fileId || m.attachment_reference;
+              attachmentName = parsed.filename;
+              attachmentUrl = parsed.viewUrl;
+              attachmentDownloadUrl = parsed.downloadUrl;
+              attachmentThumbnailUrl = parsed.thumbnailUrl;
+            }
+          } catch {}
+        }
+
         const formatted = {
           id: m.id,
           room_id: m.room_id,
@@ -246,13 +331,23 @@ export class ChatRoomDO {
           },
           message: m.message,
           attachment_type: m.attachment_type,
-          attachment_reference: m.attachment_reference,
-          attachment_filename: m.attachment_filename,
+          attachment_reference: attachmentRef,
+          attachment_name: attachmentName,
+          attachment_filename: attachmentName,
+          attachment_url: attachmentUrl,
+          attachment_download_url: attachmentDownloadUrl,
+          attachment_thumbnail_url: attachmentThumbnailUrl,
+          resume_data: resumeData,
+          job_data: jobData,
           client_id: m.client_message_id,
           status: "delivered",
           created_at: m.created_at,
           edited_at: m.edited_at,
-          is_deleted: false,
+          is_deleted: isDeleted,
+          deleted_by: m.deleted_by || null,
+          deleted_by_name: m.deleted_by_name || (isDeleted ? "Admin" : null),
+          deleted_by_role: m.deleted_by_role || (isDeleted ? "admin" : null),
+          deleted_at: m.deleted_at || null,
           is_replayed: true,
         };
 

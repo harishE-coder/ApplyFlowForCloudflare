@@ -9,8 +9,14 @@ import {
   PushSubscriptionCreateSchema,
   PushUnsubscribeRequestSchema,
   SendMessageRequestSchema,
+  ShareJobRequestSchema,
   ShareResumeRequestSchema,
 } from "../schemas/chat";
+import {
+  getDownloadUrl,
+  getPreviewUrl,
+  uploadResume,
+} from "../services/googleAppsScript";
 import type { Bindings, Variables } from "../types";
 
 export const chatRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -255,6 +261,8 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
 // 7. GET /api/chat/rooms/:room_id/messages (fast index on room_id, created_at DESC)
 chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
   const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const isAdmin = user.role === "admin" || user.role === "super_admin";
   const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") || 50)));
   const offset = Math.max(0, Number(c.req.query("offset") || 0));
   const beforeId = c.req.query("before_id");
@@ -270,9 +278,13 @@ chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
           m.id, m.room_id, m.sender_id, m.message, m.attachment_type,
           m.attachment_reference,
           m.created_at, m.edited_at,
-          u.name as sender_name, u.role as sender_role
+          COALESCE(m.is_deleted, false) as is_deleted,
+          m.deleted_by, m.deleted_at,
+          u.name as sender_name, u.role as sender_role,
+          ud.name as deleted_by_name, ud.role as deleted_by_role
         FROM chat_messages m
         LEFT JOIN users u ON u.id = m.sender_id
+        LEFT JOIN users ud ON ud.id = m.deleted_by
         WHERE m.room_id = ${roomId} AND m.created_at < ${beforeCreatedAt}
         ORDER BY m.created_at DESC
         LIMIT ${limit}
@@ -286,9 +298,13 @@ chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
         m.id, m.room_id, m.sender_id, m.message, m.attachment_type,
         m.attachment_reference,
         m.created_at, m.edited_at,
-        u.name as sender_name, u.role as sender_role
+        COALESCE(m.is_deleted, false) as is_deleted,
+        m.deleted_by, m.deleted_at,
+        u.name as sender_name, u.role as sender_role,
+        ud.name as deleted_by_name, ud.role as deleted_by_role
       FROM chat_messages m
       LEFT JOIN users u ON u.id = m.sender_id
+      LEFT JOIN users ud ON ud.id = m.deleted_by
       WHERE m.room_id = ${roomId}
       ORDER BY m.created_at DESC
       LIMIT ${limit} OFFSET ${offset}
@@ -302,24 +318,144 @@ chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
   `;
   const total = countRes[0]?.count || 0;
 
-  const items = messages.map((m: any) => ({
-    id: m.id,
-    room_id: m.room_id,
-    sender: {
-      id: m.sender_id,
-      name: m.sender_name || "Deleted User",
-      role: m.sender_role || "user",
-    },
-    message: m.message,
-    attachment_type: m.attachment_type || null,
-    attachment_reference: m.attachment_reference || null,
-    attachment_filename: null,
-    client_id: null,
-    status: "delivered",
-    created_at: m.created_at,
-    edited_at: m.edited_at,
-    is_deleted: false,
-  }));
+  const items = messages.map((m: any) => {
+    const isDeleted = Boolean(
+      m.is_deleted ||
+      m.message === "[Message deleted]" ||
+      m.message === "This message was deleted."
+    );
+
+    // For non-Admins (Sub-Admin, Client, Employee), completely sanitize deleted messages
+    if (isDeleted && !isAdmin) {
+      return {
+        id: m.id,
+        room_id: m.room_id,
+        sender: {
+          id: m.sender_id,
+          name: m.sender_name || "Deleted User",
+          role: m.sender_role || "user",
+        },
+        message: "This message was deleted.",
+        attachment_type: null,
+        attachment_reference: null,
+        attachment_name: null,
+        attachment_filename: null,
+        attachment_url: null,
+        attachment_download_url: null,
+        attachment_thumbnail_url: null,
+        resume_data: null,
+        job_data: null,
+        client_id: null,
+        status: "delivered",
+        created_at: m.created_at,
+        edited_at: m.edited_at,
+        is_deleted: true,
+        deleted_by: null,
+        deleted_by_name: null,
+        deleted_by_role: null,
+        deleted_at: m.deleted_at || null,
+      };
+    }
+
+    let parsedRef: any = null;
+    if (
+      m.attachment_reference &&
+      typeof m.attachment_reference === "string" &&
+      m.attachment_reference.trim().startsWith("{")
+    ) {
+      try {
+        parsedRef = JSON.parse(m.attachment_reference);
+      } catch {}
+    }
+
+    let attachmentRef = m.attachment_reference || null;
+    let attachmentName: string | null = null;
+    let attachmentFilename: string | null = null;
+    let attachmentUrl: string | null = null;
+    let attachmentDownloadUrl: string | null = null;
+    let attachmentThumbnailUrl: string | null = null;
+    let resumeData: any = null;
+    let jobData: any = null;
+
+    if (m.attachment_type === "resume") {
+      if (parsedRef) {
+        attachmentRef = parsedRef.resumeId || m.attachment_reference;
+        attachmentName = parsedRef.filename || parsedRef.candidate_name || null;
+        attachmentFilename = parsedRef.filename || null;
+        attachmentUrl = parsedRef.drive_view_url || null;
+        attachmentDownloadUrl = parsedRef.drive_download_url || null;
+        resumeData = parsedRef;
+      }
+    } else if (m.attachment_type === "job") {
+      if (parsedRef) {
+        attachmentRef = parsedRef.id || m.attachment_reference;
+        attachmentName = parsedRef.title || null;
+        attachmentUrl = parsedRef.job_url || null;
+        jobData = parsedRef;
+      }
+    } else if (
+      m.attachment_type === "image" ||
+      m.attachment_type === "pdf" ||
+      m.attachment_type === "file"
+    ) {
+      if (parsedRef) {
+        attachmentRef = parsedRef.fileId || m.attachment_reference;
+        attachmentName = parsedRef.filename || null;
+        attachmentFilename = parsedRef.filename || null;
+        attachmentUrl =
+          parsedRef.viewUrl ||
+          (parsedRef.fileId ? getPreviewUrl(parsedRef.fileId) : null);
+        attachmentDownloadUrl =
+          parsedRef.downloadUrl ||
+          (parsedRef.fileId ? getDownloadUrl(parsedRef.fileId) : null);
+        attachmentThumbnailUrl =
+          parsedRef.thumbnailUrl ||
+          (m.attachment_type === "image" && parsedRef.fileId
+            ? `https://drive.google.com/thumbnail?id=${parsedRef.fileId}&sz=w800`
+            : null);
+      } else if (m.attachment_reference) {
+        attachmentName = m.attachment_reference;
+        attachmentFilename = m.attachment_reference;
+        if (m.attachment_type === "image") {
+          attachmentUrl = getPreviewUrl(m.attachment_reference);
+          attachmentDownloadUrl = getDownloadUrl(m.attachment_reference);
+          attachmentThumbnailUrl = `https://drive.google.com/thumbnail?id=${m.attachment_reference}&sz=w800`;
+        } else if (m.attachment_type === "pdf") {
+          attachmentUrl = getPreviewUrl(m.attachment_reference);
+          attachmentDownloadUrl = getDownloadUrl(m.attachment_reference);
+        }
+      }
+    }
+
+    return {
+      id: m.id,
+      room_id: m.room_id,
+      sender: {
+        id: m.sender_id,
+        name: m.sender_name || "Deleted User",
+        role: m.sender_role || "user",
+      },
+      message: m.message,
+      attachment_type: m.attachment_type || null,
+      attachment_reference: attachmentRef,
+      attachment_name: attachmentName,
+      attachment_filename: attachmentFilename,
+      attachment_url: attachmentUrl,
+      attachment_download_url: attachmentDownloadUrl,
+      attachment_thumbnail_url: attachmentThumbnailUrl,
+      resume_data: resumeData,
+      job_data: jobData,
+      client_id: null,
+      status: "delivered",
+      created_at: m.created_at,
+      edited_at: m.edited_at,
+      is_deleted: isDeleted,
+      deleted_by: m.deleted_by || null,
+      deleted_by_name: m.deleted_by_name || (isDeleted ? "Admin" : null),
+      deleted_by_role: m.deleted_by_role || (isDeleted ? "admin" : null),
+      deleted_at: m.deleted_at || null,
+    };
+  });
 
   items.reverse();
 
@@ -453,11 +589,11 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
     return c.json({ detail: "Invalid resume ID" }, 400);
   }
 
-  const resumeId = parseResult.data.resume_id;
+  const { resume_id: resumeId, caption } = parseResult.data;
   const sql = getDb(c.env.DATABASE_URL);
 
   const resumeRows = await sql`
-    SELECT id, candidate_name, company, role, original_filename
+    SELECT id, candidate_name, company, role, original_filename, drive_file_id, drive_view_url, drive_download_url
     FROM resumes
     WHERE id = ${resumeId}
     LIMIT 1
@@ -468,7 +604,21 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
   }
 
   const res = resumeRows[0];
-  const messageText = `Shared resume: ${res.candidate_name} (${res.role} - ${res.company})`;
+  const messageText =
+    caption && caption.trim().length > 0
+      ? caption.trim()
+      : `Shared resume: ${res.candidate_name || "Candidate"} (${res.role || "Role"} - ${res.company || "Company"})`;
+
+  const resumeData = {
+    resumeId: res.id,
+    candidate_name: res.candidate_name,
+    role: res.role,
+    company: res.company,
+    filename: res.original_filename,
+    drive_file_id: res.drive_file_id,
+    drive_view_url: res.drive_view_url,
+    drive_download_url: res.drive_download_url,
+  };
 
   const messageId = crypto.randomUUID();
   await sql`
@@ -477,7 +627,7 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
       attachment_reference, created_at
     ) VALUES (
       ${messageId}, ${roomId}, ${user.id}, ${messageText}, 'resume',
-      ${resumeId}, NOW()
+      ${JSON.stringify(resumeData)}, NOW()
     )
   `;
 
@@ -492,7 +642,11 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
     message: messageText,
     attachment_type: "resume",
     attachment_reference: resumeId,
+    attachment_name: res.original_filename || res.candidate_name,
     attachment_filename: res.original_filename,
+    attachment_url: res.drive_view_url,
+    attachment_download_url: res.drive_download_url,
+    resume_data: resumeData,
     status: "sent",
     created_at: new Date().toISOString(),
     edited_at: null,
@@ -527,8 +681,59 @@ chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
     return c.json({ detail: "No file provided in 'file' form field." }, 400);
   }
 
+  const mime = (file.type || "").toLowerCase();
+  const lowerName = (file.name || "").toLowerCase();
+  let attachmentType = "file";
+  if (mime.startsWith("image/") || lowerName.match(/\.(png|jpe?g|gif|webp|svg|bmp)$/)) {
+    attachmentType = "image";
+  } else if (mime === "application/pdf" || lowerName.endsWith(".pdf")) {
+    attachmentType = "pdf";
+  }
+
+  let fileId = "";
+  let viewUrl = "";
+  let downloadUrl = "";
+  let thumbnailUrl = "";
+
+  if (c.env.GOOGLE_APPS_SCRIPT_URL) {
+    try {
+      const uploadRes = await uploadResume(
+        await file.arrayBuffer(),
+        file.name,
+        "Chat Attachment",
+        c.env,
+        file.type
+      );
+      fileId = uploadRes.fileId;
+      viewUrl = uploadRes.viewUrl;
+      downloadUrl = uploadRes.downloadUrl;
+      thumbnailUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w800`;
+    } catch (err) {
+      console.warn("Google Apps Script upload warning:", err);
+      fileId = `chat_${crypto.randomUUID()}`;
+      viewUrl = getPreviewUrl(fileId);
+      downloadUrl = getDownloadUrl(fileId);
+      thumbnailUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w800`;
+    }
+  } else {
+    fileId = `chat_${crypto.randomUUID()}`;
+    viewUrl = getPreviewUrl(fileId);
+    downloadUrl = getDownloadUrl(fileId);
+    thumbnailUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w800`;
+  }
+
+  const cachedMetadata = {
+    fileId,
+    viewUrl,
+    downloadUrl,
+    thumbnailUrl,
+    filename: file.name,
+    mimeType: file.type,
+    size: file.size,
+  };
+
   const sql = getDb(c.env.DATABASE_URL);
-  const messageText = `Sent attachment: ${file.name}`;
+  const messageText = file.name;
   const messageId = crypto.randomUUID();
 
   await sql`
@@ -536,8 +741,8 @@ chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
       id, room_id, sender_id, message, attachment_type,
       attachment_reference, created_at
     ) VALUES (
-      ${messageId}, ${roomId}, ${user.id}, ${messageText}, 'file',
-      ${file.name}, NOW()
+      ${messageId}, ${roomId}, ${user.id}, ${messageText}, ${attachmentType},
+      ${JSON.stringify(cachedMetadata)}, NOW()
     )
   `;
 
@@ -550,9 +755,13 @@ chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
       role: user.role,
     },
     message: messageText,
-    attachment_type: "file",
-    attachment_reference: file.name,
+    attachment_type: attachmentType,
+    attachment_reference: fileId,
+    attachment_name: file.name,
     attachment_filename: file.name,
+    attachment_url: viewUrl,
+    attachment_download_url: downloadUrl,
+    attachment_thumbnail_url: thumbnailUrl,
     client_id: null,
     status: "sent",
     created_at: new Date().toISOString(),
@@ -570,6 +779,104 @@ chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
         body: JSON.stringify({ type: "new_message", message: formattedMessage }),
       });
     } catch {}
+  }
+
+  return c.json(formattedMessage);
+});
+
+// 9c. POST /api/chat/rooms/:room_id/share-job
+chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => null);
+
+  const parseResult = ShareJobRequestSchema.safeParse(body);
+  if (!parseResult.success) {
+    return c.json({ detail: "Invalid requirement ID" }, 400);
+  }
+
+  const { requirement_id: reqId, caption } = parseResult.data;
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const reqRows = await sql`
+    SELECT r.id, r.job_title, r.role, r.role_code, r.company, r.priority, r.location, r.openings, r.status, r.job_url, r.notes,
+           c.company_name as client_company_name
+    FROM requirements r
+    LEFT JOIN clients c ON c.id = r.client_id
+    WHERE r.id = ${reqId}
+    LIMIT 1
+  `;
+
+  if (reqRows.length === 0) {
+    return c.json({ detail: "Job requirement not found" }, 404);
+  }
+
+  const req = reqRows[0];
+  const companyName = req.company || req.client_company_name || "Client Company";
+  const jobTitle = req.job_title || req.role || "Open Role";
+
+  const messageText =
+    caption && caption.trim().length > 0
+      ? caption.trim()
+      : `Shared job opening: ${jobTitle} (${companyName})`;
+
+  const jobData = {
+    id: req.id,
+    title: jobTitle,
+    role: req.role || jobTitle,
+    role_code: req.role_code,
+    company: companyName,
+    priority: req.priority || "Medium",
+    location: req.location || "Remote",
+    openings: req.openings || 1,
+    status: req.status || "active",
+    job_url: req.job_url || null,
+    notes: req.notes || null,
+  };
+
+  const messageId = crypto.randomUUID();
+  await sql`
+    INSERT INTO chat_messages (
+      id, room_id, sender_id, message, attachment_type,
+      attachment_reference, created_at
+    ) VALUES (
+      ${messageId}, ${roomId}, ${user.id}, ${messageText}, 'job',
+      ${JSON.stringify(jobData)}, NOW()
+    )
+  `;
+
+  const formattedMessage = {
+    id: messageId,
+    room_id: roomId,
+    sender: {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+    },
+    message: messageText,
+    attachment_type: "job",
+    attachment_reference: req.id,
+    attachment_name: jobTitle,
+    attachment_url: req.job_url || null,
+    job_data: jobData,
+    status: "sent",
+    created_at: new Date().toISOString(),
+    edited_at: null,
+    is_deleted: false,
+  };
+
+  if (c.env.CHAT_ROOMS) {
+    try {
+      const doId = c.env.CHAT_ROOMS.idFromName(roomId);
+      const stub = c.env.CHAT_ROOMS.get(doId);
+      await stub.fetch("http://do/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "new_message", message: formattedMessage }),
+      });
+    } catch (err) {
+      console.warn("DO broadcast warning:", err);
+    }
   }
 
   return c.json(formattedMessage);
@@ -624,7 +931,11 @@ chatRouter.delete("/messages/:message_id", requireAuth, async (c) => {
   const sql = getDb(c.env.DATABASE_URL);
 
   const existing = await sql`
-    SELECT id, room_id, sender_id FROM chat_messages WHERE id = ${messageId} LIMIT 1
+    SELECT m.id, m.room_id, m.sender_id, u.role as sender_role
+    FROM chat_messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.id = ${messageId}
+    LIMIT 1
   `;
 
   if (existing.length === 0) {
@@ -632,11 +943,43 @@ chatRouter.delete("/messages/:message_id", requireAuth, async (c) => {
   }
 
   const msg = existing[0];
-  if (user.role !== "admin" && user.role !== "sub_admin" && msg.sender_id !== user.id) {
-    return c.json({ detail: "Forbidden: You can only delete your own messages" }, 403);
+  const isOwn = msg.sender_id === user.id;
+  const callerRole = user.role;
+  const senderRole = msg.sender_role || "user";
+
+  let allowed = false;
+  if (callerRole === "admin" || callerRole === "super_admin") {
+    allowed = true;
+  } else if (callerRole === "sub_admin") {
+    // Sub-Admin can delete own, client, or employee messages, but NOT admin/super_admin messages
+    if (senderRole === "admin" || senderRole === "super_admin") {
+      allowed = isOwn;
+    } else {
+      allowed = true;
+    }
+  } else {
+    // Client & Employee: own only
+    allowed = isOwn;
   }
 
-  await sql`DELETE FROM chat_messages WHERE id = ${messageId}`;
+  if (!allowed) {
+    return c.json(
+      { detail: "Forbidden: You do not have permission to delete this message" },
+      403
+    );
+  }
+
+  const deletedAt = new Date().toISOString();
+
+  // Soft delete with audit preservation: keep original message and attachments intact for Admin audit
+  await sql`
+    UPDATE chat_messages
+    SET
+      is_deleted = true,
+      deleted_at = NOW(),
+      deleted_by = ${user.id}
+    WHERE id = ${messageId}
+  `;
 
   if (c.env.CHAT_ROOMS) {
     try {
@@ -645,12 +988,243 @@ chatRouter.delete("/messages/:message_id", requireAuth, async (c) => {
       await stub.fetch("http://do/broadcast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "message_deleted", message_id: messageId }),
+        body: JSON.stringify({
+          type: "message_deleted",
+          message_id: messageId,
+          room_id: msg.room_id,
+          deleted_by: user.id,
+          deleted_by_name: user.name,
+          deleted_by_role: user.role,
+          deleted_at: deletedAt,
+        }),
       });
     } catch {}
   }
 
-  return c.json({ success: true, message_id: messageId });
+  return c.json({
+    success: true,
+    message_id: messageId,
+    deleted_by: user.id,
+    deleted_by_name: user.name,
+    deleted_by_role: user.role,
+    deleted_at: deletedAt,
+  });
+});
+
+// 12. POST /api/chat/rooms/:room_id/lock
+chatRouter.post("/rooms/:room_id/lock", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  if (user.role !== "admin" && user.role !== "sub_admin") {
+    return c.json({ detail: "Only Admins and Sub-Admins can lock rooms" }, 403);
+  }
+
+  const existing = await sql`
+    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
+  `;
+  if (existing.length === 0) {
+    return c.json({ detail: "Chat room not found" }, 404);
+  }
+
+  const room = existing[0];
+  if (user.role === "sub_admin") {
+    const assignedClients = await sql`
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
+    `;
+    const allowed = assignedClients.map((r: any) => String(r.client_id));
+    if (!allowed.includes(String(room.client_id))) {
+      return c.json({ detail: "Forbidden: You do not have access to this client chat room" }, 403);
+    }
+  }
+
+  await sql`UPDATE chat_rooms SET status = 'read_only' WHERE id = ${roomId}`;
+
+  if (c.env.CHAT_ROOMS) {
+    try {
+      const doId = c.env.CHAT_ROOMS.idFromName(roomId);
+      const stub = c.env.CHAT_ROOMS.get(doId);
+      await stub.fetch("http://do/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "room_status_changed",
+          room_id: roomId,
+          status: "read_only",
+        }),
+      });
+    } catch {}
+  }
+
+  return c.json({ success: true, status: "read_only" });
+});
+
+// 13. POST /api/chat/rooms/:room_id/unlock
+chatRouter.post("/rooms/:room_id/unlock", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  if (user.role !== "admin" && user.role !== "sub_admin") {
+    return c.json({ detail: "Only Admins and Sub-Admins can unlock rooms" }, 403);
+  }
+
+  const existing = await sql`
+    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
+  `;
+  if (existing.length === 0) {
+    return c.json({ detail: "Chat room not found" }, 404);
+  }
+
+  const room = existing[0];
+  if (user.role === "sub_admin") {
+    const assignedClients = await sql`
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
+    `;
+    const allowed = assignedClients.map((r: any) => String(r.client_id));
+    if (!allowed.includes(String(room.client_id))) {
+      return c.json({ detail: "Forbidden: You do not have access to this client chat room" }, 403);
+    }
+  }
+
+  await sql`UPDATE chat_rooms SET status = 'active' WHERE id = ${roomId}`;
+
+  if (c.env.CHAT_ROOMS) {
+    try {
+      const doId = c.env.CHAT_ROOMS.idFromName(roomId);
+      const stub = c.env.CHAT_ROOMS.get(doId);
+      await stub.fetch("http://do/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "room_status_changed",
+          room_id: roomId,
+          status: "active",
+        }),
+      });
+    } catch {}
+  }
+
+  return c.json({ success: true, status: "active" });
+});
+
+// 14. POST /api/chat/rooms/:room_id/archive
+chatRouter.post("/rooms/:room_id/archive", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  if (user.role !== "admin" && user.role !== "sub_admin") {
+    return c.json({ detail: "Only Admins and Sub-Admins can archive rooms" }, 403);
+  }
+
+  const existing = await sql`
+    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
+  `;
+  if (existing.length === 0) {
+    return c.json({ detail: "Chat room not found" }, 404);
+  }
+
+  const room = existing[0];
+  if (user.role === "sub_admin") {
+    const assignedClients = await sql`
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
+    `;
+    const allowed = assignedClients.map((r: any) => String(r.client_id));
+    if (!allowed.includes(String(room.client_id))) {
+      return c.json({ detail: "Forbidden: You do not have access to this client chat room" }, 403);
+    }
+  }
+
+  await sql`UPDATE chat_rooms SET status = 'archived' WHERE id = ${roomId}`;
+
+  if (c.env.CHAT_ROOMS) {
+    try {
+      const doId = c.env.CHAT_ROOMS.idFromName(roomId);
+      const stub = c.env.CHAT_ROOMS.get(doId);
+      await stub.fetch("http://do/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "room_status_changed",
+          room_id: roomId,
+          status: "archived",
+        }),
+      });
+    } catch {}
+  }
+
+  return c.json({ success: true, status: "archived" });
+});
+
+// 15. GET /api/chat/rooms/:room_id/export
+chatRouter.get("/rooms/:room_id/export", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const existing = await sql`
+    SELECT r.id, r.client_id, r.status, c.company_name
+    FROM chat_rooms r
+    JOIN clients c ON c.id = r.client_id
+    WHERE r.id = ${roomId}
+    LIMIT 1
+  `;
+  if (existing.length === 0) {
+    return c.json({ detail: "Chat room not found" }, 404);
+  }
+
+  const room = existing[0];
+  if (user.role === "client") {
+    if (user.client_id && String(user.client_id) !== String(room.client_id)) {
+      return c.json({ detail: "Forbidden" }, 403);
+    }
+  } else if (user.role === "sub_admin") {
+    const assignedClients = await sql`
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
+    `;
+    const allowed = assignedClients.map((r: any) => String(r.client_id));
+    if (!allowed.includes(String(room.client_id))) {
+      return c.json({ detail: "Forbidden" }, 403);
+    }
+  } else if (user.role === "employee" || user.role === "recruiter") {
+    const assigned = await sql`
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
+    `;
+    const cids = assigned.map((r: any) => String(r.client_id));
+    if (cids.length > 0 && !cids.includes(String(room.client_id))) {
+      return c.json({ detail: "Forbidden" }, 403);
+    }
+  }
+
+  const messages = await sql`
+    SELECT m.created_at, m.message, u.name as sender_name
+    FROM chat_messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.room_id = ${roomId}
+    ORDER BY m.created_at ASC
+  `;
+
+  const transcript = messages.map(
+    (m: any) => `[${new Date(m.created_at).toISOString().replace('T', ' ').substring(0, 19)}] ${m.sender_name || 'Unknown'}: ${m.message}`
+  ).join('\n');
+
+  return c.json({
+    room_id: roomId,
+    client_name: room.company_name || "Client",
+    exported_at: new Date().toISOString(),
+    transcript,
+    messages,
+  });
 });
 
 // 12. WebSocket Upgrade Handler: Pure JWT HTTP-Only Cookie Authentication

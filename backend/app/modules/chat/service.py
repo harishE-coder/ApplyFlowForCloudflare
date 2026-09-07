@@ -204,7 +204,10 @@ async def get_messages(
     query = (
         select(ChatMessage)
         .where(ChatMessage.room_id == room_id)
-        .options(selectinload(ChatMessage.sender))
+        .options(
+            selectinload(ChatMessage.sender),
+            selectinload(ChatMessage.deleted_by_user),
+        )
     )
 
     if before_id:
@@ -247,6 +250,7 @@ async def get_messages(
                     is_recipient_online = True
                     break
 
+    is_admin = user.role in ("admin", "super_admin")
     items = []
     for msg in reversed(messages):
         sender_info = MessageSender(
@@ -265,17 +269,51 @@ async def get_messages(
         else:
             msg_status = "read"
 
+        is_deleted = getattr(msg, "is_deleted", False)
+        if is_deleted:
+            if is_admin:
+                # Admin Audit View: retains original message and attachments with audit metadata
+                m_text = msg.message
+                att_type = msg.attachment_type
+                att_ref = msg.attachment_reference
+                del_by = msg.deleted_by
+                del_name = msg.deleted_by_user.name if msg.deleted_by_user else "Admin"
+                del_role = msg.deleted_by_user.role if msg.deleted_by_user else "admin"
+                del_at = msg.deleted_at
+            else:
+                # Non-admin users: sanitized deleted placeholder and stripped attachments
+                m_text = "This message was deleted."
+                att_type = None
+                att_ref = None
+                del_by = None
+                del_name = None
+                del_role = None
+                del_at = msg.deleted_at
+        else:
+            m_text = msg.message
+            att_type = msg.attachment_type
+            att_ref = msg.attachment_reference
+            del_by = None
+            del_name = None
+            del_role = None
+            del_at = None
+
         items.append(
             ChatMessageResponse(
                 id=msg.id,
                 room_id=msg.room_id,
                 sender=sender_info,
-                message=msg.message,
-                attachment_type=msg.attachment_type,
-                attachment_reference=msg.attachment_reference,
+                message=m_text,
+                attachment_type=att_type,
+                attachment_reference=att_ref,
                 status=msg_status,
                 created_at=msg.created_at,
                 edited_at=msg.edited_at,
+                is_deleted=is_deleted,
+                deleted_by=del_by,
+                deleted_by_name=del_name,
+                deleted_by_role=del_role,
+                deleted_at=del_at,
             )
         )
 
@@ -295,7 +333,7 @@ async def send_message(
 ) -> ChatMessageResponse:
     room = await check_room_access(db, user, room_id)
 
-    if room.status == "locked" and user.role not in ("admin", "sub_admin"):
+    if room.status in ("locked", "read_only") and user.role not in ("admin", "sub_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This chat room has been locked by an administrator. Messages cannot be sent.",
@@ -472,33 +510,58 @@ async def get_total_unread(db: AsyncSession, user: User) -> UnreadCountResponse:
 async def delete_message(
     db: AsyncSession, message_id: uuid.UUID, user: User
 ) -> dict:
-    msg = (
-        await db.execute(
-            select(ChatMessage).where(ChatMessage.id == message_id)
-        )
-    ).scalar_one_or_none()
+    stmt = (
+        select(ChatMessage)
+        .options(selectinload(ChatMessage.sender))
+        .where(ChatMessage.id == message_id)
+    )
+    msg = (await db.execute(stmt)).scalar_one_or_none()
 
     if not msg:
         raise HTTPException(status_code=404, detail="Message not found")
 
-    if user.role != "admin" and msg.sender_id != user.id:
-        raise HTTPException(status_code=403, detail="Forbidden: You can only delete your own messages")
+    sender_role = msg.sender.role if msg.sender else "user"
+    is_own = (msg.sender_id == user.id)
+    allowed = False
+    if user.role in ("admin", "super_admin"):
+        allowed = True
+    elif user.role == "sub_admin":
+        if sender_role in ("admin", "super_admin"):
+            allowed = is_own
+        else:
+            allowed = True
+    else:
+        allowed = is_own
 
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have permission to delete this message")
+
+    now = datetime.now(timezone.utc)
     room_id = str(msg.room_id)
-    await db.delete(msg)
+    msg.is_deleted = True
+    msg.deleted_by = user.id
+    msg.deleted_at = now
     await db.flush()
     invalidate_chat_cache()
-    return {"success": True, "room_id": room_id}
+    return {
+        "success": True,
+        "room_id": room_id,
+        "message_id": str(message_id),
+        "deleted_by": str(user.id),
+        "deleted_by_name": user.name,
+        "deleted_by_role": user.role,
+        "deleted_at": now.isoformat(),
+    }
 
 
 async def lock_room(db: AsyncSession, room_id: uuid.UUID, user: User) -> dict:
     if user.role not in ("admin", "sub_admin"):
         raise HTTPException(status_code=403, detail="Only Admins can lock rooms")
     room = await check_room_access(db, user, room_id)
-    room.status = "locked"
+    room.status = "read_only"
     await db.flush()
     invalidate_chat_cache()
-    return {"success": True, "status": "locked"}
+    return {"success": True, "status": "read_only"}
 
 
 async def unlock_room(db: AsyncSession, room_id: uuid.UUID, user: User) -> dict:

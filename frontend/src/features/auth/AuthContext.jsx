@@ -53,10 +53,14 @@ export function AuthProvider({ children }) {
     checkAuth();
   }, [checkAuth]);
 
-  const login = useCallback(async (email, password) => {
+  const login = useCallback(async (email, password, options = {}) => {
     sessionStorage.removeItem('applyflow_logged_out');
     const credentials = { email, password };
-    const loginRes = await api.post('/auth/login', credentials);
+    const requestConfig = {
+      timeout: options?.timeout ?? 30000,
+      ...(options?.config || {}),
+    };
+    const loginRes = await api.post('/auth/login', credentials, requestConfig);
     const loginUser = loginRes?.data?.user;
 
     if (loginRes?.data?.access_token) {

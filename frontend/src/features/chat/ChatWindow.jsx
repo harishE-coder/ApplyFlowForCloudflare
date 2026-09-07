@@ -15,11 +15,18 @@ import {
   Lock,
   Unlock,
   Archive,
+  Briefcase,
+  MapPin,
+  ExternalLink,
+  ZoomIn,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { ChatInput } from './ChatInput';
 import { ResumeShareModal } from './ResumeShareModal';
+import { JobShareModal } from './JobShareModal';
 import { ResumePreviewModal } from './ResumePreviewModal';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
@@ -87,6 +94,7 @@ export function ChatWindow({
   onSendMessage,
   onUploadAttachment,
   onShareResume,
+  onShareJob,
   onDeleteMessage,
   onTypingChange,
   loadingMessages = false,
@@ -96,14 +104,17 @@ export function ChatWindow({
   const { user, isAdmin, isSubAdmin } = useAuth();
   const { success, error: toastError } = useToast();
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isJobModalOpen, setIsJobModalOpen] = useState(false);
   const [previewResumeInfo, setPreviewResumeInfo] = useState(null);
+  const [previewImageModal, setPreviewImageModal] = useState(null);
+  const [fetchingResumeId, setFetchingResumeId] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
   const firstMessageIdRef = useRef(messages[0]?.id);
 
-  const isReadOnly = room?.status === 'read_only';
+  const isReadOnly = room?.status === 'read_only' || room?.status === 'locked';
 
   const typingUserNames = useMemo(() => {
     return Object.entries(typingUsers)
@@ -205,7 +216,7 @@ export function ChatWindow({
       link.remove();
       success('Chat Exported', 'Transcript downloaded successfully.');
     } catch (err) {
-      toastError('Export Failed', 'Failed to export chat transcript.');
+      toastError('Export Failed', err?.response?.data?.detail || 'Failed to export chat transcript.');
     } finally {
       setIsExporting(false);
     }
@@ -223,7 +234,7 @@ export function ChatWindow({
       }
       if (onRefreshRoom) onRefreshRoom();
     } catch (err) {
-      toastError('Action Failed', 'Failed to update chat room status.');
+      toastError('Action Failed', err?.response?.data?.detail || 'Failed to update chat room status.');
     }
   };
 
@@ -234,7 +245,36 @@ export function ChatWindow({
       success('Room Archived', 'Chat room has been archived.');
       if (onRefreshRoom) onRefreshRoom();
     } catch (err) {
-      toastError('Action Failed', 'Failed to archive chat room.');
+      toastError('Action Failed', err?.response?.data?.detail || 'Failed to archive chat room.');
+    }
+  };
+
+  // Reusable candidate resume preview modal trigger
+  const handleOpenResumePreview = async (msg) => {
+    if (msg.resume_data && (msg.resume_data.drive_file_id || msg.resume_data.drive_view_url)) {
+      setPreviewResumeInfo(msg.resume_data);
+      return;
+    }
+    const resumeId = msg.attachment_reference || msg.resume_data?.resumeId;
+    if (!resumeId) return;
+
+    setFetchingResumeId(resumeId);
+    try {
+      const res = await api.get(`/resumes/${resumeId}`);
+      setPreviewResumeInfo(res.data);
+    } catch (err) {
+      console.error('Failed to fetch resume metadata:', err);
+      // Fallback with available cached details
+      setPreviewResumeInfo({
+        id: resumeId,
+        filename: msg.attachment_filename || 'Candidate Resume.pdf',
+        candidate_name: msg.message,
+        drive_file_id: msg.attachment_reference,
+        drive_view_url: msg.attachment_url,
+        drive_download_url: msg.attachment_download_url,
+      });
+    } finally {
+      setFetchingResumeId(null);
     }
   };
 
@@ -288,6 +328,7 @@ export function ChatWindow({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#FFFFFF] min-w-0">
+      {/* Room Header */}
       <div className="h-16 px-3 sm:px-6 border-b border-[#E2E8F0] bg-white/95 backdrop-blur-xs flex items-center justify-between z-10 shrink-0">
         <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
           {onBackMobile && (
@@ -380,12 +421,13 @@ export function ChatWindow({
         <div className="px-6 py-2 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center gap-2 text-caption text-[#64748B]">
           <Lock className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
           <span>
-            This conversation is in <strong>read-only mode</strong>. History and shared resumes
+            This conversation is in <strong>read-only mode</strong>. History and shared documents
             remain preserved.
           </span>
         </div>
       )}
 
+      {/* Messages Canvas */}
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
@@ -426,9 +468,25 @@ export function ChatWindow({
             }
 
             const msg = item.data;
-            const isOwn = msg.sender.id === user?.id;
+            const isOwn = msg.sender?.id === user?.id;
             const isResume = msg.attachment_type === 'resume';
-            const canDelete = !msg.is_deleted && (isOwn || isAdmin);
+            const isJob = msg.attachment_type === 'job';
+            const isImage = msg.attachment_type === 'image';
+            const isPdf = msg.attachment_type === 'pdf';
+            const isFile = msg.attachment_type === 'file';
+
+            // Role-based deletion permission matrix:
+            // Admin: Everyone
+            // Sub-Admin: Self + Client + Employee (DENY if sender is admin or super_admin)
+            // Client: Own only
+            // Employee: Own only
+            const senderRole = msg.sender?.role || 'user';
+            const isSenderAdmin = senderRole === 'admin' || senderRole === 'super_admin';
+            const canDelete = !msg.is_deleted && (
+              isAdmin ||
+              (isSubAdmin && (!isSenderAdmin || isOwn)) ||
+              isOwn
+            );
 
             return (
               <div
@@ -439,12 +497,12 @@ export function ChatWindow({
               >
                 <div className="shrink-0 mt-0.5">
                   <Avatar
-                    name={msg.sender.name}
+                    name={msg.sender?.name}
                     size="sm"
                     variant={
-                      msg.sender.role === 'admin'
+                      msg.sender?.role === 'admin'
                         ? 'blue'
-                        : msg.sender.role === 'client'
+                        : msg.sender?.role === 'client'
                         ? 'orange'
                         : 'teal'
                     }
@@ -458,10 +516,10 @@ export function ChatWindow({
                 >
                   <div className="flex items-center gap-1.5 mb-1 px-1">
                     <span className="text-caption font-bold text-[#081226]">
-                      {isOwn ? 'You' : msg.sender.name}
+                      {isOwn ? 'You' : msg.sender?.name}
                     </span>
                     <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
-                      {msg.sender.role}
+                      {msg.sender?.role}
                     </span>
                     <span className="text-[10px] text-[#94A3B8]">
                       {formatMessageTime(msg.created_at)}
@@ -474,33 +532,325 @@ export function ChatWindow({
                   </div>
 
                   <div className="relative group/bubble">
+                    {/* 1. Soft-deleted message bubble (Admin Audit View vs Standard User View) */}
                     {msg.is_deleted ? (
-                      <div className="p-3 rounded-2xl bg-[#F1F5F9] text-[#94A3B8] italic text-small border border-[#E2E8F0]">
-                        Message deleted
-                      </div>
-                    ) : isResume ? (
-                      <div className="p-4 rounded-2xl bg-[#EFF6FF] border border-[#BFDBFE] text-[#081226] space-y-2 shadow-xs min-w-[240px]">
-                        <div className="flex items-center gap-2 text-[#2563EB]">
-                          <FileText className="w-5 h-5" />
-                          <span className="font-bold text-small">Candidate Resume Shared</span>
+                      isAdmin ? (
+                        <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 text-[#081226] space-y-2.5 shadow-xs max-w-full min-w-[260px]">
+                          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-900 border-b border-amber-200 pb-1.5">
+                            <Trash2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>
+                              Deleted by {msg.deleted_by_name || 'Admin'}
+                              {msg.deleted_by_role ? ` (${msg.deleted_by_role === 'sub_admin' ? 'Sub-Admin' : msg.deleted_by_role})` : ''}
+                              {msg.deleted_at ? ` at ${formatMessageTime(msg.deleted_at)}` : ''}
+                            </span>
+                            <span className="ml-auto text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200/80">
+                              Audit View
+                            </span>
+                          </div>
+
+                          {/* Original message text with strikethrough */}
+                          {msg.message && (
+                            <p className="text-small line-through text-[#64748B] leading-relaxed break-words font-medium">
+                              {msg.message}
+                            </p>
+                          )}
+
+                          {/* Admin can still view and audit attachments */}
+                          {isResume && (
+                            <div className="pt-1 opacity-90">
+                              <div className="p-2.5 rounded-xl bg-white border border-amber-200">
+                                <div className="flex items-center justify-between gap-2 text-[#2563EB] mb-1">
+                                  <span className="text-[11px] font-bold">Candidate Resume</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenResumePreview(msg)}
+                                    className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="w-3 h-3" /> Preview
+                                  </button>
+                                </div>
+                                <p className="text-small font-semibold text-[#081226]">
+                                  {msg.resume_data?.candidate_name || msg.attachment_name || 'Candidate Profile'}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {isJob && (
+                            <div className="pt-1 opacity-90">
+                              <div className="p-2.5 rounded-xl bg-white border border-amber-200">
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <span className="text-[11px] font-bold text-emerald-700">Job Opening</span>
+                                  <a
+                                    href={msg.job_data?.job_url || `/requirements?search=${encodeURIComponent(msg.job_data?.title || '')}`}
+                                    target={msg.job_data?.job_url ? '_blank' : '_self'}
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="w-3 h-3" /> View
+                                  </a>
+                                </div>
+                                <p className="text-small font-semibold text-[#081226]">
+                                  {msg.job_data?.title || msg.attachment_name}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {isImage && (
+                            <div className="pt-1 opacity-90">
+                              <div
+                                onClick={() =>
+                                  setPreviewImageModal({
+                                    url: msg.attachment_url || msg.attachment_download_url || msg.attachment_thumbnail_url,
+                                    name: msg.attachment_name || 'Image Attachment',
+                                    downloadUrl: msg.attachment_download_url,
+                                  })
+                                }
+                                className="relative overflow-hidden rounded-xl border border-amber-200 bg-white cursor-pointer max-w-[200px]"
+                              >
+                                <img
+                                  src={msg.attachment_thumbnail_url || msg.attachment_url}
+                                  alt="Attachment"
+                                  className="w-full max-h-[140px] object-cover"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {(isPdf || isFile) && (
+                            <div className="pt-1 opacity-90">
+                              <div className="p-2 rounded-xl bg-white border border-amber-200 flex items-center justify-between gap-2">
+                                <span className="text-caption font-medium text-[#081226] truncate">
+                                  {msg.attachment_name || msg.attachment_filename || 'File'}
+                                </span>
+                                {msg.attachment_download_url && (
+                                  <a
+                                    href={msg.attachment_download_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download
+                                    className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-1"
+                                  >
+                                    <Download className="w-3 h-3" /> Download
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-caption text-[#334155]">{msg.message}</p>
-                        <div className="pt-1 flex gap-2">
+                      ) : (
+                        <div className="p-3 rounded-2xl bg-[#F1F5F9] text-[#94A3B8] italic text-small border border-[#E2E8F0] flex items-center gap-2 select-none">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#CBD5E1]" />
+                          <span>This message was deleted.</span>
+                        </div>
+                      )
+                    ) : isResume ? (
+                      /* 2. Candidate Bank Resume Share Card */
+                      <div className="p-4 rounded-2xl bg-[#EFF6FF] border border-[#BFDBFE] text-[#081226] space-y-2.5 shadow-xs min-w-[260px] max-w-[360px]">
+                        <div className="flex items-center justify-between gap-2 text-[#2563EB]">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-5 h-5 text-[#2563EB]" />
+                            <span className="font-bold text-small">Candidate Resume</span>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#2563EB]/10 text-[#2563EB] border border-[#2563EB]/20">
+                            Candidate Bank
+                          </span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white border border-[#BFDBFE]/60">
+                          <p className="text-small font-bold text-[#081226]">
+                            {msg.resume_data?.candidate_name || msg.attachment_name || 'Candidate Profile'}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-0.5">
+                            {msg.resume_data?.role && (
+                              <span className="font-medium text-[#2563EB]">{msg.resume_data.role}</span>
+                            )}
+                            {msg.resume_data?.company && (
+                              <>
+                                <span>•</span>
+                                <span className="truncate">{msg.resume_data.company}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {msg.message && !msg.message.startsWith('Shared resume:') && (
+                          <p className="text-caption text-[#334155] px-0.5 italic">"{msg.message}"</p>
+                        )}
+                        <div className="pt-1">
                           <button
                             type="button"
-                            onClick={() =>
-                              setPreviewResumeInfo({
-                                resumeId: msg.attachment_reference,
-                                candidateName: msg.message,
-                              })
-                            }
-                            className="text-caption font-bold text-[#2563EB] hover:underline flex items-center gap-1 cursor-pointer"
+                            onClick={() => handleOpenResumePreview(msg)}
+                            disabled={fetchingResumeId === (msg.attachment_reference || msg.resume_data?.resumeId)}
+                            className="w-full py-2 px-3 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                           >
-                            <Eye className="w-3.5 h-3.5" /> Preview PDF
+                            {fetchingResumeId === (msg.attachment_reference || msg.resume_data?.resumeId) ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Eye className="w-3.5 h-3.5" />
+                            )}
+                            Preview Verified PDF
                           </button>
                         </div>
                       </div>
+                    ) : isJob ? (
+                      /* 3. Shared Job Opening Card */
+                      <div className="p-4 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] text-[#081226] space-y-2.5 shadow-xs min-w-[280px] max-w-[380px]">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h4 className="text-small font-bold text-[#081226] truncate">
+                              {msg.job_data?.title || msg.attachment_name || 'Job Opening'}
+                            </h4>
+                            <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-1">
+                              <span className="truncate font-medium text-[#081226]">
+                                {msg.job_data?.company || 'Client'}
+                              </span>
+                              <span>•</span>
+                              <span>{msg.job_data?.location || 'Remote'}</span>
+                              <span>•</span>
+                              <span className="font-medium text-emerald-700">
+                                {msg.job_data?.openings || 1} {msg.job_data?.openings === 1 ? 'opening' : 'openings'}
+                              </span>
+                            </div>
+                          </div>
+                          <span
+                            className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              (msg.job_data?.priority || '').toLowerCase() === 'high'
+                                ? 'bg-rose-500/10 text-rose-600 border-rose-500/20'
+                                : (msg.job_data?.priority || '').toLowerCase() === 'medium'
+                                ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
+                                : 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                            }`}
+                          >
+                            {msg.job_data?.priority || 'Medium'} Priority
+                          </span>
+                        </div>
+
+                        {msg.message && !msg.message.startsWith('Shared job opening:') && (
+                          <p className="text-caption text-[#334155] p-2 rounded-xl bg-white border border-[#BBF7D0]/60 font-medium">
+                            {msg.message}
+                          </p>
+                        )}
+
+                        <div className="pt-1 flex items-center justify-end">
+                          <a
+                            href={msg.job_data?.job_url || `/requirements?search=${encodeURIComponent(msg.job_data?.title || '')}`}
+                            target={msg.job_data?.job_url ? '_blank' : '_self'}
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-caption font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                          >
+                            View Job <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    ) : isImage ? (
+                      /* 4. Local Image Attachment (Inline Thumbnail + Lightbox Click) */
+                      <div className="space-y-1.5 max-w-[280px] sm:max-w-[320px]">
+                        <div
+                          onClick={() =>
+                            setPreviewImageModal({
+                              url: msg.attachment_url || msg.attachment_download_url || msg.attachment_thumbnail_url,
+                              name: msg.attachment_name || msg.attachment_filename || 'Image Attachment',
+                              downloadUrl: msg.attachment_download_url,
+                            })
+                          }
+                          className="relative overflow-hidden rounded-2xl border border-[#CBD5E1] bg-[#081226]/5 shadow-xs cursor-pointer group/img"
+                        >
+                          <img
+                            src={msg.attachment_thumbnail_url || msg.attachment_url}
+                            alt={msg.attachment_name || 'Attachment'}
+                            className="w-full max-h-[220px] object-cover transition-transform duration-200 group-hover/img:scale-105"
+                            loading="lazy"
+                            onError={(e) => {
+                              if (msg.attachment_url && e.target.src !== msg.attachment_url) {
+                                e.target.src = msg.attachment_url;
+                              }
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                            <span className="p-2 rounded-full bg-black/60 text-white shadow-md">
+                              <ZoomIn className="w-4 h-4" />
+                            </span>
+                          </div>
+                        </div>
+                        {msg.message && msg.message !== (msg.attachment_name || msg.attachment_filename) && (
+                          <p className="text-caption text-[#334155] px-1 font-medium">{msg.message}</p>
+                        )}
+                      </div>
+                    ) : isPdf ? (
+                      /* 5. PDF Attachment (Icon, Filename, Preview, Download) */
+                      <div className="p-3.5 rounded-2xl bg-white border border-[#CBD5E1] shadow-xs space-y-2.5 min-w-[240px] max-w-[320px]">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-small font-semibold text-[#081226] truncate">
+                              {msg.attachment_name || msg.attachment_filename || 'Document.pdf'}
+                            </p>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
+                              PDF Document
+                            </span>
+                          </div>
+                        </div>
+                        {msg.message && msg.message !== (msg.attachment_name || msg.attachment_filename) && (
+                          <p className="text-caption text-[#334155] px-0.5">{msg.message}</p>
+                        )}
+                        <div className="flex items-center gap-2 pt-1 border-t border-[#F1F5F9]">
+                          {msg.attachment_url && (
+                            <a
+                              href={msg.attachment_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Preview
+                            </a>
+                          )}
+                          {msg.attachment_download_url && (
+                            <a
+                              href={msg.attachment_download_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download
+                              className="py-1.5 px-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#E2E8F0] text-[#081226] text-caption font-semibold flex items-center justify-center gap-1.5 border border-[#CBD5E1] transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Download
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ) : isFile ? (
+                      /* 6. Other File Attachment (Icon, Filename, Download) */
+                      <div className="p-3.5 rounded-2xl bg-white border border-[#CBD5E1] shadow-xs space-y-2.5 min-w-[240px] max-w-[320px]">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-small font-semibold text-[#081226] truncate">
+                              {msg.attachment_name || msg.attachment_filename || 'Attachment'}
+                            </p>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">
+                              File Attachment
+                            </span>
+                          </div>
+                        </div>
+                        {msg.attachment_download_url || msg.attachment_url ? (
+                          <div className="pt-1 border-t border-[#F1F5F9]">
+                            <a
+                              href={msg.attachment_download_url || msg.attachment_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download
+                              className="w-full py-1.5 px-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#E2E8F0] text-[#081226] text-caption font-semibold flex items-center justify-center gap-1.5 border border-[#CBD5E1] transition-colors cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" /> Download
+                            </a>
+                          </div>
+                        ) : null}
+                      </div>
                     ) : (
+                      /* 7. Regular Text Message Bubble */
                       <div
                         className={`p-3.5 rounded-2xl text-small leading-relaxed break-words shadow-xs ${
                           isOwn
@@ -512,6 +862,7 @@ export function ChatWindow({
                       </div>
                     )}
 
+                    {/* Role-Based Delete Action */}
                     {canDelete && (
                       <button
                         type="button"
@@ -519,6 +870,8 @@ export function ChatWindow({
                         title={
                           isAdmin && !isOwn
                             ? 'Delete message (Admin oversight)'
+                            : isSubAdmin && !isOwn
+                            ? 'Delete message (Sub-Admin moderation)'
                             : 'Delete your message'
                         }
                         className={`absolute top-2 opacity-0 group-hover/bubble:opacity-100 p-1.5 text-[#94A3B8] hover:text-[#EF4444] hover:bg-[#F1F5F9] rounded-lg transition-all cursor-pointer ${
@@ -557,11 +910,13 @@ export function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Input Bar */}
       {!isReadOnly ? (
         <ChatInput
           onSendMessage={onSendMessage}
           onUploadAttachment={onUploadAttachment}
           onOpenResumeModal={() => setIsShareModalOpen(true)}
+          onOpenJobModal={() => setIsJobModalOpen(true)}
           onTypingChange={onTypingChange}
           typingText={typingText}
         />
@@ -571,6 +926,7 @@ export function ChatWindow({
         </div>
       )}
 
+      {/* Share Resume from Candidate Bank Modal */}
       <ResumeShareModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
@@ -579,11 +935,75 @@ export function ChatWindow({
         onShareResume={onShareResume}
       />
 
+      {/* Share Existing Job Opening Modal */}
+      <JobShareModal
+        isOpen={isJobModalOpen}
+        onClose={() => setIsJobModalOpen(false)}
+        onShareJob={onShareJob}
+      />
+
+      {/* Unified Candidate Bank Resume Preview Modal */}
       <ResumePreviewModal
         isOpen={!!previewResumeInfo}
         onClose={() => setPreviewResumeInfo(null)}
         resumeInfo={previewResumeInfo}
       />
+
+      {/* Lightbox Modal for Image Preview */}
+      {previewImageModal && (
+        <div
+          onClick={() => setPreviewImageModal(null)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-4xl max-h-[90vh] bg-[#081226] rounded-2xl overflow-hidden border border-white/10 shadow-2xl flex flex-col"
+          >
+            <div className="flex items-center justify-between p-4 border-b border-white/10 text-white">
+              <span className="text-small font-semibold truncate max-w-md">
+                {previewImageModal.name || 'Image Attachment'}
+              </span>
+              <div className="flex items-center gap-2">
+                {previewImageModal.url && (
+                  <a
+                    href={previewImageModal.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-caption font-medium transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Open in Drive
+                  </a>
+                )}
+                {previewImageModal.downloadUrl && (
+                  <a
+                    href={previewImageModal.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-semibold transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPreviewImageModal(null)}
+                  className="p-1.5 text-white/70 hover:text-white rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 flex items-center justify-center bg-black/40 overflow-auto max-h-[calc(90vh-80px)]">
+              <img
+                src={previewImageModal.url}
+                alt={previewImageModal.name}
+                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-md"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

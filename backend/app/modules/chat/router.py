@@ -425,6 +425,11 @@ async def delete_message(
         await manager.broadcast(res["room_id"], {
             "type": "message_deleted",
             "message_id": str(message_id),
+            "room_id": res["room_id"],
+            "deleted_by": res.get("deleted_by"),
+            "deleted_by_name": res.get("deleted_by_name"),
+            "deleted_by_role": res.get("deleted_by_role"),
+            "deleted_at": res.get("deleted_at"),
         })
     return res
 

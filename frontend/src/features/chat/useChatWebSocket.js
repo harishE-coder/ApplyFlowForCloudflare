@@ -141,6 +141,8 @@ export function useChatWebSocket(roomId, callbacks = {}) {
               callbacksRef.current.onPresence?.(data);
             } else if (data.type === 'message_deleted') {
               callbacksRef.current.onMessageDeleted?.(data);
+            } else if (data.type === 'room_status_changed') {
+              callbacksRef.current.onRoomStatusChanged?.(data);
             }
           } catch (err) {
             console.error('Error parsing WS message:', err);

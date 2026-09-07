@@ -15,9 +15,9 @@ export const RequirementCreateSchema = z.object({
   priority: z.enum(["High", "Medium", "Low"]).default("Medium"),
   notes: z.string().nullable().optional(),
   status: z.enum(["active", "done", "archived"]).default("active"),
-  assignment_type: z.enum(["all", "individual"]).default("all"),
+  assignment_type: z.enum(["all", "individual", "client_assigned"]).default("all"),
   assigned_employee_id: z.string().uuid().nullable().optional(),
-  assigned_employee: z.string().nullable().optional(),
+  assigned_employee: z.union([z.string(), z.array(z.string())]).nullable().optional(),
 });
 
 export const RequirementUpdateSchema = z.object({
@@ -30,9 +30,9 @@ export const RequirementUpdateSchema = z.object({
   priority: z.enum(["High", "Medium", "Low"]).optional(),
   notes: z.string().nullable().optional(),
   status: z.enum(["active", "done", "archived"]).optional(),
-  assignment_type: z.enum(["all", "individual"]).optional(),
+  assignment_type: z.enum(["all", "individual", "client_assigned"]).optional(),
   assigned_employee_id: z.string().uuid().nullable().optional(),
-  assigned_employee: z.string().nullable().optional(),
+  assigned_employee: z.union([z.string(), z.array(z.string())]).nullable().optional(),
 });
 
 export type RequirementCreateInput = z.infer<typeof RequirementCreateSchema>;

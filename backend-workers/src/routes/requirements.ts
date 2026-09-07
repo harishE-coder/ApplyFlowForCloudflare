@@ -87,6 +87,28 @@ async function enrichRequirements(sql: any, reqs: any[]): Promise<any[]> {
     }
   }
 
+  // Pre-fetch active employees assigned to clients
+  const clientEmployeesMap: Record<string, { ids: string[]; names: string[] }> = {};
+  if (clientIds.length > 0) {
+    const clientEmps = await sql`
+      SELECT ec.client_id, u.id as employee_id, u.name as employee_name
+      FROM employee_clients ec
+      JOIN users u ON u.id = ec.employee_id
+      WHERE ec.client_id = ANY(${clientIds})
+        AND ec.active = true
+        AND u.is_active = true
+      ORDER BY u.name ASC
+    `;
+    for (const row of clientEmps) {
+      const cid = String(row.client_id);
+      if (!clientEmployeesMap[cid]) {
+        clientEmployeesMap[cid] = { ids: [], names: [] };
+      }
+      clientEmployeesMap[cid].ids.push(String(row.employee_id));
+      clientEmployeesMap[cid].names.push(String(row.employee_name));
+    }
+  }
+
   // Pre-fetch counts for resumes and applications
   const [resumesRes, appsRes] = await Promise.all([
     sql`
@@ -109,6 +131,31 @@ async function enrichRequirements(sql: any, reqs: any[]): Promise<any[]> {
   return reqs.map((r) => {
     const rid = String(r.id);
     const cid = r.client_id ? String(r.client_id) : "";
+    const clientAssigned = cid && clientEmployeesMap[cid] ? clientEmployeesMap[cid] : null;
+
+    let assignedEmployee: string | string[] = "ALL";
+    let assignedEmployeeNames: string[] = [];
+
+    if (r.client_id) {
+      if (clientAssigned && clientAssigned.ids.length > 0) {
+        assignedEmployee = clientAssigned.ids;
+        assignedEmployeeNames = clientAssigned.names;
+      } else if (r.assigned_employee_id && userMap[String(r.assigned_employee_id)]) {
+        assignedEmployee = [String(r.assigned_employee_id)];
+        assignedEmployeeNames = [userMap[String(r.assigned_employee_id)]];
+      } else {
+        assignedEmployee = [];
+        assignedEmployeeNames = [];
+      }
+    } else {
+      assignedEmployee = "ALL";
+      assignedEmployeeNames = [];
+    }
+
+    const assignedEmployeeNameDisplay = assignedEmployeeNames.length > 0
+      ? assignedEmployeeNames.join(", ")
+      : (r.client_id ? "No assigned employees" : "All Employees");
+
     return {
       id: r.id,
       client_id: r.client_id || null,
@@ -121,9 +168,11 @@ async function enrichRequirements(sql: any, reqs: any[]): Promise<any[]> {
       priority: r.priority || "Medium",
       notes: r.notes || null,
       status: r.status || "active",
-      assignment_type: r.assignment_type || "all",
-      assigned_employee_id: r.assigned_employee_id || null,
-      assigned_employee_name: r.assigned_employee_id ? userMap[String(r.assigned_employee_id)] || null : null,
+      assignment_type: r.assignment_type || (r.client_id && assignedEmployeeNames.length ? "client_assigned" : "all"),
+      assigned_employee: assignedEmployee,
+      assigned_employee_names: assignedEmployeeNames,
+      assigned_employee_id: r.assigned_employee_id || (clientAssigned?.ids[0] || null),
+      assigned_employee_name: assignedEmployeeNameDisplay,
       created_by: r.created_by || null,
       creator_name: r.created_by ? userMap[String(r.created_by)] || null : null,
       completed_by: r.completed_by || null,
@@ -261,13 +310,31 @@ requirementsRouter.post("/", async (c) => {
   const jobTitle = payload.job_title || payload.role || "Open Role";
   const role = payload.role || payload.job_title || "Open Role";
 
-  let assignmentType = payload.assignment_type || "all";
-  let assignedEmployeeId = payload.assigned_employee_id || null;
-  if (payload.assigned_employee === "ALL" || !payload.assigned_employee_id) {
+  let assignmentType = "all";
+  let assignedEmployeeId: string | null = null;
+
+  if (!effectiveClientId) {
+    // Global for All: Store client_id = NULL, assigned_employee = "ALL"
     assignmentType = "all";
     assignedEmployeeId = null;
   } else {
-    assignmentType = "individual";
+    // Real client selected: Query active employees assigned to that client
+    const assignedEmps = await sql`
+      SELECT u.id, u.name
+      FROM users u
+      JOIN employee_clients ec ON ec.employee_id = u.id
+      WHERE ec.client_id = ${effectiveClientId}
+        AND ec.active = true
+        AND u.is_active = true
+      ORDER BY u.name ASC
+    `;
+    if (assignedEmps.length > 0) {
+      assignmentType = "client_assigned";
+      assignedEmployeeId = assignedEmps[0].id;
+    } else {
+      assignmentType = "client_assigned";
+      assignedEmployeeId = null;
+    }
   }
 
   // Generate role_code
@@ -354,9 +421,33 @@ const updateRequirementHandler = async (c: any) => {
   const priorityVal = payload.priority !== undefined ? payload.priority : current.priority;
   const notesVal = payload.notes !== undefined ? payload.notes : current.notes;
   const statusVal = payload.status !== undefined ? payload.status : current.status;
-  const assignTypeVal = payload.assignment_type !== undefined ? payload.assignment_type : current.assignment_type;
-  const assignEmpIdVal =
+  let assignTypeVal = payload.assignment_type !== undefined ? payload.assignment_type : current.assignment_type;
+  let assignEmpIdVal =
     payload.assigned_employee_id !== undefined ? payload.assigned_employee_id : current.assigned_employee_id;
+
+  if (payload.client_id !== undefined) {
+    if (!clientIdVal) {
+      assignTypeVal = "all";
+      assignEmpIdVal = null;
+    } else {
+      const assignedEmps = await sql`
+        SELECT u.id, u.name
+        FROM users u
+        JOIN employee_clients ec ON ec.employee_id = u.id
+        WHERE ec.client_id = ${clientIdVal}
+          AND ec.active = true
+          AND u.is_active = true
+        ORDER BY u.name ASC
+      `;
+      if (assignedEmps.length > 0) {
+        assignTypeVal = "client_assigned";
+        assignEmpIdVal = assignedEmps[0].id;
+      } else {
+        assignTypeVal = "client_assigned";
+        assignEmpIdVal = null;
+      }
+    }
+  }
 
   const [updated] = await sql`
     UPDATE requirements SET

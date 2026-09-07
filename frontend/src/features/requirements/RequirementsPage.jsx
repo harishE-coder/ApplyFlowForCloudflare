@@ -531,13 +531,13 @@ export function RequirementsPage() {
                           {req.job_title || req.role}
                         </span>
                         <span className="text-[11px] font-medium text-[#64748B] flex items-center gap-1 mt-0.5">
-                          {req.assignment_type === 'all' || !req.assigned_employee_name ? (
+                          {req.client_name === 'Global for All' || !req.client_id ? (
                             <span className="px-1.5 py-0.5 rounded bg-blue-50 text-[#0D6EFD] font-bold">
                               🌐 All Employees
                             </span>
                           ) : (
                             <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-bold">
-                              👤 {req.assigned_employee_name}
+                              👤 {req.assigned_employee_names?.join(', ') || req.assigned_employee_name || 'No assigned employees'}
                             </span>
                           )}
                         </span>

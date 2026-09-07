@@ -31,6 +31,17 @@ describe("Requirements (Job Openings) Module Tests", () => {
       expect(res.success).toBe(true);
     });
 
+    it("validates RequirementCreate payload with client_id: 'ALL' (Global for all at once)", () => {
+      const validGlobal = {
+        client_id: "ALL",
+        company: "Google",
+        job_title: "Staff Cloud Engineer",
+        priority: "High" as const,
+      };
+      const res = RequirementCreateSchema.safeParse(validGlobal);
+      expect(res.success).toBe(true);
+    });
+
     it("fails when company is missing or empty", () => {
       const invalidEmpty = {
         company: "",

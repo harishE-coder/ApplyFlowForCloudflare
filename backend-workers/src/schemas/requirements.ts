@@ -6,7 +6,7 @@
 import { z } from "zod";
 
 export const RequirementCreateSchema = z.object({
-  client_id: z.string().uuid().nullable().optional(),
+  client_id: z.string().nullable().optional(),
   company: z.string().min(1, "Company is required"),
   job_title: z.string().nullable().optional(),
   role: z.string().nullable().optional(),

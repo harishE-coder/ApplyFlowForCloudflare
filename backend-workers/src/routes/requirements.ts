@@ -237,6 +237,91 @@ requirementsRouter.post("/", async (c) => {
   if (user.role === "client") {
     effectiveClientId = user.client_id || undefined;
   }
+
+  // Populate titles
+  const jobTitle = payload.job_title || payload.role || "Open Role";
+  const role = payload.role || payload.job_title || "Open Role";
+
+  let assignmentType = payload.assignment_type || "all";
+  let assignedEmployeeId = payload.assigned_employee_id || null;
+  if (payload.assigned_employee === "ALL" || !payload.assigned_employee_id) {
+    assignmentType = "all";
+    assignedEmployeeId = null;
+  } else {
+    assignmentType = "individual";
+  }
+
+  // Helper to generate role_code
+  const getRoleCode = (idx?: number) => {
+    if (payload.role_code && idx === undefined) return payload.role_code;
+    const prefix = payload.company.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "JOB";
+    const rolePart = jobTitle.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "ROLE";
+    const num = idx !== undefined ? String(idx).padStart(2, "0") : "01";
+    return `${prefix}-${rolePart}-${num}`;
+  };
+
+  // Handle Global (All Service Clients at once)
+  if (effectiveClientId === "ALL" || effectiveClientId === "GLOBAL") {
+    const scopedCids = await getScopedClientIdsForReqs(sql, user);
+    let targetClients: any[] = [];
+    if (scopedCids !== null) {
+      if (scopedCids.length === 0) {
+        return c.json({ detail: "No accessible service clients found." }, 400);
+      }
+      targetClients = await sql`
+        SELECT id, company_name FROM clients 
+        WHERE id = ANY(${scopedCids}) AND is_active = true
+        ORDER BY company_name ASC
+      `;
+    } else {
+      targetClients = await sql`
+        SELECT id, company_name FROM clients 
+        WHERE is_active = true
+        ORDER BY company_name ASC
+      `;
+    }
+
+    if (targetClients.length === 0) {
+      targetClients = await sql`SELECT id, company_name FROM clients ORDER BY company_name ASC LIMIT 50`;
+    }
+
+    if (targetClients.length === 0) {
+      return c.json({ detail: "No clients found to create job openings for." }, 400);
+    }
+
+    const createdList: any[] = [];
+    let idx = 1;
+    for (const cl of targetClients) {
+      const reqId = crypto.randomUUID();
+      const roleCode = getRoleCode(idx++);
+      const [cr] = await sql`
+        INSERT INTO requirements (
+          id, client_id, company, job_title, role, role_code, job_url,
+          priority, notes, status, assignment_type, assigned_employee_id,
+          created_by, created_at, updated_at
+        ) VALUES (
+          ${reqId}, ${cl.id}, ${payload.company}, ${jobTitle}, ${role},
+          ${roleCode}, ${payload.job_url || null}, ${payload.priority || "Medium"},
+          ${payload.notes || null}, ${payload.status || "active"}, ${assignmentType},
+          ${assignedEmployeeId}, ${user.id}, NOW(), NOW()
+        )
+        RETURNING *
+      `;
+      createdList.push(cr);
+
+      await sql`
+        INSERT INTO activity_logs (id, user_id, action, details, created_at)
+        VALUES (
+          ${crypto.randomUUID()}, ${user.id}, 'requirement_created',
+          ${JSON.stringify({ requirement_id: reqId, role_code: roleCode, company: payload.company, client_id: cl.id })}, NOW()
+        )
+      `;
+    }
+
+    const enriched = await enrichRequirements(sql, createdList);
+    return c.json(enriched[0] || {}, 201);
+  }
+
   if (!effectiveClientId) {
     // If client_id omitted, match by company name
     const clientMatch = await sql`
@@ -249,26 +334,7 @@ requirementsRouter.post("/", async (c) => {
     }
   }
 
-  // Populate titles
-  const jobTitle = payload.job_title || payload.role || "Open Role";
-  const role = payload.role || payload.job_title || "Open Role";
-
-  // Generate role_code if omitted
-  let roleCode = payload.role_code;
-  if (!roleCode) {
-    const prefix = payload.company.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "JOB";
-    const rolePart = jobTitle.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "ROLE";
-    roleCode = `${prefix}-${rolePart}-01`;
-  }
-
-  let assignmentType = payload.assignment_type || "all";
-  let assignedEmployeeId = payload.assigned_employee_id || null;
-  if (payload.assigned_employee === "ALL" || !payload.assigned_employee_id) {
-    assignmentType = "all";
-    assignedEmployeeId = null;
-  } else {
-    assignmentType = "individual";
-  }
+  const roleCode = getRoleCode();
 
   const reqId = crypto.randomUUID();
 

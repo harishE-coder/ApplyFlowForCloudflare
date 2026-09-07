@@ -143,12 +143,16 @@ export function RequirementsPage() {
         job_title: jobTitle.trim(),
         job_url: jobUrl.trim() || null,
         priority,
-        notes: notes.trim() || null,
+        notes: null,
         client_id: targetClientId,
-        assigned_employee: assignedEmployee,
+        assigned_employee: 'ALL',
       });
 
-      success('Job Opening Created', `${company} – ${jobTitle} added to task board.`);
+      if (targetClientId === 'ALL') {
+        success('Job Openings Created', `${company} – ${jobTitle} created for all service clients at once.`);
+      } else {
+        success('Job Opening Created', `${company} – ${jobTitle} added to task board.`);
+      }
       setIsCreateOpen(false);
       fetchRequirements();
     } catch (err) {
@@ -644,9 +648,10 @@ export function RequirementsPage() {
                 required
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
+                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer font-medium"
               >
                 <option value="">Select Service Client...</option>
+                <option value="ALL">🌐 Global (All Service Clients at once)</option>
                 {clients
                   .slice()
                   .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''))
@@ -689,25 +694,12 @@ export function RequirementsPage() {
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
             >
               <option value="High">High Priority</option>
               <option value="Medium">Medium Priority</option>
               <option value="Low">Low Priority</option>
             </select>
-          </div>
-
-          <div>
-            <label className="text-small font-semibold text-[#081226] block mb-1.5">
-              Recruiter Guidance Notes (Optional)
-            </label>
-            <textarea
-              rows={3}
-              placeholder="e.g. Apply with 3+ years experience in React and Node.js..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#0D6EFD] focus:bg-white resize-none"
-            />
           </div>
 
           <div className="pt-4 flex justify-end gap-3">
@@ -726,7 +718,7 @@ export function RequirementsPage() {
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
         title="Edit Job Opening"
-        subtitle="Update company, role title, job URL, or guidance notes."
+        subtitle="Update company, role title, job URL, or priority."
       >
         <form onSubmit={handleUpdate} className="space-y-4">
           <Input
@@ -757,24 +749,12 @@ export function RequirementsPage() {
             <select
               value={editPriority}
               onChange={(e) => setEditPriority(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
             >
               <option value="High">High Priority</option>
               <option value="Medium">Medium Priority</option>
               <option value="Low">Low Priority</option>
             </select>
-          </div>
-
-          <div>
-            <label className="text-small font-semibold text-[#081226] block mb-1.5">
-              Recruiter Guidance Notes (Optional)
-            </label>
-            <textarea
-              rows={3}
-              value={editNotes}
-              onChange={(e) => setEditNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#0D6EFD] focus:bg-white resize-none"
-            />
           </div>
 
           <div className="pt-4 flex justify-end gap-3">

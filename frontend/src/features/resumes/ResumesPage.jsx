@@ -308,7 +308,7 @@ export function ResumesPage() {
     }
 
     return items;
-  }, [handleCopyShareLink, isAdmin, isSubAdmin, isEmployee, user?.id, openEditModal]);
+  }, [isAdmin, isSubAdmin, isEmployee, user?.id, openEditModal, success]);
 
   // Only render the first 20 rows initially
   const displayedResumes = useMemo(() => resumes.slice(0, 20), [resumes]);

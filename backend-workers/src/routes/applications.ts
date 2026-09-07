@@ -387,13 +387,30 @@ applicationsRouter.post("/", async (c) => {
   const effectiveClientId = payload.client_id || resume.client_id;
   const appId = crypto.randomUUID();
 
+  // Resolve effective employee attribution: explicit payload, or resume uploaded_by, or client's assigned recruiter, or user.id
+  let effectiveEmployeeId = payload.employee_id || null;
+  if (!effectiveEmployeeId && resume.uploaded_by) {
+    effectiveEmployeeId = resume.uploaded_by;
+  }
+  if (!effectiveEmployeeId && (user.role === "admin" || user.role === "super_admin") && effectiveClientId) {
+    const assigned = await sql`
+      SELECT employee_id FROM employee_clients WHERE client_id = ${effectiveClientId} AND active = true LIMIT 1
+    `;
+    if (assigned.length > 0 && assigned[0].employee_id) {
+      effectiveEmployeeId = assigned[0].employee_id;
+    }
+  }
+  if (!effectiveEmployeeId) {
+    effectiveEmployeeId = user.id;
+  }
+
   const [created] = await sql`
     INSERT INTO applications (
       id, resume_id, client_id, requirement_id, employee_id,
       status, current_round, applied_date, created_at, updated_at
     ) VALUES (
       ${appId}, ${payload.resume_id}, ${effectiveClientId}, ${payload.requirement_id || null},
-      ${user.id}, ${payload.status || "Submitted"}, ${payload.current_round || "Initial Application"},
+      ${effectiveEmployeeId}, ${payload.status || "Submitted"}, ${payload.current_round || "Initial Application"},
       NOW(), NOW(), NOW()
     )
     RETURNING *

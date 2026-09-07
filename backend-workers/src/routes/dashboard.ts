@@ -77,6 +77,7 @@ import {
   APP_TIMEZONE,
   type DateRangeType,
   type MetricStats,
+  type TeamPerformanceMaps,
 } from "../services/dashboardMetrics";
 
 export {
@@ -194,8 +195,10 @@ dashboardRouter.get("/admin/home", async (c) => {
     const applicationsTrend = appStats.trend;
 
     const targetSum = targetsRes[0]?.c || 0;
+    const selectedApplications = appStats.count;
+    const selectedUploads = uploadStats.count;
     const targetCompletionPct =
-      targetSum > 0 ? Number(((todayApplications / targetSum) * 100).toFixed(1)) : (todayApplications > 0 ? 100.0 : 0.0);
+      targetSum > 0 ? Number(((selectedApplications / targetSum) * 100).toFixed(1)) : (selectedApplications > 0 ? 100.0 : 0.0);
     const activeJobs = activeJobsRes[0]?.c || 0;
     const completedTodayJobs = completedTodayJobsRes[0]?.c || 0;
     const highPriorityJobs = hiJobsRes[0]?.c || 0;
@@ -234,7 +237,18 @@ dashboardRouter.get("/admin/home", async (c) => {
       activeTargetsMap,
       empClientsRows,
     ] = await Promise.all([
-      getTeamPerformanceMaps(sql, empIds),
+      empIds.length > 0
+        ? getTeamPerformanceMaps(sql, empIds, dateRange, customDate)
+        : ({
+            todayUploadsMap: {},
+            yesterdayUploadsMap: {},
+            totalUploadsMap: {},
+            selectedUploadsMap: {},
+            todayAppsMap: {},
+            yesterdayAppsMap: {},
+            totalAppsMap: {},
+            selectedAppsMap: {},
+          } as TeamPerformanceMaps),
       empIds.length > 0
         ? sql`SELECT employee_id, COALESCE(SUM(daily_target), 0)::int as target FROM targets WHERE employee_id = ANY(${empIds}) AND status = 'active' GROUP BY employee_id`
         : [],
@@ -247,9 +261,11 @@ dashboardRouter.get("/admin/home", async (c) => {
       todayUploadsMap,
       yesterdayUploadsMap,
       totalUploadsMap,
+      selectedUploadsMap,
       todayAppsMap,
       yesterdayAppsMap,
       totalAppsMap,
+      selectedAppsMap,
     } = perfMaps;
 
     const targetMap: Record<string, number> = {};
@@ -267,15 +283,19 @@ dashboardRouter.get("/admin/home", async (c) => {
       const totalUploads = totalUploadsMap[eid] || 0;
       const todayUploads = todayUploadsMap[eid] || 0;
       const yesterdayUploads = yesterdayUploadsMap[eid] || 0;
+      const selectedUploads = selectedUploadsMap[eid] !== undefined ? selectedUploadsMap[eid] : todayUploads;
       const uploadsTrend = calculateTrend(todayUploads, yesterdayUploads);
 
       const totalApplications = totalAppsMap[eid] || 0;
       const todayApplications = todayAppsMap[eid] || 0;
       const yesterdayApplications = yesterdayAppsMap[eid] || 0;
+      const selectedApplications = selectedAppsMap[eid] !== undefined ? selectedAppsMap[eid] : todayApplications;
       const applicationsTrend = calculateTrend(todayApplications, yesterdayApplications);
 
       const dt = targetMap[eid] || 0;
-      const cp = dt > 0 ? Number(((todayApplications / dt) * 100).toFixed(1)) : (todayApplications > 0 ? 100.0 : 0.0);
+      const submitted = selectedApplications;
+      const remaining = Math.max(0, dt - submitted);
+      const cp = dt > 0 ? Number(((submitted / dt) * 100).toFixed(1)) : (submitted > 0 ? 100.0 : 0.0);
 
       return {
         id: emp.id,
@@ -289,10 +309,14 @@ dashboardRouter.get("/admin/home", async (c) => {
         total_uploads: totalUploads,
         today_uploads: todayUploads,
         yesterday_uploads: yesterdayUploads,
+        selected_uploads: selectedUploads,
         uploads_trend: uploadsTrend,
         total_applications: totalApplications,
         today_applications: todayApplications,
         yesterday_applications: yesterdayApplications,
+        selected_applications: selectedApplications,
+        submitted: submitted,
+        remaining: remaining,
         applications_trend: applicationsTrend,
         daily_target: dt,
         completion_percentage: cp,
@@ -379,6 +403,10 @@ dashboardRouter.get("/admin/home", async (c) => {
       yesterday_uploads: yesterdayUploads,
       today_applications: todayApplications,
       yesterday_applications: yesterdayApplications,
+      selected_uploads: selectedUploads,
+      selected_applications: selectedApplications,
+      date_range: dateRange,
+      custom_date: customDate || (dateRange && /^\d{4}-\d{2}-\d{2}$/.test(dateRange) ? dateRange : null),
       uploads_trend: uploadsTrend,
       applications_trend: applicationsTrend,
       target_sum: targetSum,

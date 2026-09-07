@@ -672,6 +672,17 @@ aiRouter.post("/confirm-save", async (c) => {
     } else {
       actionType = "new";
       const newAppId = crypto.randomUUID();
+
+      let effectiveEmployeeId = user.id;
+      if ((user.role === "admin" || user.role === "super_admin") && targetClientId) {
+        const assigned = await sql`
+          SELECT employee_id FROM employee_clients WHERE client_id = ${targetClientId} AND active = true LIMIT 1
+        `;
+        if (assigned.length > 0 && assigned[0].employee_id) {
+          effectiveEmployeeId = assigned[0].employee_id;
+        }
+      }
+
       const [created] = await sql`
         INSERT INTO applications (
           id, resume_id, client_id, employee_id, candidate_name, company, role,
@@ -679,7 +690,7 @@ aiRouter.post("/confirm-save", async (c) => {
           applied_date, created_at, updated_at
         )
         VALUES (
-          ${newAppId}, ${resumeId}, ${targetClientId}, ${user.id}, ${candName}, ${companyName}, ${roleName},
+          ${newAppId}, ${resumeId}, ${targetClientId}, ${effectiveEmployeeId}, ${candName}, ${companyName}, ${roleName},
           ${statusStr}, ${roundStr}, ${parsedInterviewDate},
           ${rawEmail.slice(0, 300)}, true, NOW(), NOW(), NOW()
         )

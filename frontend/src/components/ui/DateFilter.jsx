@@ -29,8 +29,22 @@ export function DateFilter({
   const [isOpen, setIsOpen] = useState(false);
   const [internalDate, setInternalDate] = useState(customDate || new Date().toISOString().split('T')[0]);
 
+  React.useEffect(() => {
+    if (customDate) setInternalDate(customDate);
+  }, [customDate]);
+
   const handleSelectPreset = (presetId) => {
-    if (presetId === 'custom') {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (presetId === 'today') {
+      onFilterChange?.({ preset: 'today', customDate: todayStr });
+    } else if (presetId === 'yesterday') {
+      onFilterChange?.({ preset: 'yesterday', customDate: yesterdayStr });
+    } else if (presetId === 'custom') {
       onFilterChange?.({ preset: 'custom', customDate: internalDate });
     } else {
       onFilterChange?.({ preset: presetId, customDate: null });

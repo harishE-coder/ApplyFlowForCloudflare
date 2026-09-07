@@ -36,9 +36,11 @@ export interface TeamPerformanceMaps {
   todayUploadsMap: Record<string, number>;
   yesterdayUploadsMap: Record<string, number>;
   totalUploadsMap: Record<string, number>;
+  selectedUploadsMap: Record<string, number>;
   todayAppsMap: Record<string, number>;
   yesterdayAppsMap: Record<string, number>;
   totalAppsMap: Record<string, number>;
+  selectedAppsMap: Record<string, number>;
 }
 
 export interface DailyTrendPoint {
@@ -59,9 +61,21 @@ export function buildDateFilter(
   range: DateRangeType | string = "today",
   customDate?: string | null
 ): string {
-  const norm = String(range || "today").toLowerCase().replace(/-/g, "_");
+  const rawRange = String(range || "today").trim();
   const colIst = `(${column} AT TIME ZONE '${APP_TIMEZONE}')::date`;
   const nowIst = `(NOW() AT TIME ZONE '${APP_TIMEZONE}')`;
+
+  // 1. If explicit YYYY-MM-DD date passed directly as range
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawRange)) {
+    return `${colIst} = '${rawRange}'::date`;
+  }
+
+  // 2. If customDate is provided (e.g. range is 'custom' or alongside range)
+  if (customDate && /^\d{4}-\d{2}-\d{2}$/.test(String(customDate).trim())) {
+    return `${colIst} = '${String(customDate).trim()}'::date`;
+  }
+
+  const norm = rawRange.toLowerCase().replace(/-/g, "_");
 
   if (norm === "today") {
     return `${colIst} = ${nowIst}::date`;
@@ -69,7 +83,10 @@ export function buildDateFilter(
   if (norm === "yesterday") {
     return `${colIst} = (${nowIst} - INTERVAL '1 day')::date`;
   }
-  if (norm === "last7" || norm === "last_7" || norm === "7days" || norm === "week") {
+  if (norm === "this_week" || norm === "week") {
+    return `${colIst} >= DATE_TRUNC('week', ${nowIst})::date AND ${colIst} <= ${nowIst}::date`;
+  }
+  if (norm === "last7" || norm === "last_7" || norm === "7days") {
     return `${colIst} >= (${nowIst} - INTERVAL '6 days')::date AND ${colIst} <= ${nowIst}::date`;
   }
   if (norm === "last30" || norm === "last_30" || norm === "30days") {
@@ -77,9 +94,6 @@ export function buildDateFilter(
   }
   if (norm === "this_month" || norm === "month") {
     return `DATE_TRUNC('month', (${column} AT TIME ZONE '${APP_TIMEZONE}')) = DATE_TRUNC('month', ${nowIst})`;
-  }
-  if (norm === "custom" && customDate && /^\d{4}-\d{2}-\d{2}$/.test(customDate)) {
-    return `${colIst} = '${customDate}'::date`;
   }
   if (norm === "all") {
     return "1=1";
@@ -252,29 +266,40 @@ export async function getApplicationStats(
 /**
  * Recruiter team performance aggregation maps (total, today, yesterday per recruiter in IST).
  */
-export async function getTeamPerformanceMaps(sql: any, empIds: string[]): Promise<TeamPerformanceMaps> {
+export async function getTeamPerformanceMaps(
+  sql: any,
+  empIds: string[],
+  range: DateRangeType | string = "today",
+  customDate?: string | null
+): Promise<TeamPerformanceMaps> {
   if (!empIds || empIds.length === 0) {
     return {
       todayUploadsMap: {},
       yesterdayUploadsMap: {},
       totalUploadsMap: {},
+      selectedUploadsMap: {},
       todayAppsMap: {},
       yesterdayAppsMap: {},
       totalAppsMap: {},
+      selectedAppsMap: {},
     };
   }
 
   const todayResFilter = buildDateFilter("COALESCE(created_at, upload_date)", "today");
   const yesterdayResFilter = buildDateFilter("COALESCE(created_at, upload_date)", "yesterday");
+  const rangeResFilter = buildDateFilter("COALESCE(created_at, upload_date)", range, customDate);
+
   const todayAppsFilter = buildDateFilter("COALESCE(applied_date, created_at)", "today");
   const yesterdayAppsFilter = buildDateFilter("COALESCE(applied_date, created_at)", "yesterday");
+  const rangeAppsFilter = buildDateFilter("COALESCE(applied_date, created_at)", range, customDate);
 
   const resumesQueryStr = `
     SELECT
       uploaded_by AS employee_id,
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE ${todayResFilter})::int AS today,
-      COUNT(*) FILTER (WHERE ${yesterdayResFilter})::int AS yesterday
+      COUNT(*) FILTER (WHERE ${yesterdayResFilter})::int AS yesterday,
+      COUNT(*) FILTER (WHERE ${rangeResFilter})::int AS range_count
     FROM resumes
     WHERE uploaded_by = ANY($1)
     GROUP BY uploaded_by
@@ -285,7 +310,8 @@ export async function getTeamPerformanceMaps(sql: any, empIds: string[]): Promis
       employee_id,
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE ${todayAppsFilter})::int AS today,
-      COUNT(*) FILTER (WHERE ${yesterdayAppsFilter})::int AS yesterday
+      COUNT(*) FILTER (WHERE ${yesterdayAppsFilter})::int AS yesterday,
+      COUNT(*) FILTER (WHERE ${rangeAppsFilter})::int AS range_count
     FROM applications
     WHERE employee_id = ANY($1)
     GROUP BY employee_id
@@ -299,30 +325,36 @@ export async function getTeamPerformanceMaps(sql: any, empIds: string[]): Promis
   const todayUploadsMap: Record<string, number> = {};
   const yesterdayUploadsMap: Record<string, number> = {};
   const totalUploadsMap: Record<string, number> = {};
+  const selectedUploadsMap: Record<string, number> = {};
   for (const r of resumesRows) {
     const eid = String(r.employee_id);
     totalUploadsMap[eid] = Number(r.total) || 0;
     todayUploadsMap[eid] = Number(r.today) || 0;
     yesterdayUploadsMap[eid] = Number(r.yesterday) || 0;
+    selectedUploadsMap[eid] = Number(r.range_count) || 0;
   }
 
   const todayAppsMap: Record<string, number> = {};
   const yesterdayAppsMap: Record<string, number> = {};
   const totalAppsMap: Record<string, number> = {};
+  const selectedAppsMap: Record<string, number> = {};
   for (const r of appsRows) {
     const eid = String(r.employee_id);
     totalAppsMap[eid] = Number(r.total) || 0;
     todayAppsMap[eid] = Number(r.today) || 0;
     yesterdayAppsMap[eid] = Number(r.yesterday) || 0;
+    selectedAppsMap[eid] = Number(r.range_count) || 0;
   }
 
   return {
     todayUploadsMap,
     yesterdayUploadsMap,
     totalUploadsMap,
+    selectedUploadsMap,
     todayAppsMap,
     yesterdayAppsMap,
     totalAppsMap,
+    selectedAppsMap,
   };
 }
 

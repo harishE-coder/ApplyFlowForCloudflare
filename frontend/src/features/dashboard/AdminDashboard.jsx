@@ -146,8 +146,12 @@ export function AdminDashboard() {
       // Pass date string (or quick range)
       if (quickDateFilter === 'this_week' || quickDateFilter === 'this_month') {
         params.date_range = quickDateFilter;
+      } else if (quickDateFilter === 'today' || quickDateFilter === 'yesterday') {
+        params.date_range = quickDateFilter;
+        params.custom_date = selectedDate;
       } else {
         params.date_range = selectedDate;
+        params.custom_date = selectedDate;
       }
 
       const res = await api.get('/dashboard/admin/home', { params });
@@ -221,10 +225,15 @@ export function AdminDashboard() {
     activeRecruitersCount,
   } = useMemo(() => {
     const targetSum = overview?.target_sum ?? 0;
-    const isYesterday = quickDateFilter === 'yesterday';
-    const submittedCount = isYesterday
-      ? (overview?.yesterday_applications ?? 0)
-      : (overview?.today_applications ?? overview?.today_uploads ?? 0);
+    let submittedCount = 0;
+    if (overview?.selected_applications !== undefined && overview?.selected_applications !== null) {
+      submittedCount = Number(overview.selected_applications);
+    } else if (quickDateFilter === 'yesterday') {
+      submittedCount = Number(overview?.yesterday_applications ?? 0);
+    } else {
+      submittedCount = Number(overview?.today_applications ?? 0);
+    }
+
     const recruiters = selectedClientId
       ? (availableEmployees.length || 0)
       : (availableEmployees.length || allEmployees.length || 0);
@@ -241,13 +250,30 @@ export function AdminDashboard() {
     };
   }, [overview, quickDateFilter, selectedClientId, availableEmployees, allEmployees]);
 
+  const dateSubtitle = useMemo(() => {
+    if (quickDateFilter === 'today') return `Today (${formatDate(selectedDate)})`;
+    if (quickDateFilter === 'yesterday') return `Yesterday (${formatDate(selectedDate)})`;
+    if (quickDateFilter === 'this_week') return 'This Week';
+    if (quickDateFilter === 'this_month') return 'This Month';
+    return `On ${formatDate(selectedDate)}`;
+  }, [quickDateFilter, selectedDate]);
+
   // -------------------------------------------------------------
-  // RECRUITER PERFORMANCE ROWS (Calculated per employee based on backend target and uploads)
+  // RECRUITER PERFORMANCE ROWS (Calculated per employee based on backend target and applications)
   // -------------------------------------------------------------
   const recruiterRows = useMemo(() => {
     let list = teamPerformance.map((emp) => {
       const target = emp.daily_target ?? 0;
-      const submitted = emp.today_applications ?? emp.today_uploads ?? emp.total_applications ?? 0;
+      let submitted = 0;
+      if (emp.selected_applications !== undefined && emp.selected_applications !== null) {
+        submitted = Number(emp.selected_applications);
+      } else if (emp.submitted !== undefined && emp.submitted !== null) {
+        submitted = Number(emp.submitted);
+      } else if (quickDateFilter === 'yesterday') {
+        submitted = Number(emp.yesterday_applications ?? 0);
+      } else {
+        submitted = Number(emp.today_applications ?? 0);
+      }
       const remaining = Math.max(0, target - submitted);
       const completion = target > 0 ? Math.min(Math.round((submitted / target) * 100), 100) : 0;
 
@@ -450,7 +476,15 @@ export function AdminDashboard() {
               customDate={selectedDate}
               onFilterChange={({ preset, customDate: cDate }) => {
                 setQuickDateFilter(preset);
-                if (cDate) setSelectedDate(cDate);
+                if (cDate) {
+                  setSelectedDate(cDate);
+                } else if (preset === 'today') {
+                  setSelectedDate(new Date().toISOString().split('T')[0]);
+                } else if (preset === 'yesterday') {
+                  const y = new Date();
+                  y.setDate(y.getDate() - 1);
+                  setSelectedDate(y.toISOString().split('T')[0]);
+                }
               }}
             />
           </div>
@@ -509,7 +543,7 @@ export function AdminDashboard() {
         <KPICard
           title="Applications Submitted"
           value={applicationsSubmitted}
-          subtitle={`On ${formatDate(selectedDate)}`}
+          subtitle={dateSubtitle}
           icon={Briefcase}
           variant="blue"
         />
@@ -593,7 +627,7 @@ export function AdminDashboard() {
               Recruiter-wise Target Completion
             </h3>
             <p className="text-caption text-[#64748B] mt-0.5">
-              Live submission throughput vs individual daily targets on {formatDate(selectedDate)}.
+              Live submission throughput vs individual daily targets {quickDateFilter === 'this_week' || quickDateFilter === 'this_month' ? `for ${dateSubtitle}` : `on ${formatDate(selectedDate)}`}.
             </p>
           </div>
 

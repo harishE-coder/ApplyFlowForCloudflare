@@ -122,6 +122,12 @@ describe("Dashboard Module Parity Tests", () => {
       const customCond = buildDateFilter(col, "custom", "2026-09-07");
       expect(customCond).toContain("'2026-09-07'::date");
 
+      const directDateCond = buildDateFilter(col, "2026-09-06");
+      expect(directDateCond).toContain("'2026-09-06'::date");
+
+      const weekCond = buildDateFilter(col, "this_week");
+      expect(weekCond).toContain("DATE_TRUNC('week'");
+
       const allCond = buildDateFilter(col, "all");
       expect(allCond).toBe("1=1");
     });

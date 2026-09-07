@@ -145,7 +145,7 @@ export function RequirementsPage() {
         priority,
         notes: notes.trim() || null,
         client_id: targetClientId,
-        assigned_employee: assignedEmployee,
+        assigned_employee: 'ALL',
       });
 
       success('Job Opening Created', `${company} – ${jobTitle} added to task board.`);
@@ -184,7 +184,7 @@ export function RequirementsPage() {
         job_url: editJobUrl.trim() || null,
         priority: editPriority,
         notes: editNotes.trim() || null,
-        assigned_employee: editAssignedEmployee,
+        assigned_employee: editAssignedEmployee || 'ALL',
       });
 
       success('Job Opening Updated', `${editCompany} – ${editJobTitle} updated successfully.`);

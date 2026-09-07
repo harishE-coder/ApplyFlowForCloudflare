@@ -676,12 +676,12 @@ aiRouter.post("/confirm-save", async (c) => {
         INSERT INTO applications (
           id, resume_id, client_id, employee_id, candidate_name, company, role,
           status, current_round, interview_date, last_email_snippet, is_ai_processed,
-          applied_date, updated_at
+          applied_date, created_at, updated_at
         )
         VALUES (
           ${newAppId}, ${resumeId}, ${targetClientId}, ${user.id}, ${candName}, ${companyName}, ${roleName},
           ${statusStr}, ${roundStr}, ${parsedInterviewDate},
-          ${rawEmail.slice(0, 300)}, true, NOW(), NOW()
+          ${rawEmail.slice(0, 300)}, true, NOW(), NOW(), NOW()
         )
         RETURNING *
       `;

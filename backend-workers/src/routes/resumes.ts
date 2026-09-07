@@ -584,7 +584,7 @@ resumesRouter.post("/upload", async (c) => {
           file_name, original_filename,
           mime_type, content_type,
           file_hash, file_size,
-          resume_date, upload_date
+          resume_date, upload_date, created_at
         ) VALUES (
           ${resumeId}, ${parsed.candidate_name}, ${parsed.company}, ${parsed.role}, ${parsed.resume_id_tag},
           ${requirementId}, ${clientId}, ${user.id},
@@ -593,7 +593,7 @@ resumesRouter.post("/upload", async (c) => {
           ${uploadRes.name}, ${uploadRes.name},
           ${uploadRes.mimeType}, ${uploadRes.mimeType},
           ${fileHash}, ${fileBuffer.byteLength},
-          ${resumeDate}, NOW()
+          ${resumeDate}, NOW(), NOW()
         )
       `;
 

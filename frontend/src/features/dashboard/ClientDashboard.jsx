@@ -228,7 +228,9 @@ export function ClientDashboard() {
         <KPICard
           title="Today's Uploads"
           value={data?.today_uploads ?? 0}
-          subtitle="Uploaded today"
+          trend={data?.uploads_trend}
+          trendLabel="vs yesterday"
+          subtitle={data?.yesterday_uploads !== undefined ? `vs ${data?.yesterday_uploads ?? 0} yesterday` : 'Uploaded today'}
           icon={Clock}
           variant="default"
         />

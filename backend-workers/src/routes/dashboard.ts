@@ -67,6 +67,30 @@ async function resolveDashboardScope(
   return { allowedClientIds: [], allowedEmployeeIds: [] };
 }
 
+import {
+  calculateTrend,
+  getResumeStats,
+  getApplicationStats,
+  getTeamPerformanceMaps,
+  getSevenDayTrend,
+  buildDateFilter,
+  APP_TIMEZONE,
+  type DateRangeType,
+  type MetricStats,
+} from "../services/dashboardMetrics";
+
+export {
+  calculateTrend,
+  getResumeStats,
+  getApplicationStats,
+  getTeamPerformanceMaps,
+  getSevenDayTrend,
+  buildDateFilter,
+  APP_TIMEZONE,
+  type DateRangeType,
+  type MetricStats,
+};
+
 /**
  * 1. GET /api/dashboard/admin/home (and GET /api/dashboard/home)
  * Consolidated admin & sub-admin dashboard metrics, cards, and dropdown metadata.
@@ -106,15 +130,15 @@ dashboardRouter.get("/admin/home", async (c) => {
     // Date calculations
     const todayStr = customDate || new Date().toISOString().split("T")[0];
 
-    // 1. Overview counts
+    // 1. Overview counts - using shared dashboard metrics service
     const [
       clientsRes,
       reqsRes,
       activeReqsRes,
       employeesRes,
       subAdminsRes,
-      resumesRes,
-      todayUploadsRes,
+      uploadStats,
+      appStats,
       targetsRes,
       activeJobsRes,
       completedTodayJobsRes,
@@ -134,12 +158,8 @@ dashboardRouter.get("/admin/home", async (c) => {
         ? sql`SELECT count(*)::int as c FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true AND id = ANY(${targetEmployeeIds})`
         : sql`SELECT count(*)::int as c FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true`,
       sql`SELECT count(*)::int as c FROM users WHERE role = 'sub_admin' AND is_active = true`,
-      targetClientIds !== null
-        ? sql`SELECT count(*)::int as c FROM resumes WHERE client_id = ANY(${targetClientIds})`
-        : sql`SELECT count(*)::int as c FROM resumes`,
-      targetClientIds !== null
-        ? sql`SELECT count(*)::int as c FROM resumes WHERE client_id = ANY(${targetClientIds}) AND (resume_date = ${todayStr}::date OR (resume_date IS NULL AND upload_date::date = ${todayStr}::date))`
-        : sql`SELECT count(*)::int as c FROM resumes WHERE resume_date = ${todayStr}::date OR (resume_date IS NULL AND upload_date::date = ${todayStr}::date)`,
+      getResumeStats(sql, { targetClientIds, targetEmployeeIds }, dateRange, customDate),
+      getApplicationStats(sql, { targetClientIds, targetEmployeeIds }, dateRange, customDate),
       targetEmployeeIds !== null
         ? sql`SELECT COALESCE(SUM(daily_target), 0)::int as c FROM targets WHERE status = 'active' AND employee_id = ANY(${targetEmployeeIds})`
         : sql`SELECT COALESCE(SUM(daily_target), 0)::int as c FROM targets WHERE status = 'active'`,
@@ -147,8 +167,8 @@ dashboardRouter.get("/admin/home", async (c) => {
         ? sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active' AND client_id = ANY(${targetClientIds})`
         : sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active'`,
       targetClientIds !== null
-        ? sql`SELECT count(*)::int as c FROM requirements WHERE status = 'done' AND completed_at::date = ${todayStr}::date AND client_id = ANY(${targetClientIds})`
-        : sql`SELECT count(*)::int as c FROM requirements WHERE status = 'done' AND completed_at::date = ${todayStr}::date`,
+        ? sql`SELECT count(*)::int as c FROM requirements WHERE status = 'done' AND (completed_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date AND client_id = ANY(${targetClientIds})`
+        : sql`SELECT count(*)::int as c FROM requirements WHERE status = 'done' AND (completed_at AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`,
       targetClientIds !== null
         ? sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active' AND LOWER(priority) = 'high' AND client_id = ANY(${targetClientIds})`
         : sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active' AND LOWER(priority) = 'high'`,
@@ -162,13 +182,20 @@ dashboardRouter.get("/admin/home", async (c) => {
     const activeRequirements = activeReqsRes[0]?.c || 0;
     const totalEmployees = employeesRes[0]?.c || 0;
     const totalSubAdmins = subAdminsRes[0]?.c || 0;
-    const totalResumes = resumesRes[0]?.c || 0;
-    const totalApplications = totalResumes; // Parity rule: total applications = total uploaded resumes
-    const todayUploads = todayUploadsRes[0]?.c || 0;
-    const todayApplications = todayUploads;
+
+    const totalResumes = uploadStats.total;
+    const todayUploads = uploadStats.today;
+    const yesterdayUploads = uploadStats.yesterday;
+    const uploadsTrend = uploadStats.trend;
+
+    const totalApplications = appStats.total;
+    const todayApplications = appStats.today;
+    const yesterdayApplications = appStats.yesterday;
+    const applicationsTrend = appStats.trend;
+
     const targetSum = targetsRes[0]?.c || 0;
     const targetCompletionPct =
-      targetSum > 0 ? Number(((todayUploads / targetSum) * 100).toFixed(1)) : 0.0;
+      targetSum > 0 ? Number(((todayApplications / targetSum) * 100).toFixed(1)) : (todayApplications > 0 ? 100.0 : 0.0);
     const activeJobs = activeJobsRes[0]?.c || 0;
     const completedTodayJobs = completedTodayJobsRes[0]?.c || 0;
     const highPriorityJobs = hiJobsRes[0]?.c || 0;
@@ -183,32 +210,8 @@ dashboardRouter.get("/admin/home", async (c) => {
       value: Number(r.count),
     }));
 
-    // 3. 7-day upload and applications trend
-    const trendRows = await sql`
-      SELECT 
-        d.dt::date as date,
-        COALESCE(COUNT(r.id), 0)::int as uploads
-      FROM generate_series(
-        CURRENT_DATE - INTERVAL '6 days',
-        CURRENT_DATE,
-        INTERVAL '1 day'
-      ) d(dt)
-      LEFT JOIN resumes r ON (
-        (r.resume_date = d.dt::date) OR 
-        (r.resume_date IS NULL AND r.upload_date::date = d.dt::date)
-      )
-      GROUP BY d.dt
-      ORDER BY d.dt ASC
-    `;
-    const dailyUploadsTrend = trendRows.map((r: any) => {
-      const dStr = typeof r.date === "string" ? r.date : r.date.toISOString().split("T")[0];
-      return {
-        date: dStr,
-        uploads: Number(r.uploads),
-        applications: Number(r.uploads),
-        target: Math.round(targetSum / 7) || 0,
-      };
-    });
+    // 3. 7-day upload and applications trend - shared helper
+    const dailyUploadsTrend = await getSevenDayTrend(sql, targetSum);
 
     // 4. Dropdown metadata
     const [clientsList, empsList, targetsList] = await Promise.all([
@@ -223,16 +226,15 @@ dashboardRouter.get("/admin/home", async (c) => {
         : sql`SELECT id, employee_id, client_id, daily_target, status FROM targets WHERE status = 'active'`,
     ]);
 
-    // 5. Team performance list
+    // 5. Team performance list - using shared getTeamPerformanceMaps
     const empUsers = empsList;
     const empIds = empUsers.map((e: any) => String(e.id));
-    const [totalUploadsMap, todayUploadsMap, activeTargetsMap, empClientsRows] = await Promise.all([
-      empIds.length > 0
-        ? sql`SELECT uploaded_by as employee_id, count(*)::int as count FROM resumes WHERE uploaded_by = ANY(${empIds}) GROUP BY uploaded_by`
-        : [],
-      empIds.length > 0
-        ? sql`SELECT uploaded_by as employee_id, count(*)::int as count FROM resumes WHERE uploaded_by = ANY(${empIds}) AND (resume_date = ${todayStr}::date OR (resume_date IS NULL AND upload_date::date = ${todayStr}::date)) GROUP BY uploaded_by`
-        : [],
+    const [
+      perfMaps,
+      activeTargetsMap,
+      empClientsRows,
+    ] = await Promise.all([
+      getTeamPerformanceMaps(sql, empIds),
       empIds.length > 0
         ? sql`SELECT employee_id, COALESCE(SUM(daily_target), 0)::int as target FROM targets WHERE employee_id = ANY(${empIds}) AND status = 'active' GROUP BY employee_id`
         : [],
@@ -241,11 +243,14 @@ dashboardRouter.get("/admin/home", async (c) => {
         : [],
     ]);
 
-    const totalMap: Record<string, number> = {};
-    for (const r of totalUploadsMap) totalMap[String(r.employee_id)] = Number(r.count);
-
-    const todayMap: Record<string, number> = {};
-    for (const r of todayUploadsMap) todayMap[String(r.employee_id)] = Number(r.count);
+    const {
+      todayUploadsMap,
+      yesterdayUploadsMap,
+      totalUploadsMap,
+      todayAppsMap,
+      yesterdayAppsMap,
+      totalAppsMap,
+    } = perfMaps;
 
     const targetMap: Record<string, number> = {};
     for (const r of activeTargetsMap) targetMap[String(r.employee_id)] = Number(r.target);
@@ -259,10 +264,19 @@ dashboardRouter.get("/admin/home", async (c) => {
 
     const teamPerformance = empUsers.map((emp: any) => {
       const eid = String(emp.id);
-      const tu = totalMap[eid] || 0;
-      const tdu = todayMap[eid] || 0;
+      const totalUploads = totalUploadsMap[eid] || 0;
+      const todayUploads = todayUploadsMap[eid] || 0;
+      const yesterdayUploads = yesterdayUploadsMap[eid] || 0;
+      const uploadsTrend = calculateTrend(todayUploads, yesterdayUploads);
+
+      const totalApplications = totalAppsMap[eid] || 0;
+      const todayApplications = todayAppsMap[eid] || 0;
+      const yesterdayApplications = yesterdayAppsMap[eid] || 0;
+      const applicationsTrend = calculateTrend(todayApplications, yesterdayApplications);
+
       const dt = targetMap[eid] || 0;
-      const cp = dt > 0 ? Number(((tdu / dt) * 100).toFixed(1)) : 0.0;
+      const cp = dt > 0 ? Number(((todayApplications / dt) * 100).toFixed(1)) : (todayApplications > 0 ? 100.0 : 0.0);
+
       return {
         id: emp.id,
         employee_id: emp.id,
@@ -272,10 +286,14 @@ dashboardRouter.get("/admin/home", async (c) => {
         status: "active",
         is_active: true,
         assigned_clients: clientsMap[eid] || [],
-        total_uploads: tu,
-        today_uploads: tdu,
-        total_applications: tu,
-        today_applications: tdu,
+        total_uploads: totalUploads,
+        today_uploads: todayUploads,
+        yesterday_uploads: yesterdayUploads,
+        uploads_trend: uploadsTrend,
+        total_applications: totalApplications,
+        today_applications: todayApplications,
+        yesterday_applications: yesterdayApplications,
+        applications_trend: applicationsTrend,
         daily_target: dt,
         completion_percentage: cp,
       };
@@ -319,13 +337,12 @@ dashboardRouter.get("/admin/home", async (c) => {
       };
     });
 
-    // 7. Attendance summary
-    const todayDate = new Date().toISOString().split("T")[0];
+    // 7. Attendance summary - Only today's check-ins
     const presentRecords = await sql`
       SELECT a.employee_id, u.name, u.email, a.check_in
       FROM attendance a
       JOIN users u ON a.employee_id = u.id
-      WHERE a.work_date = ${todayDate}::date
+      WHERE a.work_date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
     `;
     const presentIds = new Set(presentRecords.map((r: any) => String(r.employee_id)));
     const absentList = empUsers
@@ -359,7 +376,11 @@ dashboardRouter.get("/admin/home", async (c) => {
       total_resumes: totalResumes,
       total_applications: totalApplications,
       today_uploads: todayUploads,
+      yesterday_uploads: yesterdayUploads,
       today_applications: todayApplications,
+      yesterday_applications: yesterdayApplications,
+      uploads_trend: uploadsTrend,
+      applications_trend: applicationsTrend,
       target_sum: targetSum,
       target_completion_pct: targetCompletionPct,
       active_jobs: activeJobs,
@@ -368,7 +389,7 @@ dashboardRouter.get("/admin/home", async (c) => {
       jobs_without_url: jobsWithoutUrl,
       job_completion_trend: dailyUploadsTrend,
       daily_uploads_trend: dailyUploadsTrend,
-      applications_trend: dailyUploadsTrend,
+      applications_trend_series: dailyUploadsTrend,
       application_status_distribution: statusDistribution,
       assigned_employees: empUsers.map((e: any) => ({ id: e.id, name: e.name, email: e.email })),
     };
@@ -449,6 +470,8 @@ dashboardRouter.get("/client/home", async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
   const clientId = user.client_id;
+  const dateRange = c.req.query("date_range") || c.req.query("date_filter") || "today";
+  const customDate = c.req.query("custom_date") || null;
 
   try {
     let companyName = "Client Portal";
@@ -459,11 +482,9 @@ dashboardRouter.get("/client/home", async (c) => {
       }
     }
 
-    const [appliedRes, todayRes, offersRes, timelineRows] = await Promise.all([
-      clientId ? sql`SELECT count(*)::int as c FROM resumes WHERE client_id = ${clientId}` : [{ c: 0 }],
-      clientId
-        ? sql`SELECT count(*)::int as c FROM resumes WHERE client_id = ${clientId} AND (resume_date = CURRENT_DATE OR (resume_date IS NULL AND upload_date::date = CURRENT_DATE))`
-        : [{ c: 0 }],
+    const [uploadStats, appStats, offersRes, timelineRows] = await Promise.all([
+      getResumeStats(sql, { clientId: clientId ? String(clientId) : null }, dateRange, customDate),
+      getApplicationStats(sql, { clientId: clientId ? String(clientId) : null }, dateRange, customDate),
       clientId
         ? sql`SELECT count(*)::int as c FROM applications WHERE client_id = ${clientId} AND status = 'Offer'`
         : [{ c: 0 }],
@@ -495,11 +516,28 @@ dashboardRouter.get("/client/home", async (c) => {
         : [],
     ]);
 
+    const totalResumes = uploadStats.total;
+    const todayUploads = uploadStats.today;
+    const yesterdayUploads = uploadStats.yesterday;
+    const uploadsTrend = uploadStats.trend;
+
+    const totalApplications = appStats.total;
+    const todayApplications = appStats.today;
+    const yesterdayApplications = appStats.yesterday;
+    const applicationsTrend = appStats.trend;
+
     const dashboard = {
       company_name: companyName,
       contact_person: null,
-      applied_count: appliedRes[0]?.c || 0,
-      today_uploads: todayRes[0]?.c || 0,
+      applied_count: totalApplications,
+      total_applications: totalApplications,
+      today_applications: todayApplications,
+      yesterday_applications: yesterdayApplications,
+      applications_trend: applicationsTrend,
+      total_resumes: totalResumes,
+      today_uploads: todayUploads,
+      yesterday_uploads: yesterdayUploads,
+      uploads_trend: uploadsTrend,
       interview_updates: 0,
       offers_count: offersRes[0]?.c || 0,
       joined_count: 0,
@@ -507,7 +545,7 @@ dashboardRouter.get("/client/home", async (c) => {
       completed_jobs: 0,
       completion_rate: 100.0,
       application_progress: [
-        { stage: "Applied", count: appliedRes[0]?.c || 0 },
+        { stage: "Applied", count: totalApplications },
         { stage: "Interview", count: 0 },
         { stage: "Offer", count: offersRes[0]?.c || 0 },
         { stage: "Joined", count: 0 },
@@ -531,8 +569,7 @@ dashboardRouter.get("/client/home", async (c) => {
         events: [],
       })),
       hiring_companies: [companyName],
-      total_resumes: appliedRes[0]?.c || 0,
-      applications_sent: appliedRes[0]?.c || 0,
+      applications_sent: totalApplications,
       active_requirements_count: 0,
     };
 
@@ -552,13 +589,13 @@ dashboardRouter.get("/client", async (c) => {
 const employeeDashboardHandler = async (c: any) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
+  const dateRange = c.req.query("date_range") || c.req.query("date_filter") || "today";
+  const customDate = c.req.query("custom_date") || null;
 
   try {
-    const todayStr = new Date().toISOString().split("T")[0];
-
-    const [todayRes, totalRes, targetRes, assignedClientsRows, recentResumesRows] = await Promise.all([
-      sql`SELECT count(*)::int as c FROM resumes WHERE uploaded_by = ${user.id} AND (resume_date = ${todayStr}::date OR (resume_date IS NULL AND upload_date::date = ${todayStr}::date))`,
-      sql`SELECT count(*)::int as c FROM resumes WHERE uploaded_by = ${user.id}`,
+    const [uploadStats, appStats, targetRes, assignedClientsRows, recentResumesRows] = await Promise.all([
+      getResumeStats(sql, { employeeId: user.id }, dateRange, customDate),
+      getApplicationStats(sql, { employeeId: user.id }, dateRange, customDate),
       sql`SELECT COALESCE(SUM(daily_target), 0)::int as c FROM targets WHERE employee_id = ${user.id} AND status = 'active'`,
       sql`SELECT ec.client_id as id, c.company_name FROM employee_clients ec JOIN clients c ON ec.client_id = c.id WHERE ec.employee_id = ${user.id} AND ec.active = true`,
       sql`
@@ -587,10 +624,18 @@ const employeeDashboardHandler = async (c: any) => {
       `,
     ]);
 
-    const todayUploads = todayRes[0]?.c || 0;
-    const totalUploads = totalRes[0]?.c || 0;
+    const totalUploads = uploadStats.total;
+    const todayUploads = uploadStats.today;
+    const yesterdayUploads = uploadStats.yesterday;
+    const uploadsTrend = uploadStats.trend;
+
+    const totalApplications = appStats.total;
+    const todayApplications = appStats.today;
+    const yesterdayApplications = appStats.yesterday;
+    const applicationsTrend = appStats.trend;
+
     const todayTarget = targetRes[0]?.c || 0;
-    const targetProgressPct = todayTarget > 0 ? Number(((todayUploads / todayTarget) * 100).toFixed(1)) : 0.0;
+    const targetProgressPct = todayTarget > 0 ? Number(((todayApplications / todayTarget) * 100).toFixed(1)) : (todayApplications > 0 ? 100.0 : 0.0);
 
     const assignedClients = assignedClientsRows.map((cl: any) => ({
       id: cl.id,
@@ -620,17 +665,23 @@ const employeeDashboardHandler = async (c: any) => {
 
     const dashboard = {
       today_uploads: todayUploads,
+      yesterday_uploads: yesterdayUploads,
       total_uploads: totalUploads,
-      applications_sent_today: todayUploads,
-      total_applications_sent: totalUploads,
+      uploads_trend: uploadsTrend,
+      today_applications: todayApplications,
+      yesterday_applications: yesterdayApplications,
+      total_applications: totalApplications,
+      applications_sent_today: todayApplications,
+      total_applications_sent: totalApplications,
+      applications_trend: applicationsTrend,
       today_target: todayTarget,
-      target_achieved: todayUploads,
+      target_achieved: todayApplications,
       target_progress_pct: targetProgressPct,
       target_summary: {
         target: todayTarget,
-        submitted: todayUploads,
-        remaining: Math.max(todayTarget - todayUploads, 0),
-        completion: todayTarget > 0 ? Math.round((todayUploads / todayTarget) * 100) : 0,
+        submitted: todayApplications,
+        remaining: Math.max(todayTarget - todayApplications, 0),
+        completion: todayTarget > 0 ? Math.round((todayApplications / todayTarget) * 100) : 0,
       },
       assigned_clients_count: assignedClients.length,
       active_jobs: 0,

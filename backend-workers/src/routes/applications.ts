@@ -390,11 +390,11 @@ applicationsRouter.post("/", async (c) => {
   const [created] = await sql`
     INSERT INTO applications (
       id, resume_id, client_id, requirement_id, employee_id,
-      status, current_round, applied_date, updated_at
+      status, current_round, applied_date, created_at, updated_at
     ) VALUES (
       ${appId}, ${payload.resume_id}, ${effectiveClientId}, ${payload.requirement_id || null},
       ${user.id}, ${payload.status || "Submitted"}, ${payload.current_round || "Initial Application"},
-      NOW(), NOW()
+      NOW(), NOW(), NOW()
     )
     RETURNING *
   `;

@@ -265,7 +265,9 @@ export function EmployeeDashboard() {
         <KPICard
           title="Today's Uploads"
           value={data?.today_uploads ?? 0}
-          subtitle="Resumes in pipeline"
+          trend={data?.uploads_trend}
+          trendLabel="vs yesterday"
+          subtitle={data?.yesterday_uploads !== undefined ? `vs ${data?.yesterday_uploads ?? 0} yesterday` : 'Resumes in pipeline'}
           icon={Upload}
           variant="blue"
         />

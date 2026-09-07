@@ -24,6 +24,7 @@ import {
   Plus,
   ShieldCheck,
   Mail,
+  UploadCloud,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { KPICard } from '@/components/ui/KPICard';
@@ -220,7 +221,10 @@ export function AdminDashboard() {
     activeRecruitersCount,
   } = useMemo(() => {
     const targetSum = overview?.target_sum ?? 0;
-    const submittedCount = overview?.today_applications ?? overview?.today_uploads ?? 0;
+    const isYesterday = quickDateFilter === 'yesterday';
+    const submittedCount = isYesterday
+      ? (overview?.yesterday_applications ?? 0)
+      : (overview?.today_applications ?? overview?.today_uploads ?? 0);
     const recruiters = selectedClientId
       ? (availableEmployees.length || 0)
       : (availableEmployees.length || allEmployees.length || 0);
@@ -235,7 +239,7 @@ export function AdminDashboard() {
       remainingTarget: remaining,
       activeRecruitersCount: recruiters,
     };
-  }, [overview, selectedClientId, availableEmployees, allEmployees]);
+  }, [overview, quickDateFilter, selectedClientId, availableEmployees, allEmployees]);
 
   // -------------------------------------------------------------
   // RECRUITER PERFORMANCE ROWS (Calculated per employee based on backend target and uploads)
@@ -451,6 +455,42 @@ export function AdminDashboard() {
             />
           </div>
         </div>
+      </div>
+
+      {/* 1.5 DATE-FILTERED AGGREGATIONS (Today Uploads, Yesterday Uploads, Today Applications, Yesterday Applications) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard
+          title="Today Uploads"
+          value={overview?.today_uploads ?? 0}
+          trend={overview?.uploads_trend}
+          trendLabel="vs yesterday"
+          subtitle={`vs ${overview?.yesterday_uploads ?? 0} yesterday`}
+          icon={UploadCloud}
+          variant="blue"
+        />
+        <KPICard
+          title="Yesterday Uploads"
+          value={overview?.yesterday_uploads ?? 0}
+          subtitle="Previous day resumes"
+          icon={Clock3}
+          variant="default"
+        />
+        <KPICard
+          title="Today Applications"
+          value={overview?.today_applications ?? 0}
+          trend={overview?.applications_trend}
+          trendLabel="vs yesterday"
+          subtitle={`vs ${overview?.yesterday_applications ?? 0} yesterday`}
+          icon={Briefcase}
+          variant="orange"
+        />
+        <KPICard
+          title="Yesterday Applications"
+          value={overview?.yesterday_applications ?? 0}
+          subtitle="Previous day applications"
+          icon={CheckCircle2}
+          variant="success"
+        />
       </div>
 
       {/* 2. TARGET OVERVIEW CARDS (Daily Target, Applications Submitted, Completion %, Remaining, Active Recruiters, Total Sub-Admins) */}

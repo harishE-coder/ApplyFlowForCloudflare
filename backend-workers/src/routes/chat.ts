@@ -420,7 +420,7 @@ chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
           attachmentUrl = getPreviewUrl(m.attachment_reference);
           attachmentDownloadUrl = getDownloadUrl(m.attachment_reference);
           attachmentThumbnailUrl = `https://drive.google.com/thumbnail?id=${m.attachment_reference}&sz=w800`;
-        } else if (m.attachment_type === "pdf") {
+        } else if (m.attachment_type === "pdf" || m.attachment_type === "file") {
           attachmentUrl = getPreviewUrl(m.attachment_reference);
           attachmentDownloadUrl = getDownloadUrl(m.attachment_reference);
         }
@@ -686,7 +686,7 @@ chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
   let attachmentType = "file";
   if (mime.startsWith("image/") || lowerName.match(/\.(png|jpe?g|gif|webp|svg|bmp)$/)) {
     attachmentType = "image";
-  } else if (mime === "application/pdf" || lowerName.endsWith(".pdf")) {
+  } else if (mime === "application/pdf" || lowerName.endsWith(".pdf") || lowerName.match(/\.(docx?|txt|rtf)$/)) {
     attachmentType = "pdf";
   }
 

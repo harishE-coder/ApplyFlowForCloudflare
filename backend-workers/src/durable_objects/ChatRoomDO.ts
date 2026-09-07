@@ -297,28 +297,42 @@ export class ChatRoomDO {
         let resumeData = null;
         let jobData = null;
 
+        let parsed = false;
         if (m.attachment_reference && typeof m.attachment_reference === "string" && m.attachment_reference.trim().startsWith("{")) {
           try {
-            const parsed = JSON.parse(m.attachment_reference);
+            const data = JSON.parse(m.attachment_reference);
+            parsed = true;
             if (m.attachment_type === "resume") {
-              attachmentRef = parsed.resumeId || m.attachment_reference;
-              attachmentName = parsed.filename || parsed.candidate_name;
-              attachmentUrl = parsed.drive_view_url;
-              attachmentDownloadUrl = parsed.drive_download_url;
-              resumeData = parsed;
+              attachmentRef = data.resumeId || m.attachment_reference;
+              attachmentName = data.filename || data.candidate_name;
+              attachmentUrl = data.drive_view_url;
+              attachmentDownloadUrl = data.drive_download_url;
+              resumeData = data;
             } else if (m.attachment_type === "job") {
-              attachmentRef = parsed.id || m.attachment_reference;
-              attachmentName = parsed.title;
-              attachmentUrl = parsed.job_url;
-              jobData = parsed;
+              attachmentRef = data.id || m.attachment_reference;
+              attachmentName = data.title;
+              attachmentUrl = data.job_url;
+              jobData = data;
             } else if (m.attachment_type === "image" || m.attachment_type === "pdf" || m.attachment_type === "file") {
-              attachmentRef = parsed.fileId || m.attachment_reference;
-              attachmentName = parsed.filename;
-              attachmentUrl = parsed.viewUrl;
-              attachmentDownloadUrl = parsed.downloadUrl;
-              attachmentThumbnailUrl = parsed.thumbnailUrl;
+              attachmentRef = data.fileId || m.attachment_reference;
+              attachmentName = data.filename;
+              attachmentUrl = data.viewUrl;
+              attachmentDownloadUrl = data.downloadUrl;
+              attachmentThumbnailUrl = data.thumbnailUrl;
             }
           } catch {}
+        }
+
+        if (!parsed && m.attachment_reference) {
+          attachmentName = m.attachment_reference;
+          if (m.attachment_type === "image") {
+            attachmentUrl = `https://drive.google.com/file/d/${m.attachment_reference}/view`;
+            attachmentDownloadUrl = `https://drive.google.com/uc?export=download&id=${m.attachment_reference}`;
+            attachmentThumbnailUrl = `https://drive.google.com/thumbnail?id=${m.attachment_reference}&sz=w800`;
+          } else if (m.attachment_type === "pdf" || m.attachment_type === "file") {
+            attachmentUrl = `https://drive.google.com/file/d/${m.attachment_reference}/view`;
+            attachmentDownloadUrl = `https://drive.google.com/uc?export=download&id=${m.attachment_reference}`;
+          }
         }
 
         const formatted = {

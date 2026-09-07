@@ -34,6 +34,11 @@ import { ResumePreviewModal } from './ResumePreviewModal';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import api from '@/services/api';
+import {
+  extractDriveFileId,
+  getImageDirectUrl,
+  getImageThumbnailUrl,
+} from '@/utils/resumeUrls';
 
 function formatMessageTime(dateStr) {
   if (!dateStr) return '';
@@ -254,33 +259,49 @@ export function ChatWindow({
     }
   };
 
-  // Reusable candidate resume preview modal trigger
+  // Reusable candidate resume and document preview modal trigger
   const handleOpenResumePreview = async (msg) => {
+    if (!msg) return;
+
     if (msg.resume_data && (msg.resume_data.drive_file_id || msg.resume_data.drive_view_url)) {
       setPreviewResumeInfo(msg.resume_data);
       return;
     }
-    const resumeId = msg.attachment_reference || msg.resume_data?.resumeId;
-    if (!resumeId) return;
 
-    setFetchingResumeId(resumeId);
-    try {
-      const res = await api.get(`/resumes/${resumeId}`);
-      setPreviewResumeInfo(res.data);
-    } catch (err) {
-      console.error('Failed to fetch resume metadata:', err);
-      // Fallback with available cached details
-      setPreviewResumeInfo({
-        id: resumeId,
-        filename: msg.attachment_filename || 'Candidate Resume.pdf',
-        candidate_name: msg.message,
-        drive_file_id: msg.attachment_reference,
-        drive_view_url: msg.attachment_url,
-        drive_download_url: msg.attachment_download_url,
-      });
-    } finally {
-      setFetchingResumeId(null);
+    const resumeId = msg.attachment_reference || msg.resume_data?.resumeId;
+
+    // Check if resumeId is a Candidate Bank UUID (36 chars, 4 hyphens)
+    const isUuid = resumeId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resumeId);
+    if (isUuid) {
+      setFetchingResumeId(resumeId);
+      try {
+        const res = await api.get(`/resumes/${resumeId}`);
+        if (res.data) {
+          setPreviewResumeInfo(res.data);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to fetch resume metadata:', err);
+      } finally {
+        setFetchingResumeId(null);
+      }
     }
+
+    // Direct local attachment or fallback
+    const fileId = extractDriveFileId(msg.attachment_reference) ||
+                   extractDriveFileId(msg.attachment_url) ||
+                   extractDriveFileId(msg.attachment_download_url);
+
+    setPreviewResumeInfo({
+      id: msg.id || resumeId || 'doc_preview',
+      filename: msg.attachment_filename || msg.attachment_name || 'Document.pdf',
+      candidate_name: msg.resume_data?.candidate_name || null,
+      role: msg.resume_data?.role || null,
+      company: msg.resume_data?.company || null,
+      drive_file_id: fileId,
+      drive_view_url: msg.attachment_url || (fileId ? `https://drive.google.com/file/d/${fileId}/view` : null),
+      drive_download_url: msg.attachment_download_url || (fileId ? `https://drive.google.com/uc?export=download&id=${fileId}` : null),
+    });
   };
 
   if (!room) {
@@ -476,9 +497,10 @@ export function ChatWindow({
             const isOwn = msg.sender?.id === user?.id;
             const isResume = msg.attachment_type === 'resume';
             const isJob = msg.attachment_type === 'job';
-            const isImage = msg.attachment_type === 'image';
-            const isPdf = msg.attachment_type === 'pdf';
-            const isFile = msg.attachment_type === 'file';
+            const attachName = (msg.attachment_name || msg.attachment_filename || msg.message || '').toLowerCase();
+            const isImage = msg.attachment_type === 'image' || Boolean(attachName && /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(attachName));
+            const isPdf = msg.attachment_type === 'pdf' || Boolean(attachName && /\.(pdf|docx?|txt)$/i.test(attachName));
+            const isFile = (msg.attachment_type === 'file' || Boolean(msg.attachment_reference && !isResume && !isJob)) && !isImage && !isPdf;
 
             // Role-based deletion permission matrix:
             // Admin: Everyone
@@ -604,22 +626,49 @@ export function ChatWindow({
 
                           {isImage && (
                             <div className="pt-1 opacity-90">
-                              <div
-                                onClick={() =>
-                                  setPreviewImageModal({
-                                    url: msg.attachment_url || msg.attachment_download_url || msg.attachment_thumbnail_url,
-                                    name: msg.attachment_name || 'Image Attachment',
-                                    downloadUrl: msg.attachment_download_url,
-                                  })
-                                }
-                                className="relative overflow-hidden rounded-xl border border-amber-200 bg-white cursor-pointer max-w-[200px]"
-                              >
-                                <img
-                                  src={msg.attachment_thumbnail_url || msg.attachment_url}
-                                  alt="Attachment"
-                                  className="w-full max-h-[140px] object-cover"
-                                />
-                              </div>
+                              {(() => {
+                                const fileId = extractDriveFileId(msg.attachment_reference) ||
+                                               extractDriveFileId(msg.attachment_url) ||
+                                               extractDriveFileId(msg.attachment_download_url) ||
+                                               extractDriveFileId(msg.attachment_thumbnail_url);
+                                const thumbUrl = fileId
+                                  ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`
+                                  : (msg.attachment_thumbnail_url || msg.attachment_url);
+                                const directFullUrl = fileId
+                                  ? `https://lh3.googleusercontent.com/d/${fileId}`
+                                  : (msg.attachment_url || msg.attachment_download_url || thumbUrl);
+                                const driveViewUrl = fileId
+                                  ? `https://drive.google.com/file/d/${fileId}/view`
+                                  : msg.attachment_url;
+                                const dlUrl = fileId
+                                  ? `https://drive.google.com/uc?export=download&id=${fileId}`
+                                  : (msg.attachment_download_url || msg.attachment_url);
+                                return (
+                                  <div
+                                    onClick={() =>
+                                      setPreviewImageModal({
+                                        url: directFullUrl,
+                                        thumbnailUrl: thumbUrl,
+                                        name: msg.attachment_name || msg.attachment_filename || 'Image Attachment',
+                                        driveUrl: driveViewUrl,
+                                        downloadUrl: dlUrl,
+                                      })
+                                    }
+                                    className="relative overflow-hidden rounded-xl border border-amber-200 bg-white cursor-pointer max-w-[200px]"
+                                  >
+                                    <img
+                                      src={thumbUrl}
+                                      alt={msg.attachment_name || 'Attachment'}
+                                      className="w-full max-h-[140px] object-cover"
+                                      onError={(e) => {
+                                        if (directFullUrl && e.target.src !== directFullUrl) {
+                                          e.target.src = directFullUrl;
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
 
@@ -629,17 +678,28 @@ export function ChatWindow({
                                 <span className="text-caption font-medium text-[#081226] truncate">
                                   {msg.attachment_name || msg.attachment_filename || 'File'}
                                 </span>
-                                {msg.attachment_download_url && (
-                                  <a
-                                    href={msg.attachment_download_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    download
-                                    className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-1"
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenResumePreview(msg)}
+                                    className="text-[11px] font-bold text-[#2563EB] hover:underline flex items-center gap-1 cursor-pointer"
                                   >
-                                    <Download className="w-3 h-3" /> Download
-                                  </a>
-                                )}
+                                    <Eye className="w-3 h-3" /> Preview
+                                  </button>
+                                  {(msg.attachment_download_url || msg.attachment_reference) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const fileId = extractDriveFileId(msg.attachment_reference) || extractDriveFileId(msg.attachment_download_url);
+                                        const dl = msg.attachment_download_url || (fileId ? `https://drive.google.com/uc?export=download&id=${fileId}` : null) || msg.attachment_url;
+                                        if (dl) window.open(dl, '_blank');
+                                      }}
+                                      className="text-[11px] font-bold text-[#64748B] hover:underline flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Download className="w-3 h-3" /> Download
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           )}
@@ -749,40 +809,64 @@ export function ChatWindow({
                       </div>
                     ) : isImage ? (
                       /* 4. Local Image Attachment (Inline Thumbnail + Lightbox Click) */
-                      <div className="space-y-1.5 max-w-[280px] sm:max-w-[320px]">
-                        <div
-                          onClick={() =>
-                            setPreviewImageModal({
-                              url: msg.attachment_url || msg.attachment_download_url || msg.attachment_thumbnail_url,
-                              name: msg.attachment_name || msg.attachment_filename || 'Image Attachment',
-                              downloadUrl: msg.attachment_download_url,
-                            })
-                          }
-                          className="relative overflow-hidden rounded-2xl border border-[#CBD5E1] bg-[#081226]/5 shadow-xs cursor-pointer group/img"
-                        >
-                          <img
-                            src={msg.attachment_thumbnail_url || msg.attachment_url}
-                            alt={msg.attachment_name || 'Attachment'}
-                            className="w-full max-h-[220px] object-cover transition-transform duration-200 group-hover/img:scale-105"
-                            loading="lazy"
-                            onError={(e) => {
-                              if (msg.attachment_url && e.target.src !== msg.attachment_url) {
-                                e.target.src = msg.attachment_url;
+                      (() => {
+                        const fileId = extractDriveFileId(msg.attachment_reference) ||
+                                       extractDriveFileId(msg.attachment_url) ||
+                                       extractDriveFileId(msg.attachment_download_url) ||
+                                       extractDriveFileId(msg.attachment_thumbnail_url);
+                        const thumbUrl = fileId
+                          ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`
+                          : (msg.attachment_thumbnail_url || msg.attachment_url);
+                        const directFullUrl = fileId
+                          ? `https://lh3.googleusercontent.com/d/${fileId}`
+                          : (msg.attachment_url || msg.attachment_download_url || thumbUrl);
+                        const driveViewUrl = fileId
+                          ? `https://drive.google.com/file/d/${fileId}/view`
+                          : msg.attachment_url;
+                        const dlUrl = fileId
+                          ? `https://drive.google.com/uc?export=download&id=${fileId}`
+                          : (msg.attachment_download_url || msg.attachment_url);
+                        const imgName = msg.attachment_name || msg.attachment_filename || 'Image Attachment';
+
+                        return (
+                          <div className="space-y-1.5 max-w-[280px] sm:max-w-[320px]">
+                            <div
+                              onClick={() =>
+                                setPreviewImageModal({
+                                  url: directFullUrl,
+                                  thumbnailUrl: thumbUrl,
+                                  name: imgName,
+                                  driveUrl: driveViewUrl,
+                                  downloadUrl: dlUrl,
+                                })
                               }
-                            }}
-                          />
-                          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100">
-                            <span className="p-2 rounded-full bg-black/60 text-white shadow-md">
-                              <ZoomIn className="w-4 h-4" />
-                            </span>
+                              className="relative overflow-hidden rounded-2xl border border-[#CBD5E1] bg-[#081226]/5 shadow-xs cursor-pointer group/img"
+                            >
+                              <img
+                                src={thumbUrl}
+                                alt={imgName}
+                                className="w-full max-h-[220px] object-cover transition-transform duration-200 group-hover/img:scale-105"
+                                loading="lazy"
+                                onError={(e) => {
+                                  if (directFullUrl && e.target.src !== directFullUrl) {
+                                    e.target.src = directFullUrl;
+                                  }
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                                <span className="p-2 rounded-full bg-black/60 text-white shadow-md">
+                                  <ZoomIn className="w-4 h-4" />
+                                </span>
+                              </div>
+                            </div>
+                            {msg.message && msg.message !== imgName && (
+                              <p className="text-caption text-[#334155] px-1 font-medium">{msg.message}</p>
+                            )}
                           </div>
-                        </div>
-                        {msg.message && msg.message !== (msg.attachment_name || msg.attachment_filename) && (
-                          <p className="text-caption text-[#334155] px-1 font-medium">{msg.message}</p>
-                        )}
-                      </div>
+                        );
+                      })()
                     ) : isPdf ? (
-                      /* 5. PDF Attachment (Icon, Filename, Preview, Download) */
+                      /* 5. PDF Attachment (Icon, Filename, In-Chat Preview, Download) */
                       <div className="p-3.5 rounded-2xl bg-white border border-[#CBD5E1] shadow-xs space-y-2.5 min-w-[240px] max-w-[320px]">
                         <div className="flex items-center gap-2.5">
                           <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center shrink-0">
@@ -801,31 +885,30 @@ export function ChatWindow({
                           <p className="text-caption text-[#334155] px-0.5">{msg.message}</p>
                         )}
                         <div className="flex items-center gap-2 pt-1 border-t border-[#F1F5F9]">
-                          {msg.attachment_url && (
-                            <a
-                              href={msg.attachment_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                            >
-                              <Eye className="w-3.5 h-3.5" /> Preview
-                            </a>
-                          )}
-                          {msg.attachment_download_url && (
-                            <a
-                              href={msg.attachment_download_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download
+                          <button
+                            type="button"
+                            onClick={() => handleOpenResumePreview(msg)}
+                            className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Preview
+                          </button>
+                          {(msg.attachment_download_url || msg.attachment_reference) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const fileId = extractDriveFileId(msg.attachment_reference) || extractDriveFileId(msg.attachment_download_url);
+                                const dl = msg.attachment_download_url || (fileId ? `https://drive.google.com/uc?export=download&id=${fileId}` : null) || msg.attachment_url;
+                                if (dl) window.open(dl, '_blank');
+                              }}
                               className="py-1.5 px-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#E2E8F0] text-[#081226] text-caption font-semibold flex items-center justify-center gap-1.5 border border-[#CBD5E1] transition-colors cursor-pointer"
                             >
                               <Download className="w-3.5 h-3.5" /> Download
-                            </a>
+                            </button>
                           )}
                         </div>
                       </div>
                     ) : isFile ? (
-                      /* 6. Other File Attachment (Icon, Filename, Download) */
+                      /* 6. Other File Attachment (Icon, Filename, In-Chat Preview, Download) */
                       <div className="p-3.5 rounded-2xl bg-white border border-[#CBD5E1] shadow-xs space-y-2.5 min-w-[240px] max-w-[320px]">
                         <div className="flex items-center gap-2.5">
                           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center shrink-0">
@@ -840,19 +923,29 @@ export function ChatWindow({
                             </span>
                           </div>
                         </div>
-                        {msg.attachment_download_url || msg.attachment_url ? (
-                          <div className="pt-1 border-t border-[#F1F5F9]">
-                            <a
-                              href={msg.attachment_download_url || msg.attachment_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              download
-                              className="w-full py-1.5 px-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#E2E8F0] text-[#081226] text-caption font-semibold flex items-center justify-center gap-1.5 border border-[#CBD5E1] transition-colors cursor-pointer"
-                            >
-                              <Download className="w-3.5 h-3.5" /> Download
-                            </a>
-                          </div>
-                        ) : null}
+                        {msg.message && msg.message !== (msg.attachment_name || msg.attachment_filename) && (
+                          <p className="text-caption text-[#334155] px-0.5">{msg.message}</p>
+                        )}
+                        <div className="flex items-center gap-2 pt-1 border-t border-[#F1F5F9]">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenResumePreview(msg)}
+                            className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Preview
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const fileId = extractDriveFileId(msg.attachment_reference) || extractDriveFileId(msg.attachment_download_url);
+                              const dl = msg.attachment_download_url || (fileId ? `https://drive.google.com/uc?export=download&id=${fileId}` : null) || msg.attachment_url;
+                              if (dl) window.open(dl, '_blank');
+                            }}
+                            className="py-1.5 px-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#E2E8F0] text-[#081226] text-caption font-semibold flex items-center justify-center gap-1.5 border border-[#CBD5E1] transition-colors cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Download
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       /* 7. Regular Text Message Bubble */
@@ -1027,7 +1120,7 @@ export function ChatWindow({
       {previewImageModal && (
         <div
           onClick={() => setPreviewImageModal(null)}
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -1038,12 +1131,12 @@ export function ChatWindow({
                 {previewImageModal.name || 'Image Attachment'}
               </span>
               <div className="flex items-center gap-2">
-                {previewImageModal.url && (
+                {(previewImageModal.driveUrl || previewImageModal.url) && (
                   <a
-                    href={previewImageModal.url}
+                    href={previewImageModal.driveUrl || previewImageModal.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-caption font-medium transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-caption font-medium transition-colors cursor-pointer"
                   >
                     <ExternalLink className="w-3.5 h-3.5" /> Open in Drive
                   </a>
@@ -1054,7 +1147,7 @@ export function ChatWindow({
                     target="_blank"
                     rel="noopener noreferrer"
                     download
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-semibold transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-semibold transition-colors cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" /> Download
                   </a>
@@ -1068,11 +1161,16 @@ export function ChatWindow({
                 </button>
               </div>
             </div>
-            <div className="p-4 flex items-center justify-center bg-black/40 overflow-auto max-h-[calc(90vh-80px)]">
+            <div className="p-4 flex items-center justify-center bg-black/50 overflow-auto max-h-[calc(90vh-80px)]">
               <img
                 src={previewImageModal.url}
-                alt={previewImageModal.name}
+                alt={previewImageModal.name || 'Attachment'}
                 className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-md"
+                onError={(e) => {
+                  if (previewImageModal.thumbnailUrl && e.target.src !== previewImageModal.thumbnailUrl) {
+                    e.target.src = previewImageModal.thumbnailUrl;
+                  }
+                }}
               />
             </div>
           </div>

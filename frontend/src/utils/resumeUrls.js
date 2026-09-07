@@ -8,18 +8,113 @@
  */
 
 /**
+ * Accurately extracts a Google Drive File ID from various shapes:
+ * string ID, URL (e.g. /file/d/..., ?id=..., lh3.googleusercontent.com/d/...), or object.
+ */
+export function extractDriveFileId(source) {
+  if (!source) return null;
+  if (typeof source === 'object') {
+    if (source.drive_file_id) return extractDriveFileId(source.drive_file_id);
+    if (source.fileId) return extractDriveFileId(source.fileId);
+    if (source.attachment_reference && !source.attachment_reference.includes('/') && !source.attachment_reference.includes(' ')) {
+      return extractDriveFileId(source.attachment_reference);
+    }
+    const candidate = source.drive_view_url || source.attachment_url || source.drive_download_url || source.attachment_download_url || source.attachment_thumbnail_url;
+    if (candidate) return extractDriveFileId(candidate);
+    return null;
+  }
+  if (typeof source !== 'string') return null;
+
+  // Check for /file/d/{id} pattern
+  const fileDMatch = source.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (fileDMatch && fileDMatch[1]) return fileDMatch[1];
+
+  // Check for id={id} query parameter
+  const idMatch = source.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch && idMatch[1]) return idMatch[1];
+
+  // Check for googleusercontent.com/d/{id}
+  const lh3Match = source.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+  if (lh3Match && lh3Match[1]) return lh3Match[1];
+
+  // Check if it's already a raw Drive File ID (typical length 20-50, alphanumeric, underscores, hyphens)
+  // UUIDs are 36 chars with 4 hyphens (8-4-4-4-12)
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(source);
+  if (!isUuid && /^[a-zA-Z0-9_-]{20,50}$/.test(source)) {
+    return source;
+  }
+
+  return null;
+}
+
+/**
+ * Returns raw image URL suitable for <img> tags.
+ * For Drive files: uses high-speed direct content URL https://lh3.googleusercontent.com/d/{fileId}.
+ */
+export function getImageDirectUrl(source) {
+  if (!source) return '';
+  const fileId = extractDriveFileId(source);
+  if (fileId) {
+    return `https://lh3.googleusercontent.com/d/${fileId}`;
+  }
+  if (typeof source === 'object') {
+    return source.attachment_thumbnail_url || source.attachment_url || source.attachment_download_url || '';
+  }
+  return typeof source === 'string' ? source : '';
+}
+
+/**
+ * Returns fast thumbnail image URL for responsive preview.
+ */
+export function getImageThumbnailUrl(source) {
+  if (!source) return '';
+  const fileId = extractDriveFileId(source);
+  if (fileId) {
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+  }
+  if (typeof source === 'object') {
+    return source.attachment_thumbnail_url || source.attachment_url || '';
+  }
+  return typeof source === 'string' ? source : '';
+}
+
+/**
+ * Returns embeddable document URL suitable for <iframe>.
+ * For Drive files: uses https://drive.google.com/file/d/{fileId}/preview.
+ */
+export function getDocumentEmbedUrl(source) {
+  if (!source) return '';
+  const fileId = extractDriveFileId(source);
+  if (fileId) {
+    return `https://drive.google.com/file/d/${fileId}/preview`;
+  }
+  if (typeof source === 'object') {
+    const raw = source.drive_view_url || source.attachment_url || '';
+    if (raw.includes('/view')) {
+      return raw.replace('/view', '/preview');
+    }
+    return raw;
+  }
+  if (typeof source === 'string' && source.includes('/view')) {
+    return source.replace('/view', '/preview');
+  }
+  return typeof source === 'string' ? source : '';
+}
+
+/**
  * Returns the Google Drive / fallback preview URL for a resume object.
  */
 export function getResumePreviewUrl(resume) {
   if (!resume) return '#';
   const apiBaseUrl = (typeof window !== 'undefined' ? window.location.origin : '');
   const fallbackId = resume.saved_resume_id || resume.id || resume.resume_id;
+  const fileId = extractDriveFileId(resume);
 
   return (
     resume.drive_view_url ||
     resume.drive_web_view_link ||
-    (resume.drive_file_id
-      ? `https://drive.google.com/file/d/${resume.drive_file_id}/view?usp=sharing`
+    (fileId
+      ? `https://drive.google.com/file/d/${fileId}/view?usp=sharing`
       : fallbackId
       ? `${apiBaseUrl}/api/resumes/${fallbackId}/preview`
       : '#')
@@ -33,12 +128,13 @@ export function getResumeDownloadUrl(resume) {
   if (!resume) return '#';
   const apiBaseUrl = (typeof window !== 'undefined' ? window.location.origin : '');
   const fallbackId = resume.saved_resume_id || resume.id || resume.resume_id;
+  const fileId = extractDriveFileId(resume);
 
   return (
     resume.drive_download_url ||
     resume.drive_download_link ||
-    (resume.drive_file_id
-      ? `https://drive.google.com/uc?export=download&id=${resume.drive_file_id}`
+    (fileId
+      ? `https://drive.google.com/uc?export=download&id=${fileId}`
       : fallbackId
       ? `${apiBaseUrl}/api/resumes/${fallbackId}/download`
       : '#')
@@ -51,9 +147,10 @@ export function getResumeDownloadUrl(resume) {
 export function getResumeShareUrl(resume) {
   if (!resume) return '';
   const fallbackId = resume.saved_resume_id || resume.id || resume.resume_id;
+  const fileId = extractDriveFileId(resume);
 
-  if (resume.drive_file_id) {
-    return `https://drive.google.com/file/d/${resume.drive_file_id}/view?usp=sharing`;
+  if (fileId) {
+    return `https://drive.google.com/file/d/${fileId}/view?usp=sharing`;
   }
   if (resume.drive_view_url) {
     return resume.drive_view_url;

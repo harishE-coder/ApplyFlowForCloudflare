@@ -287,6 +287,9 @@ dashboardRouter.get("/admin/home", async (c) => {
       perfMaps,
       activeTargetsMap,
       empClientsRows,
+      backfilledTodayRes,
+      avgDelayRes,
+      backfilledPerRecruiterRes,
     ] = await Promise.all([
       empIds.length > 0
         ? getTeamPerformanceMaps(sql, empIds, dateRange, customDate)
@@ -315,7 +318,35 @@ dashboardRouter.get("/admin/home", async (c) => {
       empIds.length > 0
         ? sql`SELECT ec.employee_id, c.id, c.company_name FROM employee_clients ec JOIN clients c ON ec.client_id = c.id WHERE ec.employee_id = ANY(${empIds}) AND ec.active = true`
         : [],
+      // Backfilled metrics: resumes uploaded today for work completed on earlier days (IST)
+      sql`
+        SELECT COUNT(*)::int as count
+        FROM resumes
+        WHERE (COALESCE(created_at, upload_date) AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+          AND COALESCE(work_date, resume_date) < (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+      `,
+      sql`
+        SELECT COALESCE(ROUND(AVG((COALESCE(created_at, upload_date) AT TIME ZONE 'Asia/Kolkata')::date - COALESCE(work_date, resume_date))::numeric, 1), 0.0)::float as avg_delay
+        FROM resumes
+        WHERE (COALESCE(created_at, upload_date) AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+          AND COALESCE(work_date, resume_date) < (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+      `,
+      empIds.length > 0
+        ? sql`
+            SELECT uploaded_by as employee_id, COUNT(*)::int as count
+            FROM resumes
+            WHERE (COALESCE(created_at, upload_date) AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+              AND COALESCE(work_date, resume_date) < (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+              AND uploaded_by = ANY(${empIds})
+            GROUP BY uploaded_by
+          `
+        : [],
     ]);
+
+    const backfilledTodayCount = Number(backfilledTodayRes[0]?.count) || 0;
+    const avgBackfillDelay = Number(avgDelayRes[0]?.avg_delay) || 0.0;
+    const backfilledMap: Record<string, number> = {};
+    for (const r of backfilledPerRecruiterRes) backfilledMap[String(r.employee_id)] = Number(r.count);
 
     const {
       todayUploadsMap,
@@ -345,6 +376,7 @@ dashboardRouter.get("/admin/home", async (c) => {
       const yesterdayUploads = yesterdayUploadsMap[eid] || 0;
       const selectedUploads = selectedUploadsMap[eid] !== undefined ? selectedUploadsMap[eid] : todayUploads;
       const uploadsTrend = calculateTrend(todayUploads, yesterdayUploads);
+      const backfilledToday = backfilledMap[eid] || 0;
 
       const totalApplications = totalAppsMap[eid] || 0;
       const todayApplications = todayAppsMap[eid] || 0;
@@ -370,6 +402,7 @@ dashboardRouter.get("/admin/home", async (c) => {
         today_uploads: todayUploads,
         yesterday_uploads: yesterdayUploads,
         selected_uploads: selectedUploads,
+        backfilled_today: backfilledToday,
         uploads_trend: uploadsTrend,
         total_applications: totalApplications,
         today_applications: todayApplications,
@@ -489,6 +522,8 @@ dashboardRouter.get("/admin/home", async (c) => {
       applications_trend_series: dailyUploadsTrend,
       application_status_distribution: statusDistribution,
       assigned_employees: empUsers.map((e: any) => ({ id: e.id, name: e.name, email: e.email })),
+      backfilled_today: backfilledTodayCount,
+      avg_backfill_delay: avgBackfillDelay,
     };
 
     return c.json({
@@ -515,6 +550,76 @@ dashboardRouter.get("/admin/home", async (c) => {
   } catch (err: any) {
     console.error("[Dashboard Error]", err);
     return c.json({ detail: `Dashboard error: ${err.message}` }, 500);
+  }
+});
+
+/**
+ * 1.1 GET /api/dashboard/admin/backfilled-details
+ * Detailed drilldown of backfilled uploads today for a specific recruiter or team.
+ */
+dashboardRouter.get("/admin/backfilled-details", async (c) => {
+  const user = c.get("user");
+  if (user.role !== "admin" && user.role !== "super_admin" && user.role !== "sub_admin") {
+    return c.json({ detail: "Forbidden: Only Administrators can view audit details." }, 403);
+  }
+
+  const sql = getDb(c.env.DATABASE_URL);
+  const employeeId = c.req.query("employee_id");
+
+  try {
+    let rows: any[];
+    if (employeeId) {
+      rows = await sql`
+        SELECT
+          r.id,
+          r.candidate_name,
+          r.company,
+          r.role,
+          COALESCE(r.work_date, r.resume_date) as work_date,
+          COALESCE(r.created_at, r.upload_date) as created_at,
+          ((COALESCE(r.created_at, r.upload_date) AT TIME ZONE 'Asia/Kolkata')::date - COALESCE(r.work_date, r.resume_date))::int as delay_days,
+          u.name as recruiter_name
+        FROM resumes r
+        LEFT JOIN users u ON u.id = r.uploaded_by
+        WHERE (COALESCE(r.created_at, r.upload_date) AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+          AND COALESCE(r.work_date, r.resume_date) < (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+          AND r.uploaded_by = ${employeeId}
+        ORDER BY r.created_at DESC
+      `;
+    } else {
+      rows = await sql`
+        SELECT
+          r.id,
+          r.candidate_name,
+          r.company,
+          r.role,
+          COALESCE(r.work_date, r.resume_date) as work_date,
+          COALESCE(r.created_at, r.upload_date) as created_at,
+          ((COALESCE(r.created_at, r.upload_date) AT TIME ZONE 'Asia/Kolkata')::date - COALESCE(r.work_date, r.resume_date))::int as delay_days,
+          u.name as recruiter_name
+        FROM resumes r
+        LEFT JOIN users u ON u.id = r.uploaded_by
+        WHERE (COALESCE(r.created_at, r.upload_date) AT TIME ZONE 'Asia/Kolkata')::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+          AND COALESCE(r.work_date, r.resume_date) < (NOW() AT TIME ZONE 'Asia/Kolkata')::date
+        ORDER BY r.created_at DESC
+      `;
+    }
+
+    return c.json({
+      items: rows.map((r: any) => ({
+        id: r.id,
+        candidate_name: r.candidate_name || "Candidate",
+        company: r.company || "Hiring Organization",
+        role: r.role || "Role",
+        work_date: r.work_date ? String(r.work_date).slice(0, 10) : null,
+        created_at: r.created_at,
+        delay_days: Math.max(0, Number(r.delay_days) || 0),
+        recruiter_name: r.recruiter_name || "Recruiter",
+      })),
+    });
+  } catch (err: any) {
+    console.error("[Backfilled Details Error]", err);
+    return c.json({ detail: `Error loading backfilled details: ${err.message}` }, 500);
   }
 });
 

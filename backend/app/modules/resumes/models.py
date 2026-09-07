@@ -72,6 +72,7 @@ class Resume(Base):
     original_filename: Mapped[str] = mapped_column(String(500), nullable=False)
 
     resume_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    work_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     client_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_note_shared: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
 

@@ -358,6 +358,8 @@ resumesRouter.get("/", async (c) => {
       r.file_name,
       r.original_filename,
       r.resume_date,
+      COALESCE(r.work_date, r.resume_date) as work_date,
+      COALESCE(r.created_at, r.upload_date) as created_at,
       r.client_notes,
       r.is_note_shared,
       r.drive_file_id,
@@ -387,6 +389,30 @@ resumesRouter.get("/", async (c) => {
     const fileName = r.file_name || r.original_filename;
     const mimeType = r.mime_type || r.content_type || "application/pdf";
 
+    const wDate = r.work_date || r.resume_date;
+    const cDate = r.created_at || r.upload_date;
+    const createdIST = cDate
+      ? new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(cDate))
+      : null;
+    const workDateStr = wDate ? String(wDate).slice(0, 10) : createdIST;
+    const isBackfilled = Boolean(createdIST && workDateStr && createdIST !== workDateStr);
+    const delayDays =
+      createdIST && workDateStr
+        ? Math.max(
+            0,
+            Math.round(
+              (new Date(createdIST + "T00:00:00Z").getTime() -
+                new Date(workDateStr + "T00:00:00Z").getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          )
+        : 0;
+
     return {
       id: r.id,
       display_id: r.resume_id_tag || (r.display_seq ? `RES${1000 + r.display_seq}` : `RES1000`),
@@ -403,6 +429,10 @@ resumesRouter.get("/", async (c) => {
       file_name: fileName,
       original_filename: fileName,
       resume_date: r.resume_date,
+      work_date: workDateStr,
+      created_at: r.created_at || r.upload_date,
+      is_backfilled: isBackfilled,
+      delay_days: delayDays,
       client_notes: r.client_notes,
       is_note_shared: r.is_note_shared || false,
       drive_file_id: r.drive_file_id,
@@ -446,7 +476,38 @@ resumesRouter.post("/upload", async (c) => {
     return c.json({ detail: "client_id is required" }, 400);
   }
 
-  const resumeDate = body["resume_date"] ? String(body["resume_date"]).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  // 7-day backdate validation in Asia/Kolkata timezone
+  const now = new Date();
+  const todayIST = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now); // "YYYY-MM-DD"
+
+  // 7 days ago in IST
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const minDateIST = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(sevenDaysAgo);
+
+  const rawWorkDate = body["work_date"] || body["resume_date"];
+  let workDate = todayIST;
+  if (rawWorkDate) {
+    const candidate = String(rawWorkDate).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate)) {
+      return c.json({ error: "Work Date must be in YYYY-MM-DD format.", detail: "Work Date must be in YYYY-MM-DD format." }, 400);
+    }
+    // Business rule: Employees can select today or up to previous 7 days only
+    if (candidate > todayIST || candidate < minDateIST) {
+      return c.json({ error: "Work Date must be within the last 7 days.", detail: "Work Date must be within the last 7 days." }, 400);
+    }
+    workDate = candidate;
+  }
+  const resumeDate = workDate;
   const requirementId = body["requirement_id"] ? String(body["requirement_id"]).trim() : null;
 
   const rawFiles = body["files"] || body["file"];
@@ -584,7 +645,7 @@ resumesRouter.post("/upload", async (c) => {
           file_name, original_filename,
           mime_type, content_type,
           file_hash, file_size,
-          resume_date, upload_date, created_at
+          resume_date, upload_date, created_at, work_date
         ) VALUES (
           ${resumeId}, ${parsed.candidate_name}, ${parsed.company}, ${parsed.role}, ${parsed.resume_id_tag},
           ${requirementId}, ${clientId}, ${user.id},
@@ -593,11 +654,20 @@ resumesRouter.post("/upload", async (c) => {
           ${uploadRes.name}, ${uploadRes.name},
           ${uploadRes.mimeType}, ${uploadRes.mimeType},
           ${fileHash}, ${fileBuffer.byteLength},
-          ${resumeDate}, NOW(), NOW()
+          ${workDate}, NOW(), NOW(), ${workDate}
         )
       `;
 
       savedCount++;
+      const isBackfilled = workDate !== todayIST;
+      const delayDays = Math.max(
+        0,
+        Math.round(
+          (new Date(todayIST + "T00:00:00Z").getTime() - new Date(workDate + "T00:00:00Z").getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      );
+
       items.push({
         filename,
         status: "saved",
@@ -617,6 +687,11 @@ resumesRouter.post("/upload", async (c) => {
         original_filename: uploadRes.name,
         content_type: uploadRes.mimeType,
         file_size: fileBuffer.byteLength,
+        work_date: workDate,
+        created_at: new Date().toISOString(),
+        upload_date: new Date().toISOString(),
+        is_backfilled: isBackfilled,
+        delay_days: delayDays,
       });
     } catch (err) {
       // COMPENSATION PATTERN: Delete orphaned Google Drive file if DB insertion fails
@@ -705,6 +780,35 @@ resumesRouter.get("/:id", async (c) => {
     file_name: fileName,
     original_filename: fileName,
     resume_date: r.resume_date,
+    work_date: r.work_date ? String(r.work_date).slice(0, 10) : (r.resume_date ? String(r.resume_date).slice(0, 10) : null),
+    created_at: r.created_at || r.upload_date,
+    is_backfilled: (() => {
+      const wDate = r.work_date || r.resume_date;
+      const cDate = r.created_at || r.upload_date;
+      if (!wDate || !cDate) return false;
+      const createdIST = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(cDate));
+      return String(wDate).slice(0, 10) !== createdIST;
+    })(),
+    delay_days: (() => {
+      const wDate = r.work_date || r.resume_date;
+      const cDate = r.created_at || r.upload_date;
+      if (!wDate || !cDate) return 0;
+      const createdIST = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date(cDate));
+      const d1 = new Date(createdIST + "T00:00:00Z").getTime();
+      const d2 = new Date(String(wDate).slice(0, 10) + "T00:00:00Z").getTime();
+      const diffDays = Math.round((d1 - d2) / (1000 * 60 * 60 * 24));
+      return Math.max(0, diffDays);
+    })(),
     client_notes: r.client_notes,
     is_note_shared: r.is_note_shared || false,
     drive_file_id: r.drive_file_id,

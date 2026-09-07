@@ -62,7 +62,8 @@ export function buildDateFilter(
   customDate?: string | null
 ): string {
   const rawRange = String(range || "today").trim();
-  const colIst = `(${column} AT TIME ZONE '${APP_TIMEZONE}')::date`;
+  const isDateType = column.includes("work_date") || column.includes("::date");
+  const colIst = isDateType ? column : `(${column} AT TIME ZONE '${APP_TIMEZONE}')::date`;
   const nowIst = `(NOW() AT TIME ZONE '${APP_TIMEZONE}')`;
 
   // 1. If explicit YYYY-MM-DD date passed directly as range
@@ -93,6 +94,9 @@ export function buildDateFilter(
     return `${colIst} >= (${nowIst} - INTERVAL '29 days')::date AND ${colIst} <= ${nowIst}::date`;
   }
   if (norm === "this_month" || norm === "month") {
+    if (isDateType) {
+      return `DATE_TRUNC('month', ${column}) = DATE_TRUNC('month', ${nowIst}::date)`;
+    }
     return `DATE_TRUNC('month', (${column} AT TIME ZONE '${APP_TIMEZONE}')) = DATE_TRUNC('month', ${nowIst})`;
   }
   if (norm === "all") {
@@ -159,9 +163,10 @@ export async function getResumeStats(
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const todayFilter = buildDateFilter("COALESCE(created_at, upload_date)", "today");
-  const yesterdayFilter = buildDateFilter("COALESCE(created_at, upload_date)", "yesterday");
-  const rangeFilter = buildDateFilter("COALESCE(created_at, upload_date)", range, customDate);
+  const resumeCol = "COALESCE(work_date, resume_date, (created_at AT TIME ZONE 'Asia/Kolkata')::date)";
+  const todayFilter = buildDateFilter(resumeCol, "today");
+  const yesterdayFilter = buildDateFilter(resumeCol, "yesterday");
+  const rangeFilter = buildDateFilter(resumeCol, range, customDate);
 
   const queryStr = `
     SELECT
@@ -285,9 +290,10 @@ export async function getTeamPerformanceMaps(
     };
   }
 
-  const todayResFilter = buildDateFilter("COALESCE(created_at, upload_date)", "today");
-  const yesterdayResFilter = buildDateFilter("COALESCE(created_at, upload_date)", "yesterday");
-  const rangeResFilter = buildDateFilter("COALESCE(created_at, upload_date)", range, customDate);
+  const resumeCol = "COALESCE(work_date, resume_date, (created_at AT TIME ZONE 'Asia/Kolkata')::date)";
+  const todayResFilter = buildDateFilter(resumeCol, "today");
+  const yesterdayResFilter = buildDateFilter(resumeCol, "yesterday");
+  const rangeResFilter = buildDateFilter(resumeCol, range, customDate);
 
   const todayAppsFilter = buildDateFilter("COALESCE(applied_date, created_at)", "today");
   const yesterdayAppsFilter = buildDateFilter("COALESCE(applied_date, created_at)", "yesterday");
@@ -373,9 +379,9 @@ export async function getSevenDayTrend(sql: any, targetSum: number = 0): Promise
       INTERVAL '1 day'
     ) d(dt)
     LEFT JOIN (
-      SELECT (COALESCE(created_at, upload_date) AT TIME ZONE 'Asia/Kolkata')::date as d_date, count(*)::int as uploads
+      SELECT COALESCE(work_date, resume_date, (created_at AT TIME ZONE 'Asia/Kolkata')::date) as d_date, count(*)::int as uploads
       FROM resumes
-      GROUP BY (COALESCE(created_at, upload_date) AT TIME ZONE 'Asia/Kolkata')::date
+      GROUP BY COALESCE(work_date, resume_date, (created_at AT TIME ZONE 'Asia/Kolkata')::date)
     ) r ON r.d_date = d.dt::date
     LEFT JOIN (
       SELECT (COALESCE(applied_date, created_at) AT TIME ZONE 'Asia/Kolkata')::date as d_date, count(*)::int as applications

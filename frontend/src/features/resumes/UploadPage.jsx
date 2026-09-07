@@ -173,10 +173,39 @@ export function UploadPage() {
   const fileInputRef = useRef(null);
 
   // Form State
+  const getISTDate = () =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+  const todayIST = useMemo(() => getISTDate(), []);
+  const minDateIST = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+  }, []);
+
   const [assignedClients, setAssignedClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [resumeDate, setResumeDate] = useState(new Date().toISOString().split('T')[0]); // Default Today
+  const [workDate, setWorkDate] = useState(todayIST);
   const [loadingClients, setLoadingClients] = useState(true);
+
+  const isBackdated = workDate < todayIST;
+
+  const formatDisplayWorkDate = (dStr) => {
+    if (!dStr) return '';
+    const d = new Date(dStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return dStr;
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+  };
 
   // Ingestion Queue State
   const [queue, setQueue] = useState([]);
@@ -553,7 +582,8 @@ export function UploadPage() {
 
     const formData = new FormData();
     formData.append('client_id', selectedClientId);
-    const validDate = resumeDate && resumeDate.trim() ? resumeDate.trim() : new Date().toISOString().split('T')[0];
+    const validDate = workDate && workDate.trim() ? workDate.trim() : todayIST;
+    formData.append('work_date', validDate);
     formData.append('resume_date', validDate);
 
     filesToUpload.forEach((item) => {
@@ -698,22 +728,33 @@ export function UploadPage() {
             </p>
           </div>
 
-          {/* 2. Resume Date (Batch date picker, default today, inherited by every resume) */}
+          {/* 2. Work Date (Recruiter productivity work date, 7-day backdate limit) */}
           <div>
             <label className="text-small font-semibold text-[#081226] block mb-1.5">
-              Resume Date (Batch Inherited) <span className="text-[#EF4444]">*</span>
+              Work Date <span className="text-[#EF4444]">*</span>
             </label>
             <div className="relative">
               <input
                 type="date"
-                value={resumeDate}
-                onChange={(e) => setResumeDate(e.target.value)}
+                min={minDateIST}
+                max={todayIST}
+                value={workDate}
+                onChange={(e) => setWorkDate(e.target.value)}
                 className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
               />
             </div>
             <p className="text-caption text-[#64748B] mt-1">
-              Quota date credited to candidate submissions.
+              Work Date: This is the day this recruiting work was completed. The actual upload time is recorded separately for audit purposes.
             </p>
+            {isBackdated && (
+              <div className="mt-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-caption flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">Notice: </span>
+                  You're uploading work for {formatDisplayWorkDate(workDate)}. This will count toward {formatDisplayWorkDate(workDate)}'s recruiter activity, and administrators will see it as a backfilled upload.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

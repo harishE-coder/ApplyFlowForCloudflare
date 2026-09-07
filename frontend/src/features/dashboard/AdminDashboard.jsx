@@ -25,6 +25,7 @@ import {
   ShieldCheck,
   Mail,
   UploadCloud,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { KPICard } from '@/components/ui/KPICard';
@@ -34,6 +35,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Table } from '@/components/ui/Table';
 import { Button } from '@/components/ui/Button';
 import { DateFilter } from '@/components/ui/DateFilter';
+import { Modal } from '@/components/ui/Modal';
 import { ChartSkeleton } from '@/components/ui/ChartSkeleton';
 import { useToast } from '@/components/ui/Toast';
 import api from '@/services/api';
@@ -77,6 +79,29 @@ export function AdminDashboard() {
   const [teamPerformance, setTeamPerformance] = useState(() => initialData?.team_performance || []);
   const [allTargets, setAllTargets] = useState(() => initialData?.all_targets || []);
   const [attendanceSummary, setAttendanceSummary] = useState(() => initialData?.attendance_summary || null);
+
+  // Backfilled Drilldown Modal State
+  const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
+  const [drilldownRecruiterName, setDrilldownRecruiterName] = useState('');
+  const [drilldownItems, setDrilldownItems] = useState([]);
+
+  const openDrilldownModal = useCallback(async (employeeId, recruiterName) => {
+    setDrilldownRecruiterName(recruiterName || 'Recruiter');
+    setIsDrilldownOpen(true);
+    setDrilldownLoading(true);
+    setDrilldownItems([]);
+    try {
+      const params = {};
+      if (employeeId) params.employee_id = employeeId;
+      const res = await api.get('/dashboard/admin/backfilled-details', { params });
+      setDrilldownItems(res.data?.items || []);
+    } catch (err) {
+      toastError('Drilldown Failed', err.response?.data?.detail || 'Failed to load backfilled upload audit details');
+    } finally {
+      setDrilldownLoading(false);
+    }
+  }, [toastError]);
 
   // Cascading Employee list based on selected client
   const availableEmployees = useMemo(() => {
@@ -276,6 +301,8 @@ export function AdminDashboard() {
       }
       const remaining = Math.max(0, target - submitted);
       const completion = target > 0 ? Math.min(Math.round((submitted / target) * 100), 100) : 0;
+      const backfilledToday = Number(emp.backfilled_today ?? 0);
+      const todayUploads = Number(emp.today_uploads ?? 0);
 
       return {
         ...emp,
@@ -283,6 +310,8 @@ export function AdminDashboard() {
         submitted,
         remaining,
         completion,
+        backfilled_today: backfilledToday,
+        today_uploads: todayUploads,
       };
     });
 
@@ -491,8 +520,8 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      {/* 1.5 DATE-FILTERED AGGREGATIONS (Today Uploads, Yesterday Uploads, Today Applications, Yesterday Applications) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 1.5 DATE-FILTERED AGGREGATIONS & BACKFILL AUDIT METRICS */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <KPICard
           title="Today Uploads"
           value={overview?.today_uploads ?? 0}
@@ -507,6 +536,22 @@ export function AdminDashboard() {
           value={overview?.yesterday_uploads ?? 0}
           subtitle="Previous day resumes"
           icon={Clock3}
+          variant="default"
+        />
+        <KPICard
+          title="Backfilled Uploads Today"
+          value={overview?.backfilled_today ?? 0}
+          subtitle="Uploaded today for earlier work dates"
+          icon={Clock}
+          variant="orange"
+          onClick={() => openDrilldownModal(null, 'All Recruiters')}
+          className="cursor-pointer hover:border-amber-400 transition-all"
+        />
+        <KPICard
+          title="Average Backfill Delay"
+          value={`${overview?.avg_backfill_delay ?? 0} Days`}
+          subtitle="Average delay between work date and upload date"
+          icon={Activity}
           variant="default"
         />
         <KPICard
@@ -699,14 +744,28 @@ export function AdminDashboard() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center py-2 bg-white rounded-xl border border-[#F1F5F9]">
+                  <div className="grid grid-cols-4 gap-2 text-center py-2 bg-white rounded-xl border border-[#F1F5F9]">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Target</p>
                       <p className="text-sm font-extrabold text-[#081226]">{r.target}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Done</p>
-                      <p className="text-sm font-extrabold text-[#0D6EFD]">{r.submitted}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Today</p>
+                      <p className="text-sm font-extrabold text-[#0D6EFD]">{r.today_uploads}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Backfilled</p>
+                      {r.backfilled_today > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => openDrilldownModal(r.employee_id || r.id, r.name)}
+                          className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-300 inline-flex items-center gap-1 mt-0.5 cursor-pointer hover:bg-amber-100"
+                        >
+                          🟡 {r.backfilled_today}
+                        </button>
+                      ) : (
+                        <p className="text-sm font-extrabold text-[#94A3B8]">—</p>
+                      )}
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Remaining</p>
@@ -733,6 +792,8 @@ export function AdminDashboard() {
               <tr className="border-b border-[#E2E8F0] text-caption font-bold text-[#64748B] uppercase">
                 <th className="px-4 py-3">Recruiter</th>
                 <th className="px-4 py-3 text-center">Daily Recruiter Target</th>
+                <th className="px-4 py-3 text-center">Today</th>
+                <th className="px-4 py-3 text-center">Backfilled</th>
                 <th className="px-4 py-3 text-center">Submitted</th>
                 <th className="px-4 py-3 text-center">Remaining</th>
                 <th className="px-4 py-3">Completion %</th>
@@ -741,7 +802,7 @@ export function AdminDashboard() {
             <tbody className="divide-y divide-[#F1F5F9]">
               {recruiterRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-[#64748B]">
+                  <td colSpan={7} className="py-8 text-center text-[#64748B]">
                     No recruiters match the selected service client filter.
                   </td>
                 </tr>
@@ -774,7 +835,23 @@ export function AdminDashboard() {
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-center font-bold text-[#081226]">{r.target}</td>
-                      <td className="px-4 py-3.5 text-center font-extrabold text-[#0D6EFD]">{r.submitted}</td>
+                      <td className="px-4 py-3.5 text-center font-extrabold text-[#0D6EFD]">{r.today_uploads}</td>
+                      <td className="px-4 py-3.5 text-center">
+                        {r.backfilled_today > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => openDrilldownModal(r.employee_id || r.id, r.name)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition-colors cursor-pointer shadow-xs"
+                            title="Click to inspect backfilled upload audit drilldown"
+                          >
+                            <span>🟡</span>
+                            <span>{r.backfilled_today}</span>
+                          </button>
+                        ) : (
+                          <span className="text-caption text-[#94A3B8]">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-center font-extrabold text-[#081226]">{r.submitted}</td>
                       <td className="px-4 py-3.5 text-center font-semibold text-[#64748B]">{r.remaining}</td>
                       <td className="px-4 py-3.5">
                         <div className="w-48 space-y-1">
@@ -828,6 +905,79 @@ export function AdminDashboard() {
           selectedDate={selectedDate}
         />
       </Suspense>
+
+      {/* 5. RECRUITER AUDIT DRILLDOWN MODAL */}
+      <Modal
+        isOpen={isDrilldownOpen}
+        onClose={() => setIsDrilldownOpen(false)}
+        title={`Backfilled Uploads Audit — ${drilldownRecruiterName}`}
+        subtitle="Resumes uploaded today for work completed on earlier dates"
+        maxWidth="max-w-4xl"
+      >
+        <div className="p-4 sm:p-6 space-y-4">
+          <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-caption text-amber-900 flex items-start gap-2.5">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <strong className="font-semibold">Immutable Audit Trail: </strong>
+              These resumes were uploaded today, but are credited toward the recruiter's productivity on the earlier Work Date selected during upload. Actual upload timestamps (<code className="bg-amber-100/70 px-1 py-0.5 rounded font-mono text-[11px]">created_at</code>) remain immutable.
+            </div>
+          </div>
+
+          {drilldownLoading ? (
+            <div className="py-12 text-center text-caption text-[#64748B] flex flex-col items-center gap-2">
+              <RefreshCw className="w-5 h-5 animate-spin text-[#0D6EFD]" />
+              <span>Loading backfilled audit details...</span>
+            </div>
+          ) : drilldownItems.length === 0 ? (
+            <div className="py-12 text-center text-[#64748B]">
+              <FileText className="w-10 h-10 text-[#CBD5E1] mx-auto mb-2" />
+              <p className="text-small font-semibold text-[#081226]">No Backfilled Uploads Today</p>
+              <p className="text-caption mt-0.5">All work uploaded by this recruiter today was completed today.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto max-h-[380px] overflow-y-auto rounded-xl border border-[#E2E8F0]">
+              <table className="w-full text-left border-collapse text-small">
+                <thead className="sticky top-0 bg-[#F8FAFC] border-b border-[#E2E8F0] text-caption font-bold text-[#64748B] uppercase">
+                  <tr>
+                    <th className="px-4 py-3">Candidate</th>
+                    <th className="px-4 py-3">Hiring Organization</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3 text-center">Work Date</th>
+                    <th className="px-4 py-3 text-center">Uploaded On</th>
+                    <th className="px-4 py-3 text-center">Delay</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F1F5F9]">
+                  {drilldownItems.map((item) => (
+                    <tr key={item.id} className="hover:bg-[#F8FAFC] transition-colors">
+                      <td className="px-4 py-3 font-semibold text-[#081226]">
+                        {item.candidate_name}
+                      </td>
+                      <td className="px-4 py-3 text-[#475569]">
+                        {item.company}
+                      </td>
+                      <td className="px-4 py-3 text-[#475569]">
+                        {item.role}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-[#081226]">
+                        {formatDate(item.work_date)}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-[#64748B]">
+                        {formatDate(item.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          {item.delay_days} {item.delay_days === 1 ? 'day' : 'days'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

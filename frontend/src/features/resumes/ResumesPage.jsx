@@ -55,6 +55,7 @@ const CandidateRow = React.memo(function CandidateRow({
   isSelected,
   onSelect,
   menuItems,
+  showAudit,
 }) {
   return (
     <div
@@ -68,7 +69,7 @@ const CandidateRow = React.memo(function CandidateRow({
         <Avatar name={candidate.candidate_name} size="sm" variant={isSelected ? 'blue' : 'navy'} />
 
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span
               className={cn(
                 'text-small font-bold truncate',
@@ -81,6 +82,16 @@ const CandidateRow = React.memo(function CandidateRow({
             <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-white text-[#475569] border border-[#E2E8F0] shrink-0">
               {candidate.resume_id_tag || `RES${candidate.display_seq || 1000}`}
             </span>
+
+            {showAudit && candidate.is_backfilled && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shrink-0 cursor-help"
+                title={`Uploaded on ${formatDate(candidate.created_at)} for work completed on ${formatDate(candidate.work_date || candidate.resume_date)} (${candidate.delay_days} day delay)`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                🟡 Backfilled ({candidate.delay_days}d)
+              </span>
+            )}
           </div>
 
           <p className="text-caption text-[#64748B] mt-0.5 truncate flex items-center gap-1.5">
@@ -92,6 +103,13 @@ const CandidateRow = React.memo(function CandidateRow({
       </div>
 
       <div className="flex items-center gap-3 shrink-0">
+        {showAudit && (
+          <div className="hidden lg:flex flex-col items-end text-[11px] text-[#64748B] leading-tight">
+            <span>Work: <strong className="text-[#081226]">{formatDate(candidate.work_date || candidate.resume_date)}</strong></span>
+            <span className="text-[10px] text-[#94A3B8]">Up: {formatDate(candidate.created_at || candidate.upload_date)}</span>
+          </div>
+        )}
+
         <span className="hidden md:inline-block text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] max-w-[110px] truncate">
           {candidate.client_name || 'Client'}
         </span>
@@ -314,6 +332,7 @@ export function ResumesPage() {
   const displayedResumes = useMemo(() => resumes.slice(0, 20), [resumes]);
 
   const totalPages = Math.ceil(totalResumes / pageSize) || 1;
+  const showAudit = !isClient && (isAdmin || isSubAdmin);
 
   return (
     <div className="space-y-6">
@@ -484,6 +503,7 @@ export function ResumesPage() {
                     isSelected={isSelected}
                     onSelect={handleSelectCandidate}
                     menuItems={menuItems}
+                    showAudit={showAudit}
                   />
                 );
               })
@@ -577,8 +597,25 @@ export function ResumesPage() {
 
               {/* Body: Metadata & PDF Preview */}
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                {/* 4 Essential Metadata Badges */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Audit indicator for Admin/Sub-Admin */}
+                {showAudit && selectedResume.is_backfilled && (
+                  <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-caption font-bold flex items-center gap-1.5 text-amber-800">
+                        🟡 Backfilled Upload Audit
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                        {selectedResume.delay_days} {selectedResume.delay_days === 1 ? 'Day' : 'Days'} Delay
+                      </span>
+                    </div>
+                    <p className="text-caption text-amber-900">
+                      Uploaded on <strong>{formatDate(selectedResume.created_at || selectedResume.upload_date)}</strong> for work completed on <strong>{formatDate(selectedResume.work_date || selectedResume.resume_date)}</strong>.
+                    </p>
+                  </div>
+                )}
+
+                {/* Metadata Badges (Adapts to 3 columns for Admin with audit details) */}
+                <div className={cn("grid gap-3", showAudit ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
                   <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
                     <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
                       <Building2 className="w-3.5 h-3.5 text-[#2563EB]" />
@@ -612,12 +649,36 @@ export function ResumesPage() {
                   <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
                     <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
                       <Calendar className="w-3.5 h-3.5 text-[#64748B]" />
-                      <span>Resume Date</span>
+                      <span>Work Date</span>
                     </div>
                     <p className="text-small font-mono font-bold text-[#081226] mt-1">
-                      {selectedResume.resume_date || formatDate(selectedResume.upload_date)}
+                      {selectedResume.work_date || selectedResume.resume_date || formatDate(selectedResume.upload_date)}
                     </p>
                   </div>
+
+                  {showAudit && (
+                    <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                      <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
+                        <Calendar className="w-3.5 h-3.5 text-[#2563EB]" />
+                        <span>Uploaded On</span>
+                      </div>
+                      <p className="text-small font-mono font-bold text-[#081226] mt-1 truncate">
+                        {formatDate(selectedResume.created_at || selectedResume.upload_date)}
+                      </p>
+                    </div>
+                  )}
+
+                  {showAudit && (
+                    <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                      <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
+                        <Info className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Delay</span>
+                      </div>
+                      <p className={cn("text-small font-bold mt-1", selectedResume.is_backfilled ? "text-amber-700" : "text-emerald-700")}>
+                        {selectedResume.is_backfilled ? `${selectedResume.delay_days} Days` : 'Same Day (0d)'}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* PDF Document Preview Card */}

@@ -13,6 +13,7 @@ test -f "$ROOT_DIR/migrations/0001_add_r2_metadata.sql" && echo "  ✔ Migration
 test -f "$ROOT_DIR/migrations/0002_add_chat_and_notifications_indexes.sql" && echo "  ✔ Migration 0002 (Indexes & Chat idempotency) present"
 test -f "$ROOT_DIR/migrations/0003_add_google_drive_resume_fields.sql" && echo "  ✔ Migration 0003 (Google Drive resume fields) present"
 test -f "$ROOT_DIR/migrations/0004_ensure_password_hash_column.sql" && echo "  ✔ Migration 0004 (Password hash column alignment) present"
+test -f "$ROOT_DIR/migrations/0009_add_work_date_to_resumes.sql" && echo "  ✔ Migration 0009 (Work date column & indexes) present"
 
 echo ""
 echo "▶ 2. Running Backend Workers Vitest Suite (131 tests)..."

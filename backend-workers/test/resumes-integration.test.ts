@@ -522,4 +522,120 @@ describe("Resume Endpoints Integration with Google Apps Script Storage", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  describe("Enterprise Backdated Resume Upload (Work Date) & 7-Day Limit Tests", () => {
+    it("rejects non-employee/recruiter roles (super_admin) with 403 Forbidden on upload", async () => {
+      const adminToken = await createAccessToken(mockAdminUser as any, mockEnv.JWT_SECRET_KEY);
+      const formData = new FormData();
+      formData.append("client_id", mockClient.id);
+      formData.append("work_date", "2026-09-06");
+
+      const res = await app.fetch(
+        new Request("http://localhost/api/resumes/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+          },
+          body: formData,
+        }),
+        mockEnv
+      );
+
+      expect(res.status).toBe(403);
+      const data = await res.json();
+      expect(data.detail).toContain("Only Recruiters can upload resumes");
+    });
+
+    it("rejects invalid date format for work_date with 400", async () => {
+      const recruiterToken = await createAccessToken(mockRecruiterUser as any, mockEnv.JWT_SECRET_KEY);
+      const formData = new FormData();
+      formData.append("client_id", mockClient.id);
+      formData.append("work_date", "not-a-valid-date");
+
+      const res = await app.fetch(
+        new Request("http://localhost/api/resumes/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${recruiterToken}`,
+          },
+          body: formData,
+        }),
+        mockEnv
+      );
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBe("Work Date must be in YYYY-MM-DD format.");
+    });
+
+    it("rejects future work_date with 400", async () => {
+      const recruiterToken = await createAccessToken(mockRecruiterUser as any, mockEnv.JWT_SECRET_KEY);
+      const formData = new FormData();
+      formData.append("client_id", mockClient.id);
+      const futureDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      formData.append("work_date", futureDate);
+
+      const res = await app.fetch(
+        new Request("http://localhost/api/resumes/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${recruiterToken}`,
+          },
+          body: formData,
+        }),
+        mockEnv
+      );
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBe("Work Date must be within the last 7 days.");
+    });
+
+    it("rejects work_date older than 7 days (e.g. 8 days ago) with 400", async () => {
+      const recruiterToken = await createAccessToken(mockRecruiterUser as any, mockEnv.JWT_SECRET_KEY);
+      const formData = new FormData();
+      formData.append("client_id", mockClient.id);
+      const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      formData.append("work_date", eightDaysAgo);
+
+      const res = await app.fetch(
+        new Request("http://localhost/api/resumes/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${recruiterToken}`,
+          },
+          body: formData,
+        }),
+        mockEnv
+      );
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBe("Work Date must be within the last 7 days.");
+    });
+
+    it("accepts work_date within last 7 days (e.g. 2 days ago) and validates files", async () => {
+      const recruiterToken = await createAccessToken(mockRecruiterUser as any, mockEnv.JWT_SECRET_KEY);
+      const formData = new FormData();
+      formData.append("client_id", mockClient.id);
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      formData.append("work_date", twoDaysAgo);
+
+      const res = await app.fetch(
+        new Request("http://localhost/api/resumes/upload", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${recruiterToken}`,
+          },
+          body: formData,
+        }),
+        mockEnv
+      );
+
+      // It successfully passes date validation and reaches file processing
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.detail).toContain("No resume file uploaded");
+    });
+  });
 });

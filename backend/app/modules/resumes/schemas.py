@@ -12,6 +12,7 @@ class ResumeBase(BaseModel):
     requirement_id: uuid.UUID | None = None
     resume_id_tag: str | None = None
     resume_date: date | None = None
+    work_date: date | None = None
     client_notes: str | None = None
     is_note_shared: bool = False
 
@@ -29,6 +30,7 @@ class ResumeUpdate(BaseModel):
     requirement_id: uuid.UUID | None = None
     resume_id_tag: str | None = None
     resume_date: date | None = None
+    work_date: date | None = None
     client_notes: str | None = None
     is_note_shared: bool | None = None
 
@@ -48,6 +50,7 @@ class ResumeResponse(BaseModel):
     uploader_name: str
     original_filename: str
     resume_date: date | None = None
+    work_date: date | None = None
     client_notes: str | None = None
     is_note_shared: bool = False
     r2_key: str | None = None
@@ -59,6 +62,9 @@ class ResumeResponse(BaseModel):
     drive_file_id: str | None = None
     drive_url: str | None = None
     upload_date: datetime
+    created_at: datetime | None = None
+    is_backfilled: bool = False
+    delay_days: int = 0
     has_application: bool = False
 
     model_config = {"from_attributes": True}
@@ -77,6 +83,9 @@ class ParsedFileUploadItem(BaseModel):
     requirement_id: uuid.UUID | None = None
     requirement_code: str | None = None
     resume_date: date | None = None
+    work_date: date | None = None
+    is_backfilled: bool = False
+    delay_days: int = 0
     r2_key: str | None = None
     file_size: int | None = None
     drive_file_id: str | None = None

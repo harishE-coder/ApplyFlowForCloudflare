@@ -21,6 +21,7 @@ export const RequirementCreateSchema = z.object({
 });
 
 export const RequirementUpdateSchema = z.object({
+  client_id: z.string().nullable().optional(),
   company: z.string().min(1).optional(),
   job_title: z.string().nullable().optional(),
   role: z.string().nullable().optional(),

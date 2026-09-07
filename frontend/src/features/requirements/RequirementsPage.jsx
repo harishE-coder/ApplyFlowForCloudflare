@@ -115,7 +115,7 @@ export function RequirementsPage() {
     setPriority('Medium');
     setNotes('');
     setAssignedEmployee('ALL');
-    setClientId(isClient ? user?.client_id || '' : '');
+    setClientId(isClient ? user?.client_id || '' : 'global');
     if (!clients || clients.length === 0) {
       api.get('/clients').then((res) => setClients(res.data || [])).catch(() => {});
     }
@@ -130,11 +130,7 @@ export function RequirementsPage() {
       return;
     }
 
-    const targetClientId = isClient ? user?.client_id : clientId;
-    if (!targetClientId) {
-      toastError('Validation Error', 'Please select a Service Client.');
-      return;
-    }
+    const targetClientId = isClient ? user?.client_id : (clientId || 'global');
 
     setCreating(true);
     try {
@@ -144,12 +140,12 @@ export function RequirementsPage() {
         job_url: jobUrl.trim() || null,
         priority,
         notes: null,
-        client_id: targetClientId,
+        client_id: targetClientId === 'global' ? null : targetClientId,
         assigned_employee: 'ALL',
       });
 
-      if (targetClientId === 'ALL') {
-        success('Job Openings Created', `${company} – ${jobTitle} created for all service clients at once.`);
+      if (targetClientId === 'global' || !targetClientId) {
+        success('Job Opening Created', `${company} – ${jobTitle} created for Global for All.`);
       } else {
         success('Job Opening Created', `${company} – ${jobTitle} added to task board.`);
       }
@@ -169,8 +165,8 @@ export function RequirementsPage() {
     setEditJobTitle(req.job_title || req.role);
     setEditJobUrl(req.job_url || '');
     setEditPriority(req.priority || 'Medium');
-    setEditNotes(req.notes || '');
-    setEditClientId(req.client_id);
+    setEditNotes('');
+    setEditClientId(req.client_id ? String(req.client_id) : 'global');
     setEditAssignedEmployee(req.assigned_employee_id || 'ALL');
     setIsEditOpen(true);
   };
@@ -183,12 +179,13 @@ export function RequirementsPage() {
     setUpdating(true);
     try {
       await api.put(`/requirements/${editReq.id}`, {
+        client_id: editClientId === 'global' ? null : editClientId,
         company: editCompany.trim(),
         job_title: editJobTitle.trim(),
         job_url: editJobUrl.trim() || null,
         priority: editPriority,
-        notes: editNotes.trim() || null,
-        assigned_employee: editAssignedEmployee,
+        notes: null,
+        assigned_employee: editAssignedEmployee || 'ALL',
       });
 
       success('Job Opening Updated', `${editCompany} – ${editJobTitle} updated successfully.`);
@@ -389,18 +386,22 @@ export function RequirementsPage() {
             />
           </div>
 
-          {!isClient && clients.length > 0 && (
+          {!isClient && (
             <select
               value={selectedClient}
               onChange={(e) => setSelectedClient(e.target.value)}
               className="px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD]"
             >
               <option value="">All Service Clients</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.company_name}
-                </option>
-              ))}
+              <option value="global">Global for All</option>
+              {clients
+                .slice()
+                .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.company_name}
+                  </option>
+                ))}
             </select>
           )}
 
@@ -567,8 +568,17 @@ export function RequirementsPage() {
                       {/* 4. Service Client */}
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-1.5 text-small font-medium text-[#334155]">
-                          <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
-                          <span>{req.client_name || 'Client'}</span>
+                          {req.client_id ? (
+                            <>
+                              <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
+                              <span>{req.client_name || 'Client'}</span>
+                            </>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#0D6EFD] border border-blue-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#0D6EFD]" />
+                              Global for All
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -650,8 +660,7 @@ export function RequirementsPage() {
                 onChange={(e) => setClientId(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer font-medium"
               >
-                <option value="">Select Service Client...</option>
-                <option value="ALL">🌐 Global (All Service Clients at once)</option>
+                <option value="global">Global for All</option>
                 {clients
                   .slice()
                   .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''))
@@ -721,6 +730,29 @@ export function RequirementsPage() {
         subtitle="Update company, role title, job URL, or priority."
       >
         <form onSubmit={handleUpdate} className="space-y-4">
+          {!isClient && (
+            <div>
+              <label className="text-small font-semibold text-[#081226] block mb-1.5">
+                Service Client
+              </label>
+              <select
+                value={editClientId || 'global'}
+                onChange={(e) => setEditClientId(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer font-medium"
+              >
+                <option value="global">Global for All</option>
+                {clients
+                  .slice()
+                  .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.company_name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
           <Input
             label="Hiring Company"
             required

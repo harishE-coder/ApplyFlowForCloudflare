@@ -108,11 +108,11 @@ async function enrichRequirements(sql: any, reqs: any[]): Promise<any[]> {
 
   return reqs.map((r) => {
     const rid = String(r.id);
-    const cid = String(r.client_id);
+    const cid = r.client_id ? String(r.client_id) : "";
     return {
       id: r.id,
-      client_id: r.client_id,
-      client_name: clientMap[cid] || r.company || "",
+      client_id: r.client_id || null,
+      client_name: r.client_id ? (clientMap[cid] || r.company || "") : "Global for All",
       company: r.company,
       job_title: r.job_title || r.role || "Open Role",
       role: r.role || r.job_title || "Open Role",
@@ -158,12 +158,22 @@ requirementsRouter.get("/", async (c) => {
   let pIdx = 1;
 
   if (scopedCids !== null) {
-    conditions.push(`client_id = ANY($${pIdx++})`);
-    params.push(scopedCids);
+    if (user.role === "client") {
+      conditions.push(`client_id = ANY($${pIdx++})`);
+      params.push(scopedCids);
+    } else {
+      // Employees, recruiters, and sub_admins view scoped clients + global requirements
+      conditions.push(`(client_id IS NULL OR client_id = ANY($${pIdx++}))`);
+      params.push(scopedCids);
+    }
   }
   if (filterClientId) {
-    conditions.push(`client_id = $${pIdx++}`);
-    params.push(filterClientId);
+    if (filterClientId === "global" || filterClientId === "ALL") {
+      conditions.push(`client_id IS NULL`);
+    } else if (filterClientId !== "all") {
+      conditions.push(`client_id = $${pIdx++}`);
+      params.push(filterClientId);
+    }
   }
   if (filterStatus && filterStatus !== "all") {
     conditions.push(`status = $${pIdx++}`);
@@ -206,7 +216,10 @@ requirementsRouter.get("/:req_id", async (c) => {
 
   const req = rows[0];
   const scopedCids = await getScopedClientIdsForReqs(sql, user);
-  if (scopedCids !== null && !scopedCids.includes(String(req.client_id))) {
+  if (scopedCids !== null && user.role === "client" && !scopedCids.includes(String(req.client_id))) {
+    return c.json({ detail: "Job opening not found" }, 404);
+  }
+  if (scopedCids !== null && req.client_id !== null && !scopedCids.includes(String(req.client_id))) {
     return c.json({ detail: "Job opening not found" }, 404);
   }
 
@@ -232,10 +245,16 @@ requirementsRouter.post("/", async (c) => {
 
   const sql = getDb(c.env.DATABASE_URL);
 
-  // Derive client_id
-  let effectiveClientId = payload.client_id;
-  if (user.role === "client") {
-    effectiveClientId = user.client_id || undefined;
+  // Derive client_id: 'global', 'ALL', or null saves as a single global requirement
+  let effectiveClientId: string | null = null;
+  if (payload.client_id === "global" || payload.client_id === "ALL" || payload.client_id === null) {
+    effectiveClientId = null;
+  } else if (payload.client_id) {
+    effectiveClientId = payload.client_id;
+  } else if (user.role === "client") {
+    effectiveClientId = user.client_id || null;
+  } else {
+    effectiveClientId = null;
   }
 
   // Populate titles
@@ -251,90 +270,13 @@ requirementsRouter.post("/", async (c) => {
     assignmentType = "individual";
   }
 
-  // Helper to generate role_code
-  const getRoleCode = (idx?: number) => {
-    if (payload.role_code && idx === undefined) return payload.role_code;
+  // Generate role_code
+  let roleCode = payload.role_code;
+  if (!roleCode) {
     const prefix = payload.company.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "JOB";
     const rolePart = jobTitle.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "ROLE";
-    const num = idx !== undefined ? String(idx).padStart(2, "0") : "01";
-    return `${prefix}-${rolePart}-${num}`;
-  };
-
-  // Handle Global (All Service Clients at once)
-  if (effectiveClientId === "ALL" || effectiveClientId === "GLOBAL") {
-    const scopedCids = await getScopedClientIdsForReqs(sql, user);
-    let targetClients: any[] = [];
-    if (scopedCids !== null) {
-      if (scopedCids.length === 0) {
-        return c.json({ detail: "No accessible service clients found." }, 400);
-      }
-      targetClients = await sql`
-        SELECT id, company_name FROM clients 
-        WHERE id = ANY(${scopedCids}) AND is_active = true
-        ORDER BY company_name ASC
-      `;
-    } else {
-      targetClients = await sql`
-        SELECT id, company_name FROM clients 
-        WHERE is_active = true
-        ORDER BY company_name ASC
-      `;
-    }
-
-    if (targetClients.length === 0) {
-      targetClients = await sql`SELECT id, company_name FROM clients ORDER BY company_name ASC LIMIT 50`;
-    }
-
-    if (targetClients.length === 0) {
-      return c.json({ detail: "No clients found to create job openings for." }, 400);
-    }
-
-    const createdList: any[] = [];
-    let idx = 1;
-    for (const cl of targetClients) {
-      const reqId = crypto.randomUUID();
-      const roleCode = getRoleCode(idx++);
-      const [cr] = await sql`
-        INSERT INTO requirements (
-          id, client_id, company, job_title, role, role_code, job_url,
-          priority, notes, status, assignment_type, assigned_employee_id,
-          created_by, created_at, updated_at
-        ) VALUES (
-          ${reqId}, ${cl.id}, ${payload.company}, ${jobTitle}, ${role},
-          ${roleCode}, ${payload.job_url || null}, ${payload.priority || "Medium"},
-          ${payload.notes || null}, ${payload.status || "active"}, ${assignmentType},
-          ${assignedEmployeeId}, ${user.id}, NOW(), NOW()
-        )
-        RETURNING *
-      `;
-      createdList.push(cr);
-
-      await sql`
-        INSERT INTO activity_logs (id, user_id, action, details, created_at)
-        VALUES (
-          ${crypto.randomUUID()}, ${user.id}, 'requirement_created',
-          ${JSON.stringify({ requirement_id: reqId, role_code: roleCode, company: payload.company, client_id: cl.id })}, NOW()
-        )
-      `;
-    }
-
-    const enriched = await enrichRequirements(sql, createdList);
-    return c.json(enriched[0] || {}, 201);
+    roleCode = `${prefix}-${rolePart}-01`;
   }
-
-  if (!effectiveClientId) {
-    // If client_id omitted, match by company name
-    const clientMatch = await sql`
-      SELECT id FROM clients WHERE LOWER(company_name) = ${payload.company.trim().toLowerCase()} LIMIT 1
-    `;
-    if (clientMatch.length > 0) {
-      effectiveClientId = clientMatch[0].id;
-    } else {
-      return c.json({ detail: "client_id is required or must match an existing client." }, 400);
-    }
-  }
-
-  const roleCode = getRoleCode();
 
   const reqId = crypto.randomUUID();
 
@@ -357,7 +299,7 @@ requirementsRouter.post("/", async (c) => {
     INSERT INTO activity_logs (id, user_id, action, details, created_at)
     VALUES (
       ${crypto.randomUUID()}, ${user.id}, 'requirement_created',
-      ${JSON.stringify({ requirement_id: reqId, role_code: roleCode, company: payload.company })}, NOW()
+      ${JSON.stringify({ requirement_id: reqId, role_code: roleCode, company: payload.company, client_id: effectiveClientId })}, NOW()
     )
   `;
 
@@ -388,8 +330,20 @@ const updateRequirementHandler = async (c: any) => {
   const current = rows[0];
 
   const scopedCids = await getScopedClientIdsForReqs(sql, user);
-  if (scopedCids !== null && !scopedCids.includes(String(current.client_id))) {
+  if (scopedCids !== null && user.role === "client" && !scopedCids.includes(String(current.client_id))) {
     return c.json({ detail: "Job opening not found" }, 404);
+  }
+  if (scopedCids !== null && current.client_id !== null && !scopedCids.includes(String(current.client_id))) {
+    return c.json({ detail: "Job opening not found" }, 404);
+  }
+
+  let clientIdVal = current.client_id;
+  if (payload.client_id !== undefined) {
+    if (payload.client_id === "global" || payload.client_id === "ALL" || payload.client_id === null) {
+      clientIdVal = null;
+    } else {
+      clientIdVal = payload.client_id;
+    }
   }
 
   const companyVal = payload.company !== undefined ? payload.company : current.company;
@@ -406,6 +360,7 @@ const updateRequirementHandler = async (c: any) => {
 
   const [updated] = await sql`
     UPDATE requirements SET
+      client_id = ${clientIdVal},
       company = ${companyVal},
       job_title = ${jobTitleVal},
       role = ${roleVal},
@@ -425,7 +380,7 @@ const updateRequirementHandler = async (c: any) => {
     INSERT INTO activity_logs (id, user_id, action, details, created_at)
     VALUES (
       ${crypto.randomUUID()}, ${user.id}, 'requirement_updated',
-      ${JSON.stringify({ requirement_id: reqId, role_code: roleCodeVal })}, NOW()
+      ${JSON.stringify({ requirement_id: reqId, role_code: roleCodeVal, client_id: clientIdVal })}, NOW()
     )
   `;
 

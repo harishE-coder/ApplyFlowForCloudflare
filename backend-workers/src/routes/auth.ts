@@ -12,6 +12,7 @@ import {
 import { getDb } from "../db";
 import { requireAuth } from "../middleware/auth";
 import type { Bindings, UserPayload, Variables } from "../types";
+import { getChatUnreadCount } from "./chat";
 
 export const authRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -182,7 +183,7 @@ authRouter.get("/bootstrap", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  const [users, clientsRes, appsRes] = await Promise.all([
+  const [users, clientsRes, appsRes, chatUnread] = await Promise.all([
     sql`
       SELECT id, name, email, role, client_id, is_active, created_at
       FROM users
@@ -191,6 +192,7 @@ authRouter.get("/bootstrap", requireAuth, async (c) => {
     `,
     sql`SELECT count(*)::int as count FROM clients WHERE is_active = true`,
     sql`SELECT count(*)::int as count FROM applications`,
+    getChatUnreadCount(sql, user).catch(() => 0),
   ]);
 
   if (!users || users.length === 0) {
@@ -215,7 +217,10 @@ authRouter.get("/bootstrap", requireAuth, async (c) => {
       },
     },
     notifications: [],
-    chat_unread: 0,
+    chat_unread: {
+      total_unread: chatUnread,
+      unread_count: chatUnread,
+    },
   });
 });
 

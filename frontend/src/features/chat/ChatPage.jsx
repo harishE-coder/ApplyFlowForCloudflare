@@ -68,6 +68,12 @@ export function ChatPage() {
     [sortRoomsByActivity]
   );
 
+  // Dispatch live total unread count across visible rooms to AppLayout badge
+  const dispatchUnreadCount = useCallback((roomList) => {
+    const totalUnread = (roomList || []).reduce((sum, r) => sum + (r.unread_count || 0), 0);
+    window.dispatchEvent(new CustomEvent('chat:unread-updated', { detail: { total_unread: totalUnread } }));
+  }, []);
+
   // Fetch all accessible rooms (backend returns sorted by latest message)
   const fetchRooms = useCallback(async () => {
     try {
@@ -75,6 +81,7 @@ export function ChatPage() {
       const items = res.data.items || [];
       const sorted = sortRoomsByActivity(items);
       setRooms(sorted);
+      dispatchUnreadCount(sorted);
       setActiveRoomId((prev) => {
         if (urlRoomId) return urlRoomId;
         if (prev) return prev;
@@ -85,7 +92,7 @@ export function ChatPage() {
     } finally {
       setLoadingRooms(false);
     }
-  }, [urlRoomId, sortRoomsByActivity]);
+  }, [urlRoomId, sortRoomsByActivity, dispatchUnreadCount]);
 
   useEffect(() => {
     fetchRooms();
@@ -110,15 +117,15 @@ export function ChatPage() {
       setMessages(items);
       setHasMore(res.data.has_more ?? false);
 
-      // Mark read if there are messages
+      // Mark read when user opens the room
       if (items.length > 0) {
         const lastMsg = items[items.length - 1];
-        if (lastMsg.sender?.id !== user?.id) {
-          api.patch(`/chat/rooms/${roomId}/read`, { message_id: lastMsg.id }).catch(() => {});
-        }
-        setRooms((prev) =>
-          prev.map((r) => (r.id === roomId ? { ...r, unread_count: 0 } : r))
-        );
+        api.patch(`/chat/rooms/${roomId}/read`, { message_id: lastMsg.id }).catch(() => {});
+        setRooms((prev) => {
+          const next = prev.map((r) => (r.id === roomId ? { ...r, unread_count: 0 } : r));
+          dispatchUnreadCount(next);
+          return next;
+        });
       }
     } catch (err) {
       console.error('Failed to load messages:', err);
@@ -126,7 +133,7 @@ export function ChatPage() {
     } finally {
       setLoadingMessages(false);
     }
-  }, [user?.id, toastError]);
+  }, [toastError, dispatchUnreadCount]);
 
   useEffect(() => {
     if (activeRoomId) {
@@ -205,10 +212,11 @@ export function ChatPage() {
           }
           return r;
         });
+        dispatchUnreadCount(next);
         return sortRoomsByActivity(next);
       });
     },
-    [activeRoomId, user?.id, sortRoomsByActivity]
+    [activeRoomId, user?.id, sortRoomsByActivity, dispatchUnreadCount]
   );
 
   // Handle cross-room live updates
@@ -228,10 +236,11 @@ export function ChatPage() {
           }
           return r;
         });
+        dispatchUnreadCount(next);
         return sortRoomsByActivity(next);
       });
     },
-    [activeRoomId, sortRoomsByActivity]
+    [activeRoomId, sortRoomsByActivity, dispatchUnreadCount]
   );
 
   // Handle message delivery/read status updates
@@ -547,7 +556,13 @@ export function ChatPage() {
     setActiveRoomId(roomId);
     setIsMobileViewingChat(true);
     navigate(`/chats/${roomId}`, { replace: true });
-  }, [navigate]);
+    setRooms((prev) => {
+      if (!prev.some((r) => r.id === roomId && r.unread_count > 0)) return prev;
+      const next = prev.map((r) => (r.id === roomId ? { ...r, unread_count: 0 } : r));
+      dispatchUnreadCount(next);
+      return next;
+    });
+  }, [navigate, dispatchUnreadCount]);
 
   const activeRoom = useMemo(() => {
     return rooms.find((r) => r.id === activeRoomId) || null;

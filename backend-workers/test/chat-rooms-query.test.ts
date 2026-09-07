@@ -136,4 +136,59 @@ describe("Chat Rooms Activity Ordering Integration Test", () => {
     expect(body.items[1].id).toBe("room-recent-created-no-message");
     expect(body.items[2].id).toBe("room-oldest");
   });
+
+  it("GET /api/chat/unread-count returns scoped count for admin", async () => {
+    const adminToken = await createAccessToken(
+      {
+        id: "admin-id",
+        role: "admin",
+        email: "admin@applyflow.com",
+        name: "Admin User",
+        client_id: null,
+      },
+      mockEnv.JWT_SECRET_KEY
+    );
+
+    const res = await app.fetch(
+      new Request("http://localhost/api/chat/unread-count", {
+        headers: {
+          Cookie: `access_token=${adminToken}`,
+        },
+      }),
+      mockEnv
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total_unread: number; unread_count: number };
+    expect(body.total_unread).toBe(0);
+    expect(body.unread_count).toBe(0);
+  });
+
+  it("GET /api/chat/unread-count returns 0 for client without client_id", async () => {
+    const clientToken = await createAccessToken(
+      {
+        id: "client-no-cid-id",
+        role: "client",
+        email: "client@example.com",
+        name: "Unassigned Client",
+        client_id: null,
+      },
+      mockEnv.JWT_SECRET_KEY
+    );
+
+    const res = await app.fetch(
+      new Request("http://localhost/api/chat/unread-count", {
+        headers: {
+          Cookie: `access_token=${clientToken}`,
+        },
+      }),
+      mockEnv
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total_unread: number; unread_count: number };
+    expect(body.total_unread).toBe(0);
+    expect(body.unread_count).toBe(0);
+  });
 });
+

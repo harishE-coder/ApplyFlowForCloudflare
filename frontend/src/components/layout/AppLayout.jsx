@@ -13,7 +13,11 @@ export function AppLayout() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState(() => bootstrapData?.notifications?.items || []);
   const [unreadCount, setUnreadCount] = useState(() => bootstrapData?.notifications?.unread_count || 0);
-  const [unreadChatCount, setUnreadChatCount] = useState(() => bootstrapData?.chat_unread?.total_unread || 0);
+  const [unreadChatCount, setUnreadChatCount] = useState(() => {
+    if (!bootstrapData?.chat_unread) return 0;
+    if (typeof bootstrapData.chat_unread === 'number') return bootstrapData.chat_unread;
+    return bootstrapData.chat_unread.total_unread ?? bootstrapData.chat_unread.unread_count ?? 0;
+  });
 
   // Sync state if bootstrapData arrives or updates
   useEffect(() => {
@@ -21,8 +25,11 @@ export function AppLayout() {
       setNotifications(bootstrapData.notifications.items || []);
       setUnreadCount(bootstrapData.notifications.unread_count || 0);
     }
-    if (bootstrapData?.chat_unread) {
-      setUnreadChatCount(bootstrapData.chat_unread.total_unread || 0);
+    if (bootstrapData?.chat_unread !== undefined && bootstrapData?.chat_unread !== null) {
+      const count = typeof bootstrapData.chat_unread === 'number'
+        ? bootstrapData.chat_unread
+        : (bootstrapData.chat_unread.total_unread ?? bootstrapData.chat_unread.unread_count ?? 0);
+      setUnreadChatCount(count);
     }
   }, [bootstrapData]);
 
@@ -52,6 +59,19 @@ export function AppLayout() {
       // Quiet fail if not logged in
     }
   }, [user]);
+
+  // Real-time unread count listener dispatched from ChatPage
+  useEffect(() => {
+    const handleChatUnreadUpdate = (e) => {
+      if (typeof e.detail?.total_unread === 'number') {
+        setUnreadChatCount(e.detail.total_unread);
+      } else {
+        fetchChatUnread();
+      }
+    };
+    window.addEventListener('chat:unread-updated', handleChatUnreadUpdate);
+    return () => window.removeEventListener('chat:unread-updated', handleChatUnreadUpdate);
+  }, [fetchChatUnread]);
 
   useEffect(() => {
     if (!user) return;

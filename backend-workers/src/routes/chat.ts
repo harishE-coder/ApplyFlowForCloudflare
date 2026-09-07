@@ -110,21 +110,80 @@ const handleUpdatePreferences = async (c: any) => {
 chatRouter.put("/preferences", requireAuth, handleUpdatePreferences);
 chatRouter.patch("/preferences", requireAuth, handleUpdatePreferences);
 
-// 5. GET /api/chat/unread-count (uses optimized indexed join)
+// Helper to resolve client scoping per role
+export async function getAllowedClientIdsForUser(
+  sql: any,
+  user: { id: string; role: string; client_id?: string | null }
+): Promise<string[] | null> {
+  if (user.role === "client") {
+    return user.client_id ? [String(user.client_id)] : [];
+  } else if (user.role === "sub_admin") {
+    const assignedClients = await sql`
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
+    `;
+    return assignedClients.map((r: any) => String(r.client_id));
+  } else if (user.role === "employee" || user.role === "recruiter") {
+    const assigned = await sql`
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
+    `;
+    const cids = assigned.map((r: any) => String(r.client_id));
+    if (cids.length > 0) {
+      return cids;
+    } else {
+      const active = await sql`SELECT id FROM clients WHERE status = 'active'`;
+      return active.map((r: any) => String(r.id));
+    }
+  }
+  return null;
+}
+
+// Helper to compute total unread messages strictly scoped to visible rooms/clients
+export async function getChatUnreadCount(
+  sql: any,
+  user: { id: string; role: string; client_id?: string | null }
+): Promise<number> {
+  const allowedClientIds = await getAllowedClientIdsForUser(sql, user);
+
+  if (allowedClientIds !== null && allowedClientIds.length === 0) {
+    return 0;
+  }
+
+  let rows: any[];
+  if (allowedClientIds !== null) {
+    rows = await sql`
+      SELECT COUNT(m.id)::int as count
+      FROM chat_messages m
+      JOIN chat_rooms r ON r.id = m.room_id
+      JOIN clients c ON c.id = r.client_id
+      LEFT JOIN chat_reads cr ON cr.room_id = m.room_id AND cr.user_id = ${user.id}
+      WHERE r.client_id = ANY(${allowedClientIds})
+        AND (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
+        AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
+    `;
+  } else {
+    rows = await sql`
+      SELECT COUNT(m.id)::int as count
+      FROM chat_messages m
+      JOIN chat_rooms r ON r.id = m.room_id
+      JOIN clients c ON c.id = r.client_id
+      LEFT JOIN chat_reads cr ON cr.room_id = m.room_id AND cr.user_id = ${user.id}
+      WHERE (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
+        AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
+    `;
+  }
+
+  return rows[0]?.count || 0;
+}
+
+// 5. GET /api/chat/unread-count (uses role-scoped indexed query)
 chatRouter.get("/unread-count", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  const rows = await sql`
-    SELECT COUNT(m.id)::int as count
-    FROM chat_messages m
-    JOIN chat_rooms r ON r.id = m.room_id
-    LEFT JOIN chat_reads cr ON cr.room_id = m.room_id AND cr.user_id = ${user.id}
-    WHERE (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
-      AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
-  `;
+  const count = await getChatUnreadCount(sql, user);
 
-  const count = rows[0]?.count || 0;
   return c.json({
     total_unread: count,
     unread_count: count,
@@ -136,28 +195,7 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  let allowedClientIds: string[] | null = null;
-  if (user.role === "client") {
-    allowedClientIds = user.client_id ? [user.client_id] : [];
-  } else if (user.role === "sub_admin") {
-    const assignedClients = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
-      UNION
-      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
-    `;
-    allowedClientIds = assignedClients.map((r: any) => String(r.client_id));
-  } else if (user.role === "employee" || user.role === "recruiter") {
-    const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
-    `;
-    const cids = assigned.map((r: any) => String(r.client_id));
-    if (cids.length > 0) {
-      allowedClientIds = cids;
-    } else {
-      const active = await sql`SELECT id FROM clients WHERE status = 'active'`;
-      allowedClientIds = active.map((r: any) => String(r.id));
-    }
-  }
+  const allowedClientIds = await getAllowedClientIdsForUser(sql, user);
 
   let rooms: any[];
   if (allowedClientIds !== null && allowedClientIds.length === 0) {

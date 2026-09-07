@@ -40,26 +40,64 @@ export function ChatPage() {
     }
   }, [urlRoomId, activeRoomId]);
 
-  // Fetch all accessible rooms
+  // Sort helper to ensure conversations are ordered by latest activity
+  const sortRoomsByActivity = useCallback((roomsList) => {
+    return [...(roomsList || [])].sort((a, b) => {
+      const timeA = new Date(a.last_message_at || a.created_at || 0).getTime();
+      const timeB = new Date(b.last_message_at || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
+  }, []);
+
+  // Update room metadata and re-sort so conversation immediately moves to top (#1)
+  const updateRoomAndSort = useCallback(
+    (roomId, updates) => {
+      setRooms((prev) => {
+        const next = prev.map((r) => {
+          if (r.id === roomId) {
+            return {
+              ...r,
+              ...updates,
+            };
+          }
+          return r;
+        });
+        return sortRoomsByActivity(next);
+      });
+    },
+    [sortRoomsByActivity]
+  );
+
+  // Fetch all accessible rooms (backend returns sorted by latest message)
   const fetchRooms = useCallback(async () => {
     try {
       const res = await api.get('/chat/rooms');
       const items = res.data.items || [];
-      setRooms(items);
+      const sorted = sortRoomsByActivity(items);
+      setRooms(sorted);
       setActiveRoomId((prev) => {
         if (urlRoomId) return urlRoomId;
         if (prev) return prev;
-        return items.length > 0 && window.innerWidth >= 768 ? items[0].id : null;
+        return sorted.length > 0 && window.innerWidth >= 768 ? sorted[0].id : null;
       });
     } catch (err) {
       console.error('Failed to fetch chat rooms:', err);
     } finally {
       setLoadingRooms(false);
     }
-  }, [urlRoomId]);
+  }, [urlRoomId, sortRoomsByActivity]);
 
   useEffect(() => {
     fetchRooms();
+    const interval = setInterval(() => {
+      fetchRooms();
+    }, 15000);
+    const onFocus = () => fetchRooms();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchRooms]);
 
   // Fetch initial messages when active room changes
@@ -154,8 +192,8 @@ export function ChatPage() {
         }
       }
 
-      setRooms((prev) =>
-        prev.map((r) => {
+      setRooms((prev) => {
+        const next = prev.map((r) => {
           if (r.id === newMsg.room_id) {
             return {
               ...r,
@@ -166,32 +204,34 @@ export function ChatPage() {
             };
           }
           return r;
-        })
-      );
+        });
+        return sortRoomsByActivity(next);
+      });
     },
-    [activeRoomId, user?.id]
+    [activeRoomId, user?.id, sortRoomsByActivity]
   );
 
   // Handle cross-room live updates
   const handleRoomUpdate = useCallback(
     (roomUpdateData) => {
       const { room_id, last_message, last_message_sender, last_message_at } = roomUpdateData;
-      setRooms((prev) =>
-        prev.map((r) => {
+      setRooms((prev) => {
+        const next = prev.map((r) => {
           if (r.id === room_id) {
             return {
               ...r,
               last_message,
               last_message_sender,
-              last_message_at,
+              last_message_at: last_message_at || new Date().toISOString(),
               unread_count: r.id === activeRoomId ? 0 : (r.unread_count || 0) + 1,
             };
           }
           return r;
-        })
-      );
+        });
+        return sortRoomsByActivity(next);
+      });
     },
-    [activeRoomId]
+    [activeRoomId, sortRoomsByActivity]
   );
 
   // Handle message delivery/read status updates
@@ -287,6 +327,12 @@ export function ChatPage() {
       };
 
       setMessages((prev) => [...prev, optimisticMsg]);
+      // Optimistically move active room to #1 and update preview
+      updateRoomAndSort(activeRoomId, {
+        last_message: trimmed,
+        last_message_sender: user?.name || 'You',
+        last_message_at: optimisticMsg.created_at,
+      });
 
       try {
         const res = await api.post(`/chat/rooms/${activeRoomId}/messages`, {
@@ -297,25 +343,18 @@ export function ChatPage() {
         setMessages((prev) =>
           prev.map((m) => (m.client_id === clientId || m.id === savedMsg.id ? savedMsg : m))
         );
-        setRooms((prev) =>
-          prev.map((r) =>
-            r.id === activeRoomId
-              ? {
-                  ...r,
-                  last_message: savedMsg.message,
-                  last_message_sender: savedMsg.sender.name,
-                  last_message_at: savedMsg.created_at,
-                }
-              : r
-          )
-        );
+        updateRoomAndSort(activeRoomId, {
+          last_message: savedMsg.message,
+          last_message_sender: savedMsg.sender?.name || user?.name || 'You',
+          last_message_at: savedMsg.created_at,
+        });
       } catch (err) {
         console.error('Failed to send message:', err);
         toastError('Failed to send message');
         setMessages((prev) => prev.filter((m) => m.client_id !== clientId));
       }
     },
-    [activeRoomId, user, toastError]
+    [activeRoomId, user, toastError, updateRoomAndSort]
   );
 
   const handleUploadAttachment = useCallback(
@@ -330,13 +369,18 @@ export function ChatPage() {
           if (prev.some((m) => m.id === savedMsg.id)) return prev;
           return [...prev, savedMsg];
         });
+        updateRoomAndSort(activeRoomId, {
+          last_message: '📎 ' + (savedMsg.attachment_filename || 'Attachment'),
+          last_message_sender: savedMsg.sender?.name || user?.name || 'You',
+          last_message_at: savedMsg.created_at,
+        });
         toastSuccess('Attachment uploaded and sent');
       } catch (err) {
         console.error('Failed to upload attachment:', err);
         toastError('Failed to upload file');
       }
     },
-    [activeRoomId, toastError, toastSuccess]
+    [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort]
   );
 
   const handleShareResume = useCallback(
@@ -351,13 +395,18 @@ export function ChatPage() {
           if (prev.some((m) => m.id === savedMsg.id)) return prev;
           return [...prev, savedMsg];
         });
+        updateRoomAndSort(activeRoomId, {
+          last_message: savedMsg.message,
+          last_message_sender: savedMsg.sender?.name || user?.name || 'You',
+          last_message_at: savedMsg.created_at,
+        });
         toastSuccess('Resume shared to chat');
       } catch (err) {
         console.error('Failed to share resume:', err);
         toastError('Failed to share resume');
       }
     },
-    [activeRoomId, toastError, toastSuccess]
+    [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort]
   );
 
   const handleDeleteMessage = useCallback(

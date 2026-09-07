@@ -260,6 +260,56 @@ describe("Chat Module & Durable Objects Tests", () => {
       expect(res.headers.get("x-request-id")).toBe(customId);
     });
 
+    describe("Chat Room Activity Ordering (WhatsApp / Slack / Discord parity)", () => {
+      it("orders chat rooms descending by latest activity timestamp", () => {
+        const mockRooms = [
+          { id: "room-1", client_name: "Client A", created_at: "2026-09-01T10:00:00Z", last_message_at: "2026-09-02T10:00:00Z" },
+          { id: "room-2", client_name: "Client B", created_at: "2026-09-05T10:00:00Z", last_message_at: "2026-09-07T08:00:00Z" },
+          { id: "room-3", client_name: "Client C", created_at: "2026-09-06T10:00:00Z", last_message_at: null },
+        ];
+
+        const sorted = [...mockRooms].sort((a, b) => {
+          const timeA = new Date(a.last_message_at || a.created_at || 0).getTime();
+          const timeB = new Date(b.last_message_at || b.created_at || 0).getTime();
+          return timeB - timeA;
+        });
+
+        // room-2 had latest message (Sept 7), room-3 had created_at (Sept 6), room-1 had latest message (Sept 2)
+        expect(sorted[0].id).toBe("room-2");
+        expect(sorted[1].id).toBe("room-3");
+        expect(sorted[2].id).toBe("room-1");
+      });
+
+      it("promotes older room to position #1 when a new message arrives", () => {
+        const mockRooms = [
+          { id: "room-2", client_name: "Client B", created_at: "2026-09-05T10:00:00Z", last_message_at: "2026-09-07T08:00:00Z" },
+          { id: "room-1", client_name: "Client A", created_at: "2026-09-01T10:00:00Z", last_message_at: "2026-09-02T10:00:00Z" },
+        ];
+
+        // New message arrives in room-1 at 08:30:00Z (after room-2's 08:00:00Z)
+        const updatedRooms = mockRooms.map(r => {
+          if (r.id === "room-1") {
+            return {
+              ...r,
+              last_message: "New incoming message",
+              last_message_at: "2026-09-07T08:30:00Z",
+            };
+          }
+          return r;
+        });
+
+        const sorted = [...updatedRooms].sort((a, b) => {
+          const timeA = new Date(a.last_message_at || a.created_at || 0).getTime();
+          const timeB = new Date(b.last_message_at || b.created_at || 0).getTime();
+          return timeB - timeA;
+        });
+
+        expect(sorted[0].id).toBe("room-1");
+        expect(sorted[0].last_message).toBe("New incoming message");
+        expect(sorted[1].id).toBe("room-2");
+      });
+    });
+
     it("includes request_id in 404 error responses", async () => {
       const res = await app.fetch(new Request("http://localhost/nonexistent-route"), mockEnv);
       expect(res.status).toBe(404);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MessageSquare, Building2, Users, Shield, Clock, Plus } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -36,10 +36,21 @@ export function ChatRoomList({
   const { user, isAdmin, isEmployee, isClient } = useAuth();
   const [search, setSearch] = useState('');
 
+  // Sort rooms descending by last message timestamp (or creation timestamp)
+  const sortedRooms = useMemo(() => {
+    return [...(Array.isArray(rooms) ? rooms : [])].sort((a, b) => {
+      const timeA = new Date(a.last_message_at || a.created_at || 0).getTime();
+      const timeB = new Date(b.last_message_at || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
+  }, [rooms]);
+
   const term = (search || '').toLowerCase();
-  const filteredRooms = (Array.isArray(rooms) ? rooms : []).filter((r) =>
-    (r?.client_name || '').toLowerCase().includes(term)
-  );
+  const filteredRooms = useMemo(() => {
+    return sortedRooms.filter((r) =>
+      (r?.client_name || '').toLowerCase().includes(term)
+    );
+  }, [sortedRooms, term]);
 
   const canCreateClient = isAdmin || user?.role === 'sub_admin';
 

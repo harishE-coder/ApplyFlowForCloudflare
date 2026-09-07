@@ -133,6 +133,13 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
   let allowedClientIds: string[] | null = null;
   if (user.role === "client") {
     allowedClientIds = user.client_id ? [user.client_id] : [];
+  } else if (user.role === "sub_admin") {
+    const assignedClients = await sql`
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
+    `;
+    allowedClientIds = assignedClients.map((r: any) => String(r.client_id));
   } else if (user.role === "employee" || user.role === "recruiter") {
     const assigned = await sql`
       SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
@@ -151,18 +158,34 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
     return c.json({ items: [], total_unread: 0 });
   } else if (allowedClientIds !== null) {
     rooms = await sql`
-      SELECT r.id, r.client_id, c.company_name as client_name, r.status, r.created_at
+      SELECT
+        r.id,
+        r.client_id,
+        c.company_name as client_name,
+        r.status,
+        r.created_at,
+        MAX(m.created_at) as last_message_at
       FROM chat_rooms r
       JOIN clients c ON c.id = r.client_id
+      LEFT JOIN chat_messages m ON m.room_id = r.id
       WHERE r.client_id = ANY(${allowedClientIds})
-      ORDER BY r.created_at DESC
+      GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
+      ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
     `;
   } else {
     rooms = await sql`
-      SELECT r.id, r.client_id, c.company_name as client_name, r.status, r.created_at
+      SELECT
+        r.id,
+        r.client_id,
+        c.company_name as client_name,
+        r.status,
+        r.created_at,
+        MAX(m.created_at) as last_message_at
       FROM chat_rooms r
       JOIN clients c ON c.id = r.client_id
-      ORDER BY r.created_at DESC
+      LEFT JOIN chat_messages m ON m.room_id = r.id
+      GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
+      ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
     `;
   }
 
@@ -199,10 +222,14 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
     const unread = unreadRes[0]?.count || 0;
     totalUnread += unread;
 
+    const lastMsgTime = latestMsg[0]?.created_at || r.last_message_at || null;
+
     items.push({
       id: r.id,
       client_id: r.client_id,
       client_name: r.client_name,
+      status: r.status,
+      created_at: r.created_at,
       participants: participants.map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -210,10 +237,17 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
       })),
       last_message: latestMsg[0]?.message || null,
       last_message_sender: latestMsg[0]?.sender_name || null,
-      last_message_at: latestMsg[0]?.created_at || null,
+      last_message_at: lastMsgTime,
       unread_count: unread,
     });
   }
+
+  // Sort items descending by latest activity timestamp (last_message_at or created_at)
+  items.sort((a, b) => {
+    const timeA = new Date(a.last_message_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.last_message_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
 
   return c.json({ items, total_unread: totalUnread });
 });

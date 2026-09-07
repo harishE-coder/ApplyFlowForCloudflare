@@ -115,7 +115,10 @@ export function RequirementsPage() {
     setPriority('Medium');
     setNotes('');
     setAssignedEmployee('ALL');
-    setClientId(isClient ? user?.client_id || '' : clients[0]?.id || '');
+    setClientId(isClient ? user?.client_id || '' : '');
+    if (!clients || clients.length === 0) {
+      api.get('/clients').then((res) => setClients(res.data || [])).catch(() => {});
+    }
     setIsCreateOpen(true);
   };
 
@@ -641,14 +644,17 @@ export function RequirementsPage() {
                 required
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
+                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
               >
                 <option value="">Select Service Client...</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.company_name}
-                  </option>
-                ))}
+                {clients
+                  .slice()
+                  .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.company_name}
+                    </option>
+                  ))}
               </select>
             </div>
           )}
@@ -675,27 +681,6 @@ export function RequirementsPage() {
             value={jobUrl}
             onChange={(e) => setJobUrl(e.target.value)}
           />
-
-          <div>
-            <label className="text-small font-semibold text-[#081226] block mb-1.5">
-              Assign Recruiter
-            </label>
-            <select
-              value={assignedEmployee}
-              onChange={(e) => setAssignedEmployee(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
-            >
-              <option value="ALL">• All Employees (Global)</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} ({emp.email})
-                </option>
-              ))}
-            </select>
-            <p className="text-caption text-[#64748B] mt-1">
-              "All Employees" makes this job opening visible to every active recruiter.
-            </p>
-          </div>
 
           <div>
             <label className="text-small font-semibold text-[#081226] block mb-1.5">
@@ -764,24 +749,6 @@ export function RequirementsPage() {
             value={editJobUrl}
             onChange={(e) => setEditJobUrl(e.target.value)}
           />
-
-          <div>
-            <label className="text-small font-semibold text-[#081226] block mb-1.5">
-              Assign Recruiter
-            </label>
-            <select
-              value={editAssignedEmployee}
-              onChange={(e) => setEditAssignedEmployee(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
-            >
-              <option value="ALL">• All Employees (Global)</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} ({emp.email})
-                </option>
-              ))}
-            </select>
-          </div>
 
           <div>
             <label className="text-small font-semibold text-[#081226] block mb-1.5">

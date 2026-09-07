@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Search, Send, Check, Building2, Briefcase, Loader2 } from 'lucide-react';
+import { FileText, Search, Send, Check, Building2, Briefcase, Loader2, Tag } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { useAuth } from '@/features/auth/AuthContext';
 import api from '@/services/api';
 
-export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareResume }) {
+export function ResumeShareModal({ isOpen, onClose, roomId, clientId, clientName, onShareResume }) {
+  const { user } = useAuth();
   const [resumes, setResumes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -19,12 +21,28 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
     setCaption('');
     setSearch('');
 
-    // Query the existing Candidate Bank endpoint directly (no duplicate endpoint)
+    const targetClientId = clientId || user?.client_id;
+    const params = { page_size: 100 };
+    if (targetClientId) {
+      params.client_id = targetClientId;
+    }
+
+    // Query existing Candidate Bank endpoint directly (no duplicate endpoint)
     api
-      .get('/resumes', { params: { page_size: 100 } })
+      .get('/resumes', { params })
       .then((res) => {
-        const list = res.data?.items || (Array.isArray(res.data) ? res.data : []);
-        setResumes(list);
+        const rawList = res.data?.items || (Array.isArray(res.data) ? res.data : []);
+        // Guarantee strict deduplication by ID (No Duplication)
+        const seen = new Set();
+        const uniqueList = [];
+        for (const item of rawList) {
+          if (!item || !item.id) continue;
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            uniqueList.push(item);
+          }
+        }
+        setResumes(uniqueList);
       })
       .catch((err) => {
         console.error('Failed to fetch Candidate Bank resumes:', err);
@@ -32,17 +50,24 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
       .finally(() => {
         setLoading(false);
       });
-  }, [isOpen]);
+  }, [isOpen, clientId, user?.client_id]);
 
-  // Enhanced search by Candidate Name, Company, and Role
+  // Enhanced search by Candidate Name, Hiring Organization (company), Role, Tag, and Filename
   const filteredResumes = (Array.isArray(resumes) ? resumes : []).filter((r) => {
     const term = (search || '').toLowerCase().trim();
     if (!term) return true;
     const name = (r?.candidate_name || '').toLowerCase();
     const company = (r?.company || '').toLowerCase();
     const role = (r?.role || r?.role_designation || '').toLowerCase();
+    const tag = (r?.resume_id_tag || '').toLowerCase();
     const filename = (r?.original_filename || '').toLowerCase();
-    return name.includes(term) || company.includes(term) || role.includes(term) || filename.includes(term);
+    return (
+      name.includes(term) ||
+      company.includes(term) ||
+      role.includes(term) ||
+      tag.includes(term) ||
+      filename.includes(term)
+    );
   });
 
   const handleShare = async () => {
@@ -63,16 +88,16 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
       isOpen={isOpen}
       onClose={onClose}
       title="Share Candidate Resume"
-      description={`Select a candidate resume from the Candidate Bank${clientName ? ` for ${clientName}` : ''} to share directly in chat.`}
+      description={`Select a candidate resume from Candidate Bank${clientName ? ` for ${clientName}` : ''} to share directly in chat.`}
       maxWidth="max-w-xl"
     >
       <div className="space-y-4 pt-2">
-        {/* Search by candidate, company, role */}
+        {/* Search by candidate, hiring organization, role, tag */}
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
           <input
             type="text"
-            placeholder="Search candidate, hiring organization, or role..."
+            placeholder="Search candidate, hiring organization, role, or tag..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] text-small font-medium text-[#081226] focus:bg-white focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 transition-all outline-hidden"
@@ -119,9 +144,16 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
                       <FileText className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-small font-semibold text-[#081226] truncate">
-                        {resume.candidate_name || 'Unnamed Candidate'}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-small font-semibold text-[#081226] truncate">
+                          {resume.candidate_name || 'Unnamed Candidate'}
+                        </p>
+                        {resume.resume_id_tag && (
+                          <span className="text-[10px] font-semibold text-[#2563EB] bg-[#EFF6FF] px-1.5 py-0.2 rounded border border-[#BFDBFE]">
+                            {resume.resume_id_tag}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-0.5">
                         <span className="font-medium text-[#2563EB] flex items-center gap-1">
                           <Briefcase className="w-3 h-3 text-[#2563EB]" />
@@ -130,7 +162,7 @@ export function ResumeShareModal({ isOpen, onClose, roomId, clientName, onShareR
                         <span>•</span>
                         <span className="truncate flex items-center gap-1">
                           <Building2 className="w-3 h-3 text-[#94A3B8]" />
-                          {resume.company || 'Direct Ingestion'}
+                          {resume.company || 'Hiring Organization'}
                         </span>
                       </div>
                     </div>

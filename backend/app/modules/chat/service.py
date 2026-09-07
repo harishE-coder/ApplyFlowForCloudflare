@@ -403,7 +403,7 @@ async def send_message(
 
 
 async def share_resume(
-    db: AsyncSession, room_id: uuid.UUID, user: User, resume_id: uuid.UUID
+    db: AsyncSession, room_id: uuid.UUID, user: User, resume_id: uuid.UUID, caption: str | None = None
 ) -> ChatMessageResponse:
     room = await check_room_access(db, user, room_id)
 
@@ -419,7 +419,8 @@ async def share_resume(
             detail="Resume not found or does not belong to this service client.",
         )
 
-    text = f"📄 Shared Candidate: {resume.candidate_name} ({resume.company} – {resume.role})"
+    default_text = f"📄 Shared Candidate: {resume.candidate_name} ({resume.company} – {resume.role})"
+    text = caption.strip() if caption and caption.strip() else default_text
     return await send_message(
         db,
         room_id,

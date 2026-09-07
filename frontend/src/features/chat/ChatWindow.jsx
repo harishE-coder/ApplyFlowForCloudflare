@@ -1029,6 +1029,7 @@ export function ChatWindow({
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
         roomId={room.id}
+        clientId={room.client_id}
         clientName={room.client_name}
         onShareResume={onShareResume}
       />

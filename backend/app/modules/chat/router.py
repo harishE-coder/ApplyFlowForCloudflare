@@ -284,7 +284,7 @@ async def share_resume(
     current_user=Depends(get_current_user),
 ):
     """Share a resume into a chat room."""
-    res = await service.share_resume(db, room_id, current_user, body.resume_id)
+    res = await service.share_resume(db, room_id, current_user, body.resume_id, caption=body.caption)
     room_id_str = str(room_id)
     online_users = manager.get_online_users(room_id_str)
     has_recipients = any(uid != str(current_user.id) for uid in online_users) or any(

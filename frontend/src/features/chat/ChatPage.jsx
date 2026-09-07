@@ -440,10 +440,11 @@ export function ChatPage() {
           last_message_sender: savedMsg.sender?.name || user?.name || 'You',
           last_message_at: savedMsg.created_at,
         });
-        toastSuccess('Resume shared to chat');
+        toastSuccess('Candidate resume shared to chat');
       } catch (err) {
         console.error('Failed to share resume:', err);
-        toastError('Failed to share resume');
+        const detail = err?.response?.data?.detail;
+        toastError(detail ? `Failed to share candidate resume: ${detail}` : 'Failed to share candidate resume');
       }
     },
     [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort]

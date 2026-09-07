@@ -8,7 +8,6 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
-import { useAuth } from '@/features/auth/AuthContext';
 
 const QUICK_EMOJIS = ['👍', '👋', '🎯', '📄', '🚀', '✅', '👏', '🔥', '💼', '⭐', '🤝', '🎉'];
 
@@ -21,7 +20,6 @@ export function ChatInput({
   typingText = '',
   disabled = false,
 }) {
-  const { isClient } = useAuth();
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -187,13 +185,13 @@ export function ChatInput({
             {uploading ? <Loader2 className="w-4 h-4 animate-spin text-[#2563EB]" /> : <Paperclip className="w-4 h-4" />}
           </button>
 
-          {/* Share Resume Button (Employees and Admin only) */}
-          {!isClient && onOpenResumeModal && (
+          {/* Share Candidate Resume Button (Available for all roles including Client) */}
+          {onOpenResumeModal && (
             <button
               type="button"
               onClick={onOpenResumeModal}
               disabled={disabled}
-              title="Share Verified Candidate Resume"
+              title="Share Candidate Resume from Candidate Bank"
               className="p-2 min-h-[40px] min-w-[40px] sm:min-h-[44px] sm:min-w-[44px] flex items-center justify-center text-[#64748B] hover:text-[#F97316] hover:bg-[#F97316]/10 rounded-xl transition-colors cursor-pointer"
             >
               <FileText className="w-4 h-4" />

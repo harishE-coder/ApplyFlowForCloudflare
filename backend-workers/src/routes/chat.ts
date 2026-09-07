@@ -234,7 +234,7 @@ chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
       messages = await sql`
         SELECT
           m.id, m.room_id, m.sender_id, m.message, m.attachment_type,
-          m.attachment_reference, m.attachment_filename, m.client_message_id,
+          m.attachment_reference,
           m.created_at, m.edited_at,
           u.name as sender_name, u.role as sender_role
         FROM chat_messages m
@@ -250,7 +250,7 @@ chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
     messages = await sql`
       SELECT
         m.id, m.room_id, m.sender_id, m.message, m.attachment_type,
-        m.attachment_reference, m.attachment_filename, m.client_message_id,
+        m.attachment_reference,
         m.created_at, m.edited_at,
         u.name as sender_name, u.role as sender_role
       FROM chat_messages m
@@ -277,10 +277,10 @@ chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
       role: m.sender_role || "user",
     },
     message: m.message,
-    attachment_type: m.attachment_type,
-    attachment_reference: m.attachment_reference,
-    attachment_filename: m.attachment_filename,
-    client_id: m.client_message_id,
+    attachment_type: m.attachment_type || null,
+    attachment_reference: m.attachment_reference || null,
+    attachment_filename: null,
+    client_id: null,
     status: "delivered",
     created_at: m.created_at,
     edited_at: m.edited_at,
@@ -317,52 +317,15 @@ chatRouter.post("/rooms/:room_id/messages", requireAuth, async (c) => {
   const clientMessageId = client_message_id || client_id || null;
   const sql = getDb(c.env.DATABASE_URL);
 
-  // Message Idempotency: Prevent duplicate messages from network retries or double-clicks
-  if (clientMessageId) {
-    const existing = await sql`
-      SELECT
-        m.id, m.room_id, m.sender_id, m.message, m.attachment_type,
-        m.attachment_reference, m.attachment_filename, m.client_message_id,
-        m.created_at, m.edited_at,
-        u.name as sender_name, u.role as sender_role
-      FROM chat_messages m
-      LEFT JOIN users u ON u.id = m.sender_id
-      WHERE m.room_id = ${roomId} AND m.client_message_id = ${clientMessageId}
-      LIMIT 1
-    `;
-
-    if (existing.length > 0) {
-      const m = existing[0];
-      return c.json({
-        id: m.id,
-        room_id: m.room_id,
-        sender: {
-          id: m.sender_id,
-          name: m.sender_name || user.name,
-          role: m.sender_role || user.role,
-        },
-        message: m.message,
-        attachment_type: m.attachment_type,
-        attachment_reference: m.attachment_reference,
-        attachment_filename: m.attachment_filename,
-        client_id: m.client_message_id,
-        status: "sent",
-        created_at: m.created_at,
-        edited_at: m.edited_at,
-        is_deleted: false,
-      });
-    }
-  }
-
   // STEP 1: Insert into Neon PostgreSQL (Source of Truth)
   const messageId = crypto.randomUUID();
   await sql`
     INSERT INTO chat_messages (
       id, room_id, sender_id, message, attachment_type,
-      attachment_reference, attachment_filename, client_message_id, created_at
+      attachment_reference, created_at
     ) VALUES (
       ${messageId}, ${roomId}, ${user.id}, ${message}, ${attachment_type || null},
-      ${attachment_reference || null}, ${attachment_filename || null}, ${clientMessageId}, NOW()
+      ${attachment_reference || null}, NOW()
     )
   `;
 
@@ -477,10 +440,10 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
   await sql`
     INSERT INTO chat_messages (
       id, room_id, sender_id, message, attachment_type,
-      attachment_reference, attachment_filename, created_at
+      attachment_reference, created_at
     ) VALUES (
       ${messageId}, ${roomId}, ${user.id}, ${messageText}, 'resume',
-      ${resumeId}, ${res.original_filename}, NOW()
+      ${resumeId}, NOW()
     )
   `;
 
@@ -514,6 +477,65 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
     } catch (err) {
       console.warn("DO broadcast warning:", err);
     }
+  }
+
+  return c.json(formattedMessage);
+});
+
+// 9b. POST /api/chat/rooms/:room_id/attachment
+chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const formData = await c.req.formData().catch(() => null);
+
+  const file = formData?.get("file");
+  if (!file || !(file instanceof File)) {
+    return c.json({ detail: "No file provided in 'file' form field." }, 400);
+  }
+
+  const sql = getDb(c.env.DATABASE_URL);
+  const messageText = `Sent attachment: ${file.name}`;
+  const messageId = crypto.randomUUID();
+
+  await sql`
+    INSERT INTO chat_messages (
+      id, room_id, sender_id, message, attachment_type,
+      attachment_reference, created_at
+    ) VALUES (
+      ${messageId}, ${roomId}, ${user.id}, ${messageText}, 'file',
+      ${file.name}, NOW()
+    )
+  `;
+
+  const formattedMessage = {
+    id: messageId,
+    room_id: roomId,
+    sender: {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+    },
+    message: messageText,
+    attachment_type: "file",
+    attachment_reference: file.name,
+    attachment_filename: file.name,
+    client_id: null,
+    status: "sent",
+    created_at: new Date().toISOString(),
+    edited_at: null,
+    is_deleted: false,
+  };
+
+  if (c.env.CHAT_ROOMS) {
+    try {
+      const doId = c.env.CHAT_ROOMS.idFromName(roomId);
+      const stub = c.env.CHAT_ROOMS.get(doId);
+      await stub.fetch("http://do/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "new_message", message: formattedMessage }),
+      });
+    } catch {}
   }
 
   return c.json(formattedMessage);

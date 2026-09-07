@@ -18,7 +18,6 @@ import {
   Sparkles,
   X,
   Mail,
-  BrainCircuit,
 } from 'lucide-react';
 import { ApplyFlowLogo } from '@/assets/logo/ApplyFlowLogo';
 import { Avatar } from '@/components/ui/Avatar';
@@ -123,14 +122,6 @@ export function Sidebar({
           path: '/reports',
           icon: BarChart3,
           roles: ['admin', 'sub_admin', 'employee', 'client'],
-        },
-        {
-          label: 'AI Intelligence',
-          path: '/interview-intelligence',
-          icon: BrainCircuit,
-          badge: 'v2.0',
-          badgeColor: 'blue',
-          roles: ['admin', 'sub_admin', 'employee'],
         },
         {
           label: 'Notifications',

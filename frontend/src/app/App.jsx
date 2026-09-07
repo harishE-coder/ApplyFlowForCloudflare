@@ -21,7 +21,6 @@ const ReportsPage = lazy(() => import('@/features/reports/ReportsPage').then((m)
 const NotificationsPage = lazy(() => import('@/features/notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
 const ChatPage = lazy(() => import('@/features/chat/ChatPage').then((m) => ({ default: m.ChatPage })));
 const PerformanceDashboardPage = lazy(() => import('@/features/admin/PerformanceDashboardPage').then((m) => ({ default: m.PerformanceDashboardPage })));
-const InterviewIntelligencePage = lazy(() => import('@/features/admin/InterviewIntelligencePage').then((m) => ({ default: m.InterviewIntelligencePage })));
 
 function PageSuspenseFallback() {
   return (
@@ -143,14 +142,7 @@ export function App() {
                       </ProtectedRoute>
                     }
                   />
-                  <Route
-                    path="interview-intelligence"
-                    element={
-                      <ProtectedRoute allowedRoles={['admin', 'sub_admin', 'employee']}>
-                        <InterviewIntelligencePage />
-                      </ProtectedRoute>
-                    }
-                  />
+                  <Route path="interview-intelligence" element={<Navigate to="/dashboard" replace />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Routes>

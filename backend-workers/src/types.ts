@@ -16,6 +16,9 @@ export interface Bindings {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   AI_PROVIDER?: string;
+  GROQ_API_KEY_1?: string;
+  GROQ_API_KEY_2?: string;
+  GROQ_API_KEY_3?: string;
   GROQ_API_KEY?: string;
   GROQ_MODEL?: string;
   OPENAI_API_KEY?: string;

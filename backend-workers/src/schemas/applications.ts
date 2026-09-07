@@ -9,6 +9,7 @@ export const ApplicationCreateSchema = z.object({
   resume_id: z.string().uuid("Invalid resume UUID"),
   requirement_id: z.string().uuid().nullable().optional(),
   client_id: z.string().uuid().nullable().optional(),
+  employee_id: z.string().uuid().nullable().optional(),
   status: z.string().default("Submitted"),
   current_round: z.string().nullable().optional().default("Initial Application"),
 });

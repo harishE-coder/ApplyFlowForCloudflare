@@ -17,6 +17,8 @@ import { requireAuth } from "../middleware/auth";
 import { GroqAnalysisSchema, type GroqAnalysis } from "../schemas/ai";
 import type { Bindings, UserPayload, Variables } from "../types";
 
+import { callAiGateway } from "../services/aiGateway";
+
 export const aiRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // All AI endpoints require authentication
@@ -163,97 +165,15 @@ export async function extractTextFromFile(file: File): Promise<string> {
 }
 
 /**
- * Calls Groq AI with model fallback and JSON mode.
+ * Backward-compatibility wrapper for legacy callers and tests.
+ * Internally delegates to the single source of truth: callAiGateway.
  */
 export async function callGroqAi(
   apiKey: string,
   documentText: string,
   modelOverride?: string
 ): Promise<GroqAnalysis> {
-  const modelsToTry = [
-    modelOverride,
-    "openai/gpt-oss-20b",
-    "qwen/qwen3.8-27b",
-    "openai/gpt-oss-120b",
-  ].filter(Boolean) as string[];
-
-  const prompt = `You are an expert ATS recruitment and resume parser AI. Analyze the following document (resume or interview update email) and extract candidate, skill, and interview details.
-
-Return ONLY valid JSON matching this schema with no markdown formatting, no code fences, and no extra text:
-{
-  "candidate_name": "Full name of candidate",
-  "email": "Email address or empty string",
-  "phone": "Phone number or empty string",
-  "skills": ["Array", "of", "skills"],
-  "experience_years": 0,
-  "education": "Highest degree or university or empty string",
-  "current_company": "Current or latest employer or hiring company",
-  "summary": "Brief 1-2 sentence executive summary",
-  "confidence": 0.92,
-  "role": "Role or designation or title",
-  "company": "Target company name or hiring company",
-  "round": "Interview round (e.g. Screening, Technical, HR, Final)",
-  "status": "applied or interview or offer or rejected",
-  "interview_date": "YYYY-MM-DD if scheduled, else empty string",
-  "is_interview_mail": true
-}
-
-Document Content:
-${documentText.slice(0, 8000)}`;
-
-  let lastError: any = null;
-
-  for (const model of modelsToTry) {
-    try {
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "system",
-              content: "You are a specialized recruitment information extraction engine that strictly returns valid JSON matching the requested schema with no markdown.",
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          temperature: 0.1,
-          response_format: { type: "json_object" },
-        }),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        lastError = new Error(`GROQ API responded with HTTP ${res.status}: ${errText.slice(0, 200)}`);
-        continue;
-      }
-
-      const json: any = await res.json();
-      const rawContent = json?.choices?.[0]?.message?.content || "{}";
-      let parsed: any;
-
-      try {
-        parsed = JSON.parse(rawContent);
-      } catch {
-        // Strip fences if any
-        const clean = rawContent.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
-        parsed = JSON.parse(clean);
-      }
-
-      // Validate with Zod schema
-      return GroqAnalysisSchema.parse(parsed);
-    } catch (err: any) {
-      lastError = err;
-    }
-  }
-
-  throw lastError || new Error("Failed to communicate with Groq AI service.");
+  return callAiGateway({ GROQ_API_KEY: apiKey } as any, documentText, modelOverride);
 }
 
 /**
@@ -439,17 +359,13 @@ aiRouter.post("/analyze-email", async (c) => {
     return c.json({ detail: "raw_email is required (minimum 5 characters)." }, 400);
   }
 
-  const groqApiKey = c.env.GROQ_API_KEY;
-  if (!groqApiKey || !groqApiKey.trim()) {
-    return c.json({ detail: "Groq AI service is not configured (missing GROQ_API_KEY)." }, 502);
-  }
-
   let analysis: GroqAnalysis;
   try {
-    analysis = await callGroqAi(groqApiKey.trim(), rawEmail, c.env.GROQ_MODEL);
+    analysis = await callAiGateway(c.env, rawEmail, c.env.GROQ_MODEL);
   } catch (err: any) {
-    console.error("[Groq Analyze Email Error]", err.message);
-    return c.json({ detail: `Groq AI service failure: ${err.message}` }, 502);
+    console.error("[AI Analyze Email Error]", err.message);
+    const prefix = err?.message?.includes("Groq") ? "Groq AI service failure" : "AI service failure";
+    return c.json({ detail: `${prefix}: ${err.message}` }, 502);
   }
 
   if (analysis.is_interview_mail === false) {
@@ -578,10 +494,10 @@ aiRouter.post("/analyze-email", async (c) => {
 });
 
 /**
- * 3. POST /api/ai/confirm-save
+ * 3. POST /api/ai/confirm-save and /api/ai/process-email
  * Phase 2: Persist verified application and log events.
  */
-aiRouter.post("/confirm-save", async (c) => {
+const confirmSaveHandler = async (c: any) => {
   const user = c.get("user");
   const payload = await c.req.json().catch(() => ({}));
 
@@ -760,18 +676,15 @@ aiRouter.post("/confirm-save", async (c) => {
     console.error("[Confirm Save Error]", err);
     return c.json({ detail: `Failed to confirm and save: ${err.message}` }, 500);
   }
-});
+};
 
-// Alias for direct processing
-aiRouter.post("/process-email", async (c) => {
-  const req = new Request(c.req.url.replace("/ai/process-email", "/ai/confirm-save"), c.req.raw);
-  return aiRouter.fetch(req, c.env, c.executionCtx);
-});
+aiRouter.post("/confirm-save", confirmSaveHandler);
+aiRouter.post("/process-email", confirmSaveHandler);
 
 /**
- * 4. POST /api/ai/analyze-file
+ * 4. POST /api/ai/analyze-file, /api/ai/parse-resume, /api/ai/intake
  */
-aiRouter.post("/analyze-file", async (c) => {
+const analyzeFileHandler = async (c: any) => {
   const reqId = c.get("requestId") || c.req.header("X-Request-Id") || "unknown";
 
   try {
@@ -875,25 +788,15 @@ aiRouter.post("/analyze-file", async (c) => {
       );
     }
 
-    const groqApiKey = c.env.GROQ_API_KEY;
-    if (!groqApiKey || typeof groqApiKey !== "string" || !groqApiKey.trim()) {
-      return c.json(
-        {
-          detail: "Groq AI service is not configured (missing GROQ_API_KEY).",
-          request_id: reqId,
-        },
-        502
-      );
-    }
-
     let analysis: GroqAnalysis;
     try {
-      analysis = await callGroqAi(groqApiKey.trim(), extractedText, c.env.GROQ_MODEL);
+      analysis = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL);
     } catch (err: any) {
-      console.error("[Groq AI Intake Error]", err.message);
+      console.error("[AI Intake Error]", err.message);
+      const prefix = err?.message?.includes("Groq") ? "Groq AI service failure" : "AI service failure";
       return c.json(
         {
-          detail: `Groq AI service failure: ${err.message}`,
+          detail: `${prefix}: ${err.message}`,
           request_id: reqId,
         },
         502
@@ -994,6 +897,10 @@ aiRouter.post("/analyze-file", async (c) => {
       500
     );
   }
-});
+};
+
+aiRouter.post("/analyze-file", analyzeFileHandler);
+aiRouter.post("/parse-resume", analyzeFileHandler);
+aiRouter.post("/intake", analyzeFileHandler);
 
 export default aiRouter;

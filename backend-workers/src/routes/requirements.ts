@@ -284,12 +284,12 @@ requirementsRouter.post("/", async (c) => {
     INSERT INTO requirements (
       id, client_id, company, job_title, role, role_code, job_url,
       priority, notes, status, assignment_type, assigned_employee_id,
-      created_by, created_at, updated_at
+      created_by, created_at
     ) VALUES (
       ${reqId}, ${effectiveClientId}, ${payload.company}, ${jobTitle}, ${role},
       ${roleCode}, ${payload.job_url || null}, ${payload.priority || "Medium"},
       ${payload.notes || null}, ${payload.status || "active"}, ${assignmentType},
-      ${assignedEmployeeId}, ${user.id}, NOW(), NOW()
+      ${assignedEmployeeId}, ${user.id}, NOW()
     )
     RETURNING *
   `;
@@ -370,8 +370,7 @@ const updateRequirementHandler = async (c: any) => {
       notes = ${notesVal},
       status = ${statusVal},
       assignment_type = ${assignTypeVal},
-      assigned_employee_id = ${assignEmpIdVal},
-      updated_at = NOW()
+      assigned_employee_id = ${assignEmpIdVal}
     WHERE id = ${reqId}
     RETURNING *
   `;
@@ -408,8 +407,7 @@ const markDoneHandler = async (c: any) => {
     UPDATE requirements SET
       status = 'done',
       completed_by = ${user.id},
-      completed_at = NOW(),
-      updated_at = NOW()
+      completed_at = NOW()
     WHERE id = ${reqId}
     RETURNING *
   `;
@@ -442,8 +440,7 @@ requirementsRouter.post("/:req_id/reopen", async (c) => {
     UPDATE requirements SET
       status = 'active',
       completed_by = NULL,
-      completed_at = NULL,
-      updated_at = NOW()
+      completed_at = NULL
     WHERE id = ${reqId}
     RETURNING id
   `;
@@ -470,8 +467,7 @@ requirementsRouter.post("/:req_id/archive", async (c) => {
 
   const [updated] = await sql`
     UPDATE requirements SET
-      status = 'archived',
-      updated_at = NOW()
+      status = 'archived'
     WHERE id = ${reqId}
     RETURNING id
   `;

@@ -154,5 +154,23 @@ describe("Dashboard Module Parity Tests", () => {
       expect(calculateTrend(5, 5)).toBe(0);
     });
   });
+
+  describe("Active vs Inactive Recruiter Target Filtering Tests", () => {
+    it("7-day trend distributes only active target sum across the days", async () => {
+      const mockSql = async () => [
+        { date: "2026-09-01", uploads: 10, applications: 5 },
+        { date: "2026-09-02", uploads: 12, applications: 8 },
+      ];
+      // When active target sum is 49 (excluding inactive recruiter's 33)
+      const trend49 = await getSevenDayTrend(mockSql, 49);
+      expect(trend49[0].target).toBe(Math.round(49 / 7)); // 7 per day
+
+      // If inactive 33 were erroneously included (82)
+      const trend82 = await getSevenDayTrend(mockSql, 82);
+      expect(trend82[0].target).toBe(Math.round(82 / 7)); // 12 per day
+      expect(trend49[0].target).not.toBe(trend82[0].target);
+    });
+  });
 });
+
 

@@ -184,9 +184,11 @@ employeesRouter.get("/employees", requireRoles("super_admin", "admin", "sub_admi
       GROUP BY employee_id
     `,
     sql`
-      SELECT employee_id, sum(daily_target)::int as sum
+      SELECT employee_id, 
+             COALESCE(SUM(CASE WHEN status = 'active' THEN daily_target ELSE 0 END), 0)::int as active_sum,
+             COALESCE(SUM(daily_target), 0)::int as total_sum
       FROM targets
-      WHERE employee_id = ANY(${empIds}) AND status = 'active'
+      WHERE employee_id = ANY(${empIds})
       GROUP BY employee_id
     `,
   ]);
@@ -195,12 +197,21 @@ employeesRouter.get("/employees", requireRoles("super_admin", "admin", "sub_admi
   const resTodayMap = Object.fromEntries(resumesToday.map((r: any) => [String(r.employee_id), Number(r.count)]));
   const appsTotalMap = Object.fromEntries(appsTotal.map((r: any) => [String(r.employee_id), Number(r.count)]));
   const appsTodayMap = Object.fromEntries(appsToday.map((r: any) => [String(r.employee_id), Number(r.count)]));
-  const targetsMap = Object.fromEntries(targetsSum.map((r: any) => [String(r.employee_id), Number(r.sum)]));
+  const targetsMap = Object.fromEntries(
+    targetsSum.map((r: any) => [
+      String(r.employee_id),
+      { active_sum: Number(r.active_sum), total_sum: Number(r.total_sum) }
+    ])
+  );
 
   const performanceList = empRows.map((e) => {
     const eid = String(e.id);
     const todayApps = appsTodayMap[eid] || 0;
-    const dailyTarget = targetsMap[eid] || 0;
+    const isUserActive = Boolean(e.is_active) && (e.status === "active" || !e.status);
+    const tData = targetsMap[eid] || { active_sum: 0, total_sum: 0 };
+    const dailyTarget = isUserActive ? tData.active_sum : 0;
+    const configuredTarget = tData.total_sum;
+    const isTargetPaused = !isUserActive || (tData.active_sum === 0 && configuredTarget > 0);
     const completionPct = dailyTarget > 0 ? Math.min(100, Math.round((todayApps / dailyTarget) * 1000) / 10) : 0.0;
 
     return {
@@ -216,6 +227,8 @@ employeesRouter.get("/employees", requireRoles("super_admin", "admin", "sub_admi
       total_applications: appsTotalMap[eid] || 0,
       today_applications: todayApps,
       daily_target: dailyTarget,
+      configured_target: configuredTarget,
+      is_target_paused: isTargetPaused,
       completion_percentage: completionPct,
     };
   });
@@ -433,6 +446,12 @@ const updateUserHandler = async (c: any) => {
     RETURNING id, name, email, phone, role, status, client_id, managed_by, is_active, created_at
   `;
 
+  if (statusVal === "inactive" || statusVal === "archived" || isActiveVal === false) {
+    await sql`UPDATE targets SET status = 'paused' WHERE employee_id = ${userId} AND status = 'active'`;
+  } else if (statusVal === "active" && isActiveVal === true) {
+    await sql`UPDATE targets SET status = 'active' WHERE employee_id = ${userId} AND status = 'paused'`;
+  }
+
   if (payload.assigned_client_ids) {
     await sql`UPDATE employee_clients SET active = false WHERE employee_id = ${userId}`;
     for (const cid of payload.assigned_client_ids) {
@@ -486,6 +505,9 @@ const activateUserHandler = async (c: any) => {
     return c.json({ detail: "User not found" }, 404);
   }
 
+  // Resume paused targets for activated recruiter
+  await sql`UPDATE targets SET status = 'active' WHERE employee_id = ${userId} AND status = 'paused'`;
+
   await sql`
     INSERT INTO activity_logs (id, user_id, action, details, created_at)
     VALUES (${crypto.randomUUID()}, ${user.id}, 'user_activated', ${JSON.stringify({ user_id: userId })}, NOW())
@@ -521,6 +543,9 @@ const deactivateUserHandler = async (c: any) => {
     return c.json({ detail: "User not found" }, 404);
   }
 
+  // Pause active targets for deactivated recruiter
+  await sql`UPDATE targets SET status = 'paused' WHERE employee_id = ${userId} AND status = 'active'`;
+
   await sql`
     INSERT INTO activity_logs (id, user_id, action, details, created_at)
     VALUES (${crypto.randomUUID()}, ${user.id}, 'user_deactivated', ${JSON.stringify({ user_id: userId })}, NOW())
@@ -555,6 +580,9 @@ const archiveUserHandler = async (c: any) => {
   if (!updated) {
     return c.json({ detail: "User not found" }, 404);
   }
+
+  // Pause active targets for archived recruiter
+  await sql`UPDATE targets SET status = 'paused' WHERE employee_id = ${userId} AND status = 'active'`;
 
   await sql`
     INSERT INTO activity_logs (id, user_id, action, details, created_at)

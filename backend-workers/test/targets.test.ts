@@ -109,5 +109,20 @@ describe("Targets Module Tests", () => {
       );
       expect(res.status).toBe(401);
     });
+
+    it("validates TargetSetRequestSchema allows status='paused'", () => {
+      const pausedTarget = {
+        employee_id: "550e8400-e29b-41d4-a716-446655440000",
+        client_id: "550e8400-e29b-41d4-a716-446655440001",
+        daily_target: 33,
+        status: "paused" as const,
+      };
+      const result = TargetSetRequestSchema.safeParse(pausedTarget);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.status).toBe("paused");
+      }
+    });
   });
 });
+

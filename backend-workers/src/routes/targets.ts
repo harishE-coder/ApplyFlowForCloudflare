@@ -124,6 +124,17 @@ targetsRouter.post("/", requireRoles("super_admin", "admin", "sub_admin"), async
     }
   }
 
+  // Verify recruiter exists and is active
+  const [targetEmployee] = await sql`
+    SELECT id, name, status, is_active FROM users WHERE id = ${employee_id} LIMIT 1
+  `;
+  if (!targetEmployee) {
+    return c.json({ detail: "Recruiter not found" }, 404);
+  }
+  if (status === "active" && (!targetEmployee.is_active || targetEmployee.status !== "active")) {
+    return c.json({ detail: "Cannot assign active targets to an inactive or archived recruiter." }, 400);
+  }
+
   // Check existing target
   const existing = await sql`
     SELECT id FROM targets

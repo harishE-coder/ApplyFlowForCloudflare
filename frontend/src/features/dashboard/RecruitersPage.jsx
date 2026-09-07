@@ -411,12 +411,28 @@ export function RecruitersPage() {
     {
       title: 'Daily Target',
       key: 'daily_target',
-      render: (val) => (
-        <div className="flex items-center gap-2">
-          <span className="text-h3 font-extrabold text-[#FF8A00]">{val ?? 0}</span>
-          <span className="text-caption text-[#64748B]">apps / day</span>
-        </div>
-      ),
+      render: (val, row) => {
+        const isInactive = !row.is_active || row.status === 'inactive' || row.status === 'archived';
+        const displayVal = row.configured_target ?? val ?? 0;
+
+        if (isInactive) {
+          return (
+            <div className="flex items-center gap-2">
+              <span className="text-h3 font-extrabold text-[#94A3B8]">{displayVal}</span>
+              <span className="text-caption font-semibold px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]">
+                Paused (Inactive)
+              </span>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-h3 font-extrabold text-[#FF8A00]">{val ?? 0}</span>
+            <span className="text-caption text-[#64748B]">apps / day</span>
+          </div>
+        );
+      },
     },
     {
       title: "Today's Submissions",

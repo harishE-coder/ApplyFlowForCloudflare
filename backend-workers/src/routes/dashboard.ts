@@ -32,9 +32,13 @@ async function resolveDashboardScope(
         SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
       `,
       sql`
-        SELECT employee_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND employee_id IS NOT NULL
+        SELECT saa.employee_id 
+        FROM sub_admin_assignments saa
+        JOIN users u ON saa.employee_id = u.id
+        WHERE saa.sub_admin_id = ${user.id} AND saa.active = true AND saa.employee_id IS NOT NULL
+          AND u.is_active = true AND u.status = 'active'
         UNION
-        SELECT id as employee_id FROM users WHERE managed_by = ${user.id}
+        SELECT id as employee_id FROM users WHERE managed_by = ${user.id} AND is_active = true AND status = 'active'
       `,
     ]);
     return {
@@ -156,14 +160,46 @@ dashboardRouter.get("/admin/home", async (c) => {
         ? sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active' AND client_id = ANY(${targetClientIds})`
         : sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active'`,
       targetEmployeeIds !== null
-        ? sql`SELECT count(*)::int as c FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true AND id = ANY(${targetEmployeeIds})`
-        : sql`SELECT count(*)::int as c FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true`,
-      sql`SELECT count(*)::int as c FROM users WHERE role = 'sub_admin' AND is_active = true`,
+        ? (targetEmployeeIds.length > 0
+            ? sql`SELECT count(*)::int as c FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true AND status = 'active' AND id = ANY(${targetEmployeeIds})`
+            : [{ c: 0 }])
+        : sql`SELECT count(*)::int as c FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true AND status = 'active'`,
+      sql`SELECT count(*)::int as c FROM users WHERE role = 'sub_admin' AND is_active = true AND status = 'active'`,
       getResumeStats(sql, { targetClientIds, targetEmployeeIds }, dateRange, customDate),
       getApplicationStats(sql, { targetClientIds, targetEmployeeIds }, dateRange, customDate),
-      targetEmployeeIds !== null
-        ? sql`SELECT COALESCE(SUM(daily_target), 0)::int as c FROM targets WHERE status = 'active' AND employee_id = ANY(${targetEmployeeIds})`
-        : sql`SELECT COALESCE(SUM(daily_target), 0)::int as c FROM targets WHERE status = 'active'`,
+      (targetEmployeeIds !== null && targetEmployeeIds.length === 0) || (targetClientIds !== null && targetClientIds.length === 0)
+        ? [{ c: 0 }]
+        : targetEmployeeIds !== null && targetClientIds !== null
+        ? sql`
+            SELECT COALESCE(SUM(t.daily_target), 0)::int as c 
+            FROM targets t 
+            JOIN users u ON t.employee_id = u.id 
+            WHERE t.status = 'active' AND u.is_active = true AND u.status = 'active'
+              AND t.employee_id = ANY(${targetEmployeeIds})
+              AND t.client_id = ANY(${targetClientIds})
+          `
+        : targetEmployeeIds !== null
+        ? sql`
+            SELECT COALESCE(SUM(t.daily_target), 0)::int as c 
+            FROM targets t 
+            JOIN users u ON t.employee_id = u.id 
+            WHERE t.status = 'active' AND u.is_active = true AND u.status = 'active'
+              AND t.employee_id = ANY(${targetEmployeeIds})
+          `
+        : targetClientIds !== null
+        ? sql`
+            SELECT COALESCE(SUM(t.daily_target), 0)::int as c 
+            FROM targets t 
+            JOIN users u ON t.employee_id = u.id 
+            WHERE t.status = 'active' AND u.is_active = true AND u.status = 'active'
+              AND t.client_id = ANY(${targetClientIds})
+          `
+        : sql`
+            SELECT COALESCE(SUM(t.daily_target), 0)::int as c 
+            FROM targets t 
+            JOIN users u ON t.employee_id = u.id 
+            WHERE t.status = 'active' AND u.is_active = true AND u.status = 'active'
+          `,
       targetClientIds !== null
         ? sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active' AND client_id = ANY(${targetClientIds})`
         : sql`SELECT count(*)::int as c FROM requirements WHERE status = 'active'`,
@@ -222,11 +258,26 @@ dashboardRouter.get("/admin/home", async (c) => {
         ? sql`SELECT id, company_name FROM clients WHERE is_active = true AND id = ANY(${scope.allowedClientIds}) ORDER BY company_name ASC`
         : sql`SELECT id, company_name FROM clients WHERE is_active = true ORDER BY company_name ASC`,
       scope.allowedEmployeeIds !== null
-        ? sql`SELECT id, id as employee_id, name, email FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true AND id = ANY(${scope.allowedEmployeeIds}) ORDER BY name ASC`
-        : sql`SELECT id, id as employee_id, name, email FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true ORDER BY name ASC`,
+        ? (scope.allowedEmployeeIds.length > 0
+            ? sql`SELECT id, id as employee_id, name, email FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true AND status = 'active' AND id = ANY(${scope.allowedEmployeeIds}) ORDER BY name ASC`
+            : [])
+        : sql`SELECT id, id as employee_id, name, email FROM users WHERE role IN ('employee', 'recruiter') AND is_active = true AND status = 'active' ORDER BY name ASC`,
       scope.allowedClientIds !== null
-        ? sql`SELECT id, employee_id, client_id, daily_target, status FROM targets WHERE status = 'active' AND client_id = ANY(${scope.allowedClientIds})`
-        : sql`SELECT id, employee_id, client_id, daily_target, status FROM targets WHERE status = 'active'`,
+        ? (scope.allowedClientIds.length > 0
+            ? sql`
+                SELECT t.id, t.employee_id, t.client_id, t.daily_target, t.status 
+                FROM targets t
+                JOIN users u ON t.employee_id = u.id
+                WHERE t.status = 'active' AND u.is_active = true AND u.status = 'active'
+                  AND t.client_id = ANY(${scope.allowedClientIds})
+              `
+            : [])
+        : sql`
+            SELECT t.id, t.employee_id, t.client_id, t.daily_target, t.status 
+            FROM targets t
+            JOIN users u ON t.employee_id = u.id
+            WHERE t.status = 'active' AND u.is_active = true AND u.status = 'active'
+          `,
     ]);
 
     // 5. Team performance list - using shared getTeamPerformanceMaps
@@ -250,7 +301,16 @@ dashboardRouter.get("/admin/home", async (c) => {
             selectedAppsMap: {},
           } as TeamPerformanceMaps),
       empIds.length > 0
-        ? sql`SELECT employee_id, COALESCE(SUM(daily_target), 0)::int as target FROM targets WHERE employee_id = ANY(${empIds}) AND status = 'active' GROUP BY employee_id`
+        ? sql`
+            SELECT t.employee_id, COALESCE(SUM(t.daily_target), 0)::int as target 
+            FROM targets t 
+            JOIN users u ON t.employee_id = u.id 
+            WHERE t.employee_id = ANY(${empIds}) 
+              AND t.status = 'active' 
+              AND u.is_active = true 
+              AND u.status = 'active' 
+            GROUP BY t.employee_id
+          `
         : [],
       empIds.length > 0
         ? sql`SELECT ec.employee_id, c.id, c.company_name FROM employee_clients ec JOIN clients c ON ec.client_id = c.id WHERE ec.employee_id = ANY(${empIds}) AND ec.active = true`
@@ -334,7 +394,16 @@ dashboardRouter.get("/admin/home", async (c) => {
         ? sql`SELECT client_id, count(*)::int as count FROM applications WHERE client_id = ANY(${clientIds}) GROUP BY client_id`
         : [],
       clientIds.length > 0
-        ? sql`SELECT client_id, count(DISTINCT employee_id)::int as count FROM employee_clients WHERE client_id = ANY(${clientIds}) AND active = true GROUP BY client_id`
+        ? sql`
+            SELECT ec.client_id, count(DISTINCT ec.employee_id)::int as count 
+            FROM employee_clients ec
+            JOIN users u ON ec.employee_id = u.id
+            WHERE ec.client_id = ANY(${clientIds}) 
+              AND ec.active = true 
+              AND u.is_active = true 
+              AND u.status = 'active'
+            GROUP BY ec.client_id
+          `
         : [],
     ]);
 
@@ -624,7 +693,15 @@ const employeeDashboardHandler = async (c: any) => {
     const [uploadStats, appStats, targetRes, assignedClientsRows, recentResumesRows] = await Promise.all([
       getResumeStats(sql, { employeeId: user.id }, dateRange, customDate),
       getApplicationStats(sql, { employeeId: user.id }, dateRange, customDate),
-      sql`SELECT COALESCE(SUM(daily_target), 0)::int as c FROM targets WHERE employee_id = ${user.id} AND status = 'active'`,
+      sql`
+        SELECT COALESCE(SUM(t.daily_target), 0)::int as c 
+        FROM targets t
+        JOIN users u ON t.employee_id = u.id
+        WHERE t.employee_id = ${user.id} 
+          AND t.status = 'active' 
+          AND u.is_active = true 
+          AND u.status = 'active'
+      `,
       sql`SELECT ec.client_id as id, c.company_name FROM employee_clients ec JOIN clients c ON ec.client_id = c.id WHERE ec.employee_id = ${user.id} AND ec.active = true`,
       sql`
         SELECT

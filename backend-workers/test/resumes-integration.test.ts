@@ -637,5 +637,36 @@ describe("Resume Endpoints Integration with Google Apps Script Storage", () => {
       const data = await res.json();
       expect(data.detail).toContain("No resume file uploaded");
     });
+
+    it("formatISTDate correctly formats Date objects, ISO strings, and detects same-day vs backfilled", async () => {
+      const { formatISTDate } = await import("../src/routes/resumes");
+      const dateObj = new Date("2026-09-07T00:00:00.000Z");
+      const isoStr = "2026-09-07T14:30:00.000Z";
+      const ymdStr = "2026-09-07";
+
+      expect(formatISTDate(dateObj)).toBe("2026-09-07");
+      expect(formatISTDate(isoStr)).toBe("2026-09-07");
+      expect(formatISTDate(ymdStr)).toBe("2026-09-07");
+      expect(formatISTDate(null)).toBeNull();
+
+      // Same-day: created_at === work_date -> is_backfilled is false, delay_days is 0
+      const createdIST = formatISTDate(new Date("2026-09-07T09:00:00Z"));
+      const workDateStr = formatISTDate(new Date("2026-09-07T00:00:00Z"));
+      const tCreated = new Date(createdIST! + "T00:00:00Z").getTime();
+      const tWork = new Date(workDateStr! + "T00:00:00Z").getTime();
+      const diffDays = Math.round((tCreated - tWork) / (1000 * 60 * 60 * 24));
+
+      expect(diffDays).toBe(0);
+      expect(diffDays > 0).toBe(false); // is_backfilled MUST be false for same day
+
+      // Backfilled: work_date is 2 days earlier
+      const pastWorkDateStr = formatISTDate(new Date("2026-09-05T00:00:00Z"));
+      const tPastWork = new Date(pastWorkDateStr! + "T00:00:00Z").getTime();
+      const backfillDiff = Math.round((tCreated - tPastWork) / (1000 * 60 * 60 * 24));
+
+      expect(backfillDiff).toBe(2);
+      expect(backfillDiff > 0).toBe(true); // is_backfilled MUST be true for backfilled
+    });
   });
 });
+

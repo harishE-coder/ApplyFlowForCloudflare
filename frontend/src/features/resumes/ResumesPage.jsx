@@ -83,7 +83,7 @@ const CandidateRow = React.memo(function CandidateRow({
               {candidate.resume_id_tag || `RES${candidate.display_seq || 1000}`}
             </span>
 
-            {showAudit && candidate.is_backfilled && (
+            {showAudit && Boolean(candidate.is_backfilled && candidate.delay_days > 0) && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shrink-0 cursor-help"
                 title={`Uploaded on ${formatDate(candidate.created_at)} for work completed on ${formatDate(candidate.work_date || candidate.resume_date)} (${candidate.delay_days} day delay)`}
@@ -597,8 +597,8 @@ export function ResumesPage() {
 
               {/* Body: Metadata & PDF Preview */}
               <div className="p-5 space-y-4 overflow-y-auto flex-1">
-                {/* Audit indicator for Admin/Sub-Admin */}
-                {showAudit && selectedResume.is_backfilled && (
+                {/* Audit indicator for Admin/Sub-Admin: ONLY displayed for actual backfilled uploads (delay > 0) */}
+                {showAudit && Boolean(selectedResume.is_backfilled && selectedResume.delay_days > 0) && (
                   <div className="p-3.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-caption font-bold flex items-center gap-1.5 text-amber-800">
@@ -671,11 +671,11 @@ export function ResumesPage() {
                   {showAudit && (
                     <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
                       <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
-                        <Info className="w-3.5 h-3.5 text-amber-600" />
+                        <Info className={cn("w-3.5 h-3.5", Boolean(selectedResume.is_backfilled && selectedResume.delay_days > 0) ? "text-amber-600" : "text-emerald-600")} />
                         <span>Delay</span>
                       </div>
-                      <p className={cn("text-small font-bold mt-1", selectedResume.is_backfilled ? "text-amber-700" : "text-emerald-700")}>
-                        {selectedResume.is_backfilled ? `${selectedResume.delay_days} Days` : 'Same Day (0d)'}
+                      <p className={cn("text-small font-bold mt-1", Boolean(selectedResume.is_backfilled && selectedResume.delay_days > 0) ? "text-amber-700" : "text-emerald-700")}>
+                        {Boolean(selectedResume.is_backfilled && selectedResume.delay_days > 0) ? `${selectedResume.delay_days} Days Delay` : 'Same Day (0d)'}
                       </p>
                     </div>
                   )}

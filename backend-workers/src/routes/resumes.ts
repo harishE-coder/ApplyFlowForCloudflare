@@ -22,6 +22,35 @@ export const resumesRouter = new Hono<{ Bindings: Bindings; Variables: Variables
 resumesRouter.use("*", requireAuth);
 
 /**
+ * Safely converts any Date object or string into an ISO YYYY-MM-DD date in Asia/Kolkata timezone.
+ */
+export function formatISTDate(val: any): string | null {
+  if (!val) return null;
+  if (val instanceof Date) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(val);
+  }
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return s.slice(0, 10);
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  }
+  return null;
+}
+
+/**
  * Helper to build allowed client IDs based on caller role.
  * Returns null if user has unrestricted access (admin / super_admin).
  */
@@ -389,29 +418,19 @@ resumesRouter.get("/", async (c) => {
     const fileName = r.file_name || r.original_filename;
     const mimeType = r.mime_type || r.content_type || "application/pdf";
 
-    const wDate = r.work_date || r.resume_date;
-    const cDate = r.created_at || r.upload_date;
-    const createdIST = cDate
-      ? new Intl.DateTimeFormat("en-CA", {
-          timeZone: "Asia/Kolkata",
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }).format(new Date(cDate))
-      : null;
-    const workDateStr = wDate ? String(wDate).slice(0, 10) : createdIST;
-    const isBackfilled = Boolean(createdIST && workDateStr && createdIST !== workDateStr);
-    const delayDays =
-      createdIST && workDateStr
-        ? Math.max(
-            0,
-            Math.round(
-              (new Date(createdIST + "T00:00:00Z").getTime() -
-                new Date(workDateStr + "T00:00:00Z").getTime()) /
-                (1000 * 60 * 60 * 24)
-            )
-          )
-        : 0;
+    const createdIST = formatISTDate(r.created_at || r.upload_date);
+    const workDateStr = formatISTDate(r.work_date || r.resume_date) || createdIST;
+    let delayDays = 0;
+    let isBackfilled = false;
+    if (createdIST && workDateStr) {
+      const tCreated = new Date(createdIST + "T00:00:00Z").getTime();
+      const tWork = new Date(workDateStr + "T00:00:00Z").getTime();
+      const diffDays = Math.round((tCreated - tWork) / (1000 * 60 * 60 * 24));
+      if (diffDays > 0) {
+        delayDays = diffDays;
+        isBackfilled = true;
+      }
+    }
 
     return {
       id: r.id,
@@ -659,14 +678,11 @@ resumesRouter.post("/upload", async (c) => {
       `;
 
       savedCount++;
-      const isBackfilled = workDate !== todayIST;
-      const delayDays = Math.max(
-        0,
-        Math.round(
-          (new Date(todayIST + "T00:00:00Z").getTime() - new Date(workDate + "T00:00:00Z").getTime()) /
-            (1000 * 60 * 60 * 24)
-        )
-      );
+      const tToday = new Date(todayIST + "T00:00:00Z").getTime();
+      const tWork = new Date(workDate + "T00:00:00Z").getTime();
+      const diffDays = Math.round((tToday - tWork) / (1000 * 60 * 60 * 24));
+      const isBackfilled = diffDays > 0;
+      const delayDays = Math.max(0, diffDays);
 
       items.push({
         filename,
@@ -780,33 +796,23 @@ resumesRouter.get("/:id", async (c) => {
     file_name: fileName,
     original_filename: fileName,
     resume_date: r.resume_date,
-    work_date: r.work_date ? String(r.work_date).slice(0, 10) : (r.resume_date ? String(r.resume_date).slice(0, 10) : null),
+    work_date: formatISTDate(r.work_date || r.resume_date) || formatISTDate(r.created_at || r.upload_date),
     created_at: r.created_at || r.upload_date,
     is_backfilled: (() => {
-      const wDate = r.work_date || r.resume_date;
-      const cDate = r.created_at || r.upload_date;
-      if (!wDate || !cDate) return false;
-      const createdIST = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date(cDate));
-      return String(wDate).slice(0, 10) !== createdIST;
+      const createdIST = formatISTDate(r.created_at || r.upload_date);
+      const workDateStr = formatISTDate(r.work_date || r.resume_date);
+      if (!createdIST || !workDateStr) return false;
+      const tCreated = new Date(createdIST + "T00:00:00Z").getTime();
+      const tWork = new Date(workDateStr + "T00:00:00Z").getTime();
+      return Math.round((tCreated - tWork) / (1000 * 60 * 60 * 24)) > 0;
     })(),
     delay_days: (() => {
-      const wDate = r.work_date || r.resume_date;
-      const cDate = r.created_at || r.upload_date;
-      if (!wDate || !cDate) return 0;
-      const createdIST = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }).format(new Date(cDate));
-      const d1 = new Date(createdIST + "T00:00:00Z").getTime();
-      const d2 = new Date(String(wDate).slice(0, 10) + "T00:00:00Z").getTime();
-      const diffDays = Math.round((d1 - d2) / (1000 * 60 * 60 * 24));
+      const createdIST = formatISTDate(r.created_at || r.upload_date);
+      const workDateStr = formatISTDate(r.work_date || r.resume_date);
+      if (!createdIST || !workDateStr) return 0;
+      const tCreated = new Date(createdIST + "T00:00:00Z").getTime();
+      const tWork = new Date(workDateStr + "T00:00:00Z").getTime();
+      const diffDays = Math.round((tCreated - tWork) / (1000 * 60 * 60 * 24));
       return Math.max(0, diffDays);
     })(),
     client_notes: r.client_notes,

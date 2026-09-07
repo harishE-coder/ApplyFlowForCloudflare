@@ -16,8 +16,12 @@ const rawAxios = axios.create({
   withCredentials: true,
 });
 
-// Strips Content-Type on FormData
+// Strips Content-Type on FormData and injects Authorization Bearer token if present
 rawAxios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('applyflow_access_token');
+  if (token && !config.headers['Authorization']) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type'];
   }
@@ -48,9 +52,23 @@ rawAxios.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        await rawAxios.post('/auth/refresh');
+        const storedRefreshToken = localStorage.getItem('applyflow_refresh_token');
+        const res = await rawAxios.post('/auth/refresh', {
+          refresh_token: storedRefreshToken || undefined,
+        });
+
+        if (res.data?.access_token) {
+          localStorage.setItem('applyflow_access_token', res.data.access_token);
+          if (res.data?.refresh_token) {
+            localStorage.setItem('applyflow_refresh_token', res.data.refresh_token);
+          }
+          originalRequest.headers['Authorization'] = `Bearer ${res.data.access_token}`;
+        }
+
         return rawAxios(originalRequest);
-      } catch {
+      } catch (refreshErr) {
+        localStorage.removeItem('applyflow_access_token');
+        localStorage.removeItem('applyflow_refresh_token');
         sessionStorage.setItem('applyflow_logged_out', 'true');
         window.location.href = '/login';
         return Promise.reject(error);
@@ -199,7 +217,9 @@ export function getWebSocketUrl(path = '') {
     baseUrl = `${protocol}//${window.location.host}`;
   }
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${baseUrl}${cleanPath}`;
+  const token = localStorage.getItem('applyflow_access_token');
+  const query = token ? `?token=${encodeURIComponent(token)}` : '';
+  return `${baseUrl}${cleanPath}${query}`;
 }
 
 export default api;

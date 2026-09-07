@@ -79,6 +79,9 @@ authRouter.post("/login", async (c) => {
       is_active: true,
       created_at: user.created_at,
     },
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    token_type: "bearer",
     message: "Login successful",
   });
 });
@@ -133,7 +136,12 @@ authRouter.post("/refresh", async (c) => {
 
   setAuthCookies(c, newAccessToken, newRefreshToken, expireMinutes, expireDays);
 
-  return c.json({ message: "Token refreshed" });
+  return c.json({
+    message: "Token refreshed",
+    access_token: newAccessToken,
+    refresh_token: newRefreshToken,
+    token_type: "bearer",
+  });
 });
 
 // 3. POST /api/auth/logout

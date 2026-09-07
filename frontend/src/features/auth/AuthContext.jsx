@@ -59,6 +59,13 @@ export function AuthProvider({ children }) {
     const loginRes = await api.post('/auth/login', credentials);
     const loginUser = loginRes?.data?.user;
 
+    if (loginRes?.data?.access_token) {
+      localStorage.setItem('applyflow_access_token', loginRes.data.access_token);
+    }
+    if (loginRes?.data?.refresh_token) {
+      localStorage.setItem('applyflow_refresh_token', loginRes.data.refresh_token);
+    }
+
     // Immediately fetch the authenticated bootstrap payload after login.
     let bootData = null;
     try {
@@ -88,6 +95,8 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     isLoggingOutRef.current = true;
     sessionStorage.setItem('applyflow_logged_out', 'true');
+    localStorage.removeItem('applyflow_access_token');
+    localStorage.removeItem('applyflow_refresh_token');
 
     // Immediately reset user state so UI updates without waiting
     setUser(null);

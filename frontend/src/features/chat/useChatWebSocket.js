@@ -55,8 +55,9 @@ export function useChatWebSocket(roomId, callbacks = {}) {
       if (isManuallyClosedRef.current) return;
 
       const baseWsUrl = getWebSocketUrl(`/ws/chat/${roomId}`);
+      const separator = baseWsUrl.includes('?') ? '&' : '?';
       const wsUrl = lastMessageIdRef.current
-        ? `${baseWsUrl}?last_message_id=${encodeURIComponent(lastMessageIdRef.current)}`
+        ? `${baseWsUrl}${separator}last_message_id=${encodeURIComponent(lastMessageIdRef.current)}`
         : baseWsUrl;
       let pingInterval = null;
 

@@ -68,7 +68,7 @@ async function fetchClientDetails(sql: any, clients: any[]): Promise<any[]> {
     SELECT ec.client_id, u.id, u.name, u.email, ec.is_primary, ec.active, ec.assigned_at
     FROM employee_clients ec
     JOIN users u ON ec.employee_id = u.id
-    WHERE ec.client_id = ANY(${clientIds}) AND u.is_active = true
+    WHERE ec.client_id = ANY(${clientIds}) AND u.is_active = true AND ec.active = true
     ORDER BY ec.is_primary DESC, u.name ASC
   `;
 
@@ -253,11 +253,11 @@ clientsRouter.post("/", requireRoles("super_admin", "admin", "sub_admin"), async
   // Insert Client
   const [client] = await sql`
     INSERT INTO clients (
-      id, company_name, contact_person, email, phone, status, logo_url, is_active, managed_by, created_at, updated_at
+      id, company_name, contact_person, email, phone, status, logo_url, is_active, managed_by, created_at
     ) VALUES (
       ${clientId}, ${payload.company_name}, ${payload.contact_person || null},
       ${payload.email || null}, ${payload.phone || null}, ${payload.status || "active"},
-      ${payload.logo_url || null}, true, ${managedBy}, NOW(), NOW()
+      ${payload.logo_url || null}, true, ${managedBy}, NOW()
     )
     RETURNING *
   `;
@@ -361,11 +361,37 @@ const updateClientHandler = async (c: any) => {
       phone = ${phone},
       status = ${statusVal},
       logo_url = ${logoUrl},
-      is_active = ${isActive},
-      updated_at = NOW()
+      is_active = ${isActive}
     WHERE id = ${clientId}
     RETURNING *
   `;
+
+  // Update recruiter assignments if employee_ids / assigned_employee_ids / assignments provided
+  const hasAssignments = payload.employee_ids !== undefined || payload.assigned_employee_ids !== undefined || payload.assignments !== undefined;
+  if (hasAssignments) {
+    // 1. Remove existing assignments for that client
+    await sql`DELETE FROM employee_clients WHERE client_id = ${clientId}`;
+
+    // 2. Insert newly selected employees into employee_clients
+    let assignmentItems: Array<{ employee_id: string; is_primary: boolean; active: boolean }> = [];
+    if (payload.assignments && payload.assignments.length > 0) {
+      assignmentItems = payload.assignments;
+    } else {
+      const ids = payload.employee_ids || payload.assigned_employee_ids || [];
+      assignmentItems = ids.map((eid) => ({ employee_id: eid, is_primary: false, active: true }));
+    }
+
+    const seen = new Set<string>();
+    for (const item of assignmentItems) {
+      if (!item.employee_id || seen.has(item.employee_id)) continue;
+      seen.add(item.employee_id);
+      const ecId = crypto.randomUUID();
+      await sql`
+        INSERT INTO employee_clients (id, client_id, employee_id, is_primary, active, assigned_at, assigned_by)
+        VALUES (${ecId}, ${clientId}, ${item.employee_id}, ${Boolean(item.is_primary)}, ${item.active !== false}, NOW(), ${user.id})
+      `;
+    }
+  }
 
   await sql`
     INSERT INTO activity_logs (id, user_id, action, details, created_at)
@@ -398,8 +424,7 @@ const activateClientHandler = async (c: any) => {
   const [updated] = await sql`
     UPDATE clients SET
       status = 'active',
-      is_active = true,
-      updated_at = NOW()
+      is_active = true
     WHERE id = ${clientId}
     RETURNING *
   `;
@@ -444,8 +469,7 @@ clientsRouter.post("/:client_id/deactivate", requireRoles("super_admin", "admin"
     UPDATE clients SET
       status = 'inactive',
       is_active = false,
-      deactivated_at = NOW(),
-      updated_at = NOW()
+      deactivated_at = NOW()
     WHERE id = ${clientId}
     RETURNING *
   `;
@@ -487,8 +511,7 @@ clientsRouter.post("/:client_id/archive", requireRoles("super_admin", "admin", "
     UPDATE clients SET
       status = 'archived',
       is_active = false,
-      archived_at = NOW(),
-      updated_at = NOW()
+      archived_at = NOW()
     WHERE id = ${clientId}
     RETURNING *
   `;

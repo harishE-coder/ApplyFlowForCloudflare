@@ -22,6 +22,7 @@ import {
   Trash2,
   AlertTriangle,
   UserPlus,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -186,6 +187,7 @@ export function ClientsPage() {
   const [editContact, setEditContact] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editAssignedEmployeeIds, setEditAssignedEmployeeIds] = useState([]);
   const [updating, setUpdating] = useState(false);
 
   // Assign Recruiter Modal State
@@ -267,6 +269,13 @@ export function ClientsPage() {
     setEditContact(client.contact_person || '');
     setEditEmail(client.email || '');
     setEditPhone(client.phone || '');
+    const currentEmpIds = (client.assigned_employees || [])
+      .map((emp) => emp.id || emp.employee_id)
+      .filter(Boolean);
+    setEditAssignedEmployeeIds(currentEmpIds);
+    if (!allEmployees || allEmployees.length === 0) {
+      fetchEmployees();
+    }
     setIsEditOpen(true);
   };
 
@@ -275,12 +284,18 @@ export function ClientsPage() {
     if (!editClientData) return;
     setUpdating(true);
     try {
-      await api.put(`/clients/${editClientData.id}`, {
+      const res = await api.put(`/clients/${editClientData.id}`, {
         company_name: editCompany,
         contact_person: editContact,
         email: editEmail,
         phone: editPhone,
+        employee_ids: editAssignedEmployeeIds,
       });
+      if (res.data) {
+        setClients((prev) =>
+          prev.map((c) => (c.id === editClientData.id ? res.data : c))
+        );
+      }
       success('Client Updated', `${editCompany} updated successfully.`);
       setIsEditOpen(false);
       fetchClients();
@@ -606,13 +621,80 @@ export function ClientsPage() {
             label="Email Address"
             type="email"
             value={editEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
+            onChange={(e) => setEditEmail(e.target.value)}
           />
           <Input
             label="Phone Number"
             value={editPhone}
             onChange={(e) => setEditPhone(e.target.value)}
           />
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-small font-semibold text-[#081226]">
+                Assigned Recruiters
+              </label>
+              <span className="text-caption font-medium text-[#64748B]">
+                {editAssignedEmployeeIds.length} selected
+              </span>
+            </div>
+
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2 space-y-1">
+              {allEmployees.length === 0 ? (
+                <p className="text-caption text-[#94A3B8] p-3 text-center">No recruiters available</p>
+              ) : (
+                allEmployees
+                  .filter((emp) => emp.is_active !== false)
+                  .map((emp) => {
+                    const isSelected = editAssignedEmployeeIds.includes(emp.id);
+                    return (
+                      <button
+                        type="button"
+                        key={emp.id}
+                        onClick={() => {
+                          setEditAssignedEmployeeIds((prev) =>
+                            prev.includes(emp.id)
+                              ? prev.filter((id) => id !== emp.id)
+                              : [...prev, emp.id]
+                          );
+                        }}
+                        className={cn(
+                          'w-full flex items-center justify-between px-3 py-2 rounded-lg text-small transition-all text-left cursor-pointer',
+                          isSelected
+                            ? 'bg-blue-50/90 border border-blue-200 text-[#0D6EFD] font-semibold'
+                            : 'hover:bg-white text-[#334155] border border-transparent'
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Avatar name={emp.name || emp.email} size="xs" variant={isSelected ? 'blue' : 'navy'} />
+                          <div className="min-w-0">
+                            <span className="truncate block font-medium">{emp.name}</span>
+                            {emp.email && (
+                              <span className="text-caption text-[#94A3B8] block truncate">
+                                {emp.email}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div
+                          className={cn(
+                            'w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0',
+                            isSelected
+                              ? 'bg-[#0D6EFD] border-[#0D6EFD] text-white'
+                              : 'border-[#CBD5E1] bg-white'
+                          )}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
+                      </button>
+                    );
+                  })
+              )}
+            </div>
+            <p className="text-caption text-[#64748B] mt-1">
+              Recruiters selected here are automatically assigned to job openings for this client.
+            </p>
+          </div>
 
           <div className="pt-4 flex justify-end gap-3">
             <Button variant="outline" size="md" onClick={() => setIsEditOpen(false)}>

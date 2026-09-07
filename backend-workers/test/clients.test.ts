@@ -53,6 +53,30 @@ describe("Clients Zod Schemas", () => {
     expect(result.success).toBe(true);
   });
 
+  it("validates ClientUpdate payloads with employee_ids and assignments", () => {
+    const updateWithEmpIds = {
+      company_name: "Stripe Updated",
+      employee_ids: [
+        "550e8400-e29b-41d4-a716-446655440000",
+        "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+      ],
+    };
+    const res1 = ClientUpdateSchema.safeParse(updateWithEmpIds);
+    expect(res1.success).toBe(true);
+
+    const updateWithAssignments = {
+      assignments: [
+        {
+          employee_id: "550e8400-e29b-41d4-a716-446655440000",
+          is_primary: false,
+          active: true,
+        },
+      ],
+    };
+    const res2 = ClientUpdateSchema.safeParse(updateWithAssignments);
+    expect(res2.success).toBe(true);
+  });
+
   it("validates Recruiter Assignment payloads", () => {
     const valid = {
       employee_ids: ["550e8400-e29b-41d4-a716-446655440000"],

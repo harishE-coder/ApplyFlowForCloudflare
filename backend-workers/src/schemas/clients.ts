@@ -5,6 +5,12 @@
 
 import { z } from "zod";
 
+export const RecruiterAssignmentItemSchema = z.object({
+  employee_id: z.string().uuid("Invalid employee UUID"),
+  is_primary: z.boolean().default(false),
+  active: z.boolean().default(true),
+});
+
 export const ClientCreateSchema = z.object({
   company_name: z.string().min(1, "Company name is required"),
   contact_person: z.string().nullable().optional(),
@@ -23,12 +29,9 @@ export const ClientUpdateSchema = z.object({
   status: z.enum(["active", "inactive", "archived"]).optional(),
   logo_url: z.string().nullable().optional(),
   is_active: z.boolean().optional(),
-});
-
-export const RecruiterAssignmentItemSchema = z.object({
-  employee_id: z.string().uuid("Invalid employee UUID"),
-  is_primary: z.boolean().default(false),
-  active: z.boolean().default(true),
+  employee_ids: z.array(z.string().uuid()).optional(),
+  assigned_employee_ids: z.array(z.string().uuid()).optional(),
+  assignments: z.array(RecruiterAssignmentItemSchema).optional(),
 });
 
 export const AssignEmployeesSchema = z.object({

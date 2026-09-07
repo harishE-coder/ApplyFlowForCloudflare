@@ -431,6 +431,38 @@ async def share_resume(
     )
 
 
+async def share_job(
+    db: AsyncSession, room_id: uuid.UUID, user: User, requirement_id: uuid.UUID, caption: str | None = None
+) -> ChatMessageResponse:
+    from app.modules.requirements.models import Requirement
+    await check_room_access(db, user, room_id)
+
+    req = (
+        await db.execute(
+            select(Requirement).where(Requirement.id == requirement_id)
+        )
+    ).scalar_one_or_none()
+
+    if not req:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job requirement not found.",
+        )
+
+    title = req.job_title or req.role or "Open Role"
+    company = req.company or "Company"
+    text = caption.strip() if caption and caption.strip() else f"💼 Shared Job Opening: {title} ({company})"
+    return await send_message(
+        db,
+        room_id,
+        user,
+        text,
+        attachment_type="job",
+        attachment_reference=str(req.id),
+        attachment_filename=title,
+    )
+
+
 async def mark_read(
     db: AsyncSession, room_id: uuid.UUID, user: User, message_id: uuid.UUID | None = None
 ) -> None:

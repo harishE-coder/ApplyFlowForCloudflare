@@ -470,7 +470,8 @@ export function ChatPage() {
         toastSuccess('Job opening shared to chat');
       } catch (err) {
         console.error('Failed to share job opening:', err);
-        toastError('Failed to share job opening');
+        const detail = err?.response?.data?.detail;
+        toastError(detail ? `Failed to share job opening: ${detail}` : 'Failed to share job opening');
       }
     },
     [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort]

@@ -30,6 +30,7 @@ from app.modules.chat.schemas import (
     PushSubscriptionCreate,
     PushUnsubscribeRequest,
     SendMessageRequest,
+    ShareJobRequest,
     ShareResumeRequest,
     UnreadCountResponse,
     VapidPublicKeyResponse,
@@ -284,6 +285,59 @@ async def share_resume(
 ):
     """Share a resume into a chat room."""
     res = await service.share_resume(db, room_id, current_user, body.resume_id)
+    room_id_str = str(room_id)
+    online_users = manager.get_online_users(room_id_str)
+    has_recipients = any(uid != str(current_user.id) for uid in online_users) or any(
+        manager.is_user_online(uid) for uid in manager.user_connections if uid != str(current_user.id)
+    )
+    if has_recipients:
+        res.status = "delivered"
+
+    msg_data = res.model_dump(mode="json")
+
+    # Broadcast to active WebSocket connections in room
+    await manager.broadcast(room_id_str, {
+        "type": "new_message",
+        "message": msg_data,
+    })
+
+    # Broadcast live room update to other active user sockets across the app
+    for uid in list(manager.user_connections.keys()):
+        if uid != str(current_user.id):
+            await manager.send_to_user_global(uid, {
+                "type": "room_update",
+                "room_id": room_id_str,
+                "message": msg_data,
+                "last_message": res.message,
+                "last_message_sender": current_user.name,
+                "last_message_at": res.created_at.isoformat() if res.created_at else datetime.now(timezone.utc).isoformat(),
+            })
+
+    # Dispatch Web Push notifications via FastAPI BackgroundTasks
+    background_tasks.add_task(
+        notify_room_recipients,
+        room_id=room_id,
+        sender_id=current_user.id,
+        sender_name=current_user.name,
+        message_id=res.id,
+        preview_text=res.message,
+        attachment_type=res.attachment_type,
+        created_at=res.created_at,
+    )
+
+    return res
+
+
+@router.post("/rooms/{room_id}/share-job", response_model=ChatMessageResponse)
+async def share_job(
+    room_id: UUID,
+    body: ShareJobRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Share a job opening into a chat room."""
+    res = await service.share_job(db, room_id, current_user, body.requirement_id, body.caption)
     room_id_str = str(room_id)
     online_users = manager.get_online_users(room_id_str)
     has_recipients = any(uid != str(current_user.id) for uid in online_users) or any(

@@ -799,7 +799,7 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
   const sql = getDb(c.env.DATABASE_URL);
 
   const reqRows = await sql`
-    SELECT r.id, r.job_title, r.role, r.role_code, r.company, r.priority, r.location, r.openings, r.status, r.job_url, r.notes,
+    SELECT r.id, r.job_title, r.role, r.role_code, r.company, r.priority, r.status, r.job_url, r.notes,
            c.company_name as client_company_name
     FROM requirements r
     LEFT JOIN clients c ON c.id = r.client_id
@@ -824,11 +824,11 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
     id: req.id,
     title: jobTitle,
     role: req.role || jobTitle,
-    role_code: req.role_code,
+    role_code: req.role_code || null,
     company: companyName,
     priority: req.priority || "Medium",
-    location: req.location || "Remote",
-    openings: req.openings || 1,
+    location: "Remote",
+    openings: 1,
     status: req.status || "active",
     job_url: req.job_url || null,
     notes: req.notes || null,
@@ -843,6 +843,15 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
       ${messageId}, ${roomId}, ${user.id}, ${messageText}, 'job',
       ${JSON.stringify(jobData)}, NOW()
     )
+  `;
+
+  // Update sender's read cursor in Neon
+  const readId = crypto.randomUUID();
+  await sql`
+    INSERT INTO chat_reads (id, user_id, room_id, last_read_message_id, last_read_at)
+    VALUES (${readId}, ${user.id}, ${roomId}, ${messageId}, NOW())
+    ON CONFLICT (user_id, room_id)
+    DO UPDATE SET last_read_message_id = ${messageId}, last_read_at = NOW()
   `;
 
   const formattedMessage = {

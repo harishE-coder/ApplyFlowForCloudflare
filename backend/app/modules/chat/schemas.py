@@ -99,6 +99,12 @@ class SendMessageRequest(BaseModel):
 
 class ShareResumeRequest(BaseModel):
     resume_id: uuid.UUID
+    caption: str | None = None
+
+
+class ShareJobRequest(BaseModel):
+    requirement_id: uuid.UUID
+    caption: str | None = None
 
 
 class MarkReadRequest(BaseModel):

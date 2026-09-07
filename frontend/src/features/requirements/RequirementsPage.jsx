@@ -130,7 +130,11 @@ export function RequirementsPage() {
       return;
     }
 
-    const targetClientId = isClient ? user?.client_id : (clientId || 'global');
+    const targetClientId = isClient ? user?.client_id : clientId;
+    if (!targetClientId) {
+      toastError('Validation Error', 'Please select a Service Client.');
+      return;
+    }
 
     setCreating(true);
     try {
@@ -139,16 +143,12 @@ export function RequirementsPage() {
         job_title: jobTitle.trim(),
         job_url: jobUrl.trim() || null,
         priority,
-        notes: null,
-        client_id: targetClientId === 'global' ? null : targetClientId,
-        assigned_employee: 'ALL',
+        notes: notes.trim() || null,
+        client_id: targetClientId,
+        assigned_employee: assignedEmployee,
       });
 
-      if (targetClientId === 'global' || !targetClientId) {
-        success('Job Opening Created', `${company} – ${jobTitle} created for Global for All.`);
-      } else {
-        success('Job Opening Created', `${company} – ${jobTitle} added to task board.`);
-      }
+      success('Job Opening Created', `${company} – ${jobTitle} added to task board.`);
       setIsCreateOpen(false);
       fetchRequirements();
     } catch (err) {
@@ -165,8 +165,8 @@ export function RequirementsPage() {
     setEditJobTitle(req.job_title || req.role);
     setEditJobUrl(req.job_url || '');
     setEditPriority(req.priority || 'Medium');
-    setEditNotes('');
-    setEditClientId(req.client_id ? String(req.client_id) : 'global');
+    setEditNotes(req.notes || '');
+    setEditClientId(req.client_id);
     setEditAssignedEmployee(req.assigned_employee_id || 'ALL');
     setIsEditOpen(true);
   };
@@ -179,13 +179,12 @@ export function RequirementsPage() {
     setUpdating(true);
     try {
       await api.put(`/requirements/${editReq.id}`, {
-        client_id: editClientId === 'global' ? null : editClientId,
         company: editCompany.trim(),
         job_title: editJobTitle.trim(),
         job_url: editJobUrl.trim() || null,
         priority: editPriority,
-        notes: null,
-        assigned_employee: editAssignedEmployee || 'ALL',
+        notes: editNotes.trim() || null,
+        assigned_employee: editAssignedEmployee,
       });
 
       success('Job Opening Updated', `${editCompany} – ${editJobTitle} updated successfully.`);
@@ -386,22 +385,18 @@ export function RequirementsPage() {
             />
           </div>
 
-          {!isClient && (
+          {!isClient && clients.length > 0 && (
             <select
               value={selectedClient}
               onChange={(e) => setSelectedClient(e.target.value)}
               className="px-3 py-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD]"
             >
               <option value="">All Service Clients</option>
-              <option value="global">Global for All</option>
-              {clients
-                .slice()
-                .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''))
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.company_name}
-                  </option>
-                ))}
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.company_name}
+                </option>
+              ))}
             </select>
           )}
 
@@ -568,17 +563,8 @@ export function RequirementsPage() {
                       {/* 4. Service Client */}
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-1.5 text-small font-medium text-[#334155]">
-                          {req.client_id ? (
-                            <>
-                              <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
-                              <span>{req.client_name || 'Client'}</span>
-                            </>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#0D6EFD] border border-blue-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#0D6EFD]" />
-                              Global for All
-                            </span>
-                          )}
+                          <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
+                          <span>{req.client_name || 'Client'}</span>
                         </div>
                       </td>
 
@@ -658,7 +644,7 @@ export function RequirementsPage() {
                 required
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer font-medium"
+                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
               >
                 <option value="global">Global for All</option>
                 {clients
@@ -703,12 +689,25 @@ export function RequirementsPage() {
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
             >
               <option value="High">High Priority</option>
               <option value="Medium">Medium Priority</option>
               <option value="Low">Low Priority</option>
             </select>
+          </div>
+
+          <div>
+            <label className="text-small font-semibold text-[#081226] block mb-1.5">
+              Recruiter Guidance Notes (Optional)
+            </label>
+            <textarea
+              rows={3}
+              placeholder="e.g. Apply with 3+ years experience in React and Node.js..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#0D6EFD] focus:bg-white resize-none"
+            />
           </div>
 
           <div className="pt-4 flex justify-end gap-3">
@@ -727,32 +726,9 @@ export function RequirementsPage() {
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
         title="Edit Job Opening"
-        subtitle="Update company, role title, job URL, or priority."
+        subtitle="Update company, role title, job URL, or guidance notes."
       >
         <form onSubmit={handleUpdate} className="space-y-4">
-          {!isClient && (
-            <div>
-              <label className="text-small font-semibold text-[#081226] block mb-1.5">
-                Service Client
-              </label>
-              <select
-                value={editClientId || 'global'}
-                onChange={(e) => setEditClientId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer font-medium"
-              >
-                <option value="global">Global for All</option>
-                {clients
-                  .slice()
-                  .sort((a, b) => (a.company_name || '').localeCompare(b.company_name || ''))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.company_name}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          )}
-
           <Input
             label="Hiring Company"
             required
@@ -781,12 +757,24 @@ export function RequirementsPage() {
             <select
               value={editPriority}
               onChange={(e) => setEditPriority(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
             >
               <option value="High">High Priority</option>
               <option value="Medium">Medium Priority</option>
               <option value="Low">Low Priority</option>
             </select>
+          </div>
+
+          <div>
+            <label className="text-small font-semibold text-[#081226] block mb-1.5">
+              Recruiter Guidance Notes (Optional)
+            </label>
+            <textarea
+              rows={3}
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#0D6EFD] focus:bg-white resize-none"
+            />
           </div>
 
           <div className="pt-4 flex justify-end gap-3">

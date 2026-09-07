@@ -4,8 +4,10 @@ import {
   resetAiGatewayState,
   getAiGatewayTelemetry,
   recordFailure,
+  recordAuthFailure,
   isKeyInCooldown,
   resolveConfiguredProviders,
+  getAiUsageAnalytics,
 } from "../src/services/aiGateway";
 import { callGroqAi } from "../src/routes/ai";
 import { GroqAnalysisSchema, type GroqAnalysis } from "../src/schemas/ai";
@@ -37,6 +39,17 @@ vi.mock("../src/db", () => {
         }
         if (queryText.includes("FROM resumes")) {
           return [];
+        }
+        if (queryText.includes("ai_request_logs")) {
+          return [
+            {
+              total_requests: 12,
+              successful_requests: 11,
+              success_rate: 91.7,
+              avg_latency_ms: 1240.5,
+              total_fallbacks: 2,
+            },
+          ];
         }
         return [];
       };
@@ -116,7 +129,7 @@ describe("AI Gateway Service (Cloudflare Workers)", () => {
       GROQ_API_KEY_2: "gsk_key_2",
     };
 
-    const result = await callAiGateway(env, "Resume document text for Jane Smith");
+    const result = await callAiGateway(env, "Resume document text for Jane Smith", undefined, 20000, "ai_test_rot");
 
     expect(attemptedKeys).toEqual(["GROQ_API_KEY_1", "GROQ_API_KEY_2"]);
     expect(result.candidate_name).toBe("Jane Smith");
@@ -154,7 +167,7 @@ describe("AI Gateway Service (Cloudflare Workers)", () => {
       OPENAI_API_KEY: "sk-openai-mock-key",
     };
 
-    const result = await callAiGateway(env, "Sample resume content");
+    const result = await callAiGateway(env, "Sample resume content", undefined, 20000, "ai_test_oa");
 
     expect(providersAttempted).toEqual(["GROQ_1", "GROQ_2", "OPENAI"]);
     expect(result.candidate_name).toBe("Jane Smith");
@@ -356,5 +369,111 @@ describe("AI Gateway Service (Cloudflare Workers)", () => {
     // Verify response schema strictly validates
     const parseCheck = GroqAnalysisSchema.safeParse(resumeJson.analysis);
     expect(parseCheck.success).toBe(true);
+  });
+
+  it("8. HTTP 401 Unauthorized: Invalid key is marked unhealthy immediately (health score 0) without model retries and skips to next key/provider", async () => {
+    let key1Attempts = 0;
+    let key2Attempts = 0;
+
+    globalThis.fetch = vi.fn(async (url: any, opts: any) => {
+      const auth = opts?.headers?.Authorization || "";
+
+      if (auth.includes("invalid_groq_key_1")) {
+        key1Attempts++;
+        // Return 401 Unauthorized
+        return new Response(JSON.stringify({ error: { message: "Invalid API Key provided" } }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (auth.includes("valid_groq_key_2")) {
+        key2Attempts++;
+        return createLlmCompletionResponse(mockValidAiResponse);
+      }
+
+      return new Response("Not found", { status: 404 });
+    });
+
+    const env: Bindings = {
+      DATABASE_URL: "postgres://mock",
+      GROQ_API_KEY_1: "invalid_groq_key_1",
+      GROQ_API_KEY_2: "valid_groq_key_2",
+    };
+
+    const result = await callAiGateway(env, "Sample candidate resume", undefined, 20000, "ai_401_test");
+
+    // Must attempt Key 1 exactly ONCE: should NOT retry alternative models on Key 1!
+    expect(key1Attempts).toBe(1);
+    // Must immediately advance to Key 2 and succeed
+    expect(key2Attempts).toBe(1);
+    expect(result.candidate_name).toBe("Jane Smith");
+
+    // Key 1 must have health score = 0 and be under cooldown
+    const telemetry = getAiGatewayTelemetry();
+    expect(telemetry.healthScores["GROQ_API_KEY_1"]).toBe(0);
+    expect(isKeyInCooldown("GROQ_API_KEY_1")).toBe(true);
+  });
+
+  it("9. OpenAI returns 401 -> immediately continues to Gemini without wasting time", async () => {
+    const providersHit: string[] = [];
+
+    globalThis.fetch = vi.fn(async (url: any, opts: any) => {
+      const urlStr = String(url);
+
+      if (urlStr.includes("api.openai.com")) {
+        providersHit.push("OPENAI");
+        return new Response(JSON.stringify({ error: "Incorrect API key" }), { status: 401 });
+      }
+
+      if (urlStr.includes("generativelanguage.googleapis.com")) {
+        providersHit.push("GEMINI");
+        return createLlmCompletionResponse(mockValidAiResponse);
+      }
+
+      return new Response("Not found", { status: 404 });
+    });
+
+    const env: Bindings = {
+      DATABASE_URL: "postgres://mock",
+      OPENAI_API_KEY: "revoked_openai_key",
+      GEMINI_API_KEY: "valid_gemini_key",
+    };
+
+    const result = await callAiGateway(env, "Resume candidate text", undefined, 20000, "ai_oa_401");
+
+    expect(providersHit).toEqual(["OPENAI", "GEMINI"]);
+    expect(result.candidate_name).toBe("Jane Smith");
+
+    const telemetry = getAiGatewayTelemetry();
+    expect(telemetry.healthScores["OPENAI_API_KEY"]).toBe(0);
+    expect(isKeyInCooldown("OPENAI_API_KEY")).toBe(true);
+  });
+
+  it("10. GET /api/ai/analytics returns telemetry and usage stats", async () => {
+    const validToken = await createAccessToken(mockUser, "test-secret-key-12345678901234567890", 60);
+
+    const testEnv: Bindings = {
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/testdb",
+      JWT_SECRET_KEY: "test-secret-key-12345678901234567890",
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60",
+      REFRESH_TOKEN_EXPIRE_DAYS: "7",
+      GROQ_API_KEY: "gsk_test_mock",
+    };
+
+    const res = await app.fetch(
+      new Request("http://localhost/api/ai/analytics", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+        },
+      }),
+      testEnv
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.telemetry).toBeDefined();
+    expect(json.summary).toBeDefined();
   });
 });

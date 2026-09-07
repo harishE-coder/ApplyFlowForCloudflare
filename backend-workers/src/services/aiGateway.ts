@@ -6,12 +6,16 @@
  * - Intra-provider model fallback
  * - Provider failover (Groq -> OpenAI -> Gemini)
  * - Isolate-local lightweight circuit breaker with cooldowns
+ * - Immediate 401 Unauthorized handling (disables bad key without retrying)
+ * - Request ID tracking & structured telemetry logging
  * - Timeout protection (20s AbortController)
  * - Zod schema validation (GroqAnalysisSchema)
+ * - AI usage analytics persistence (ai_request_logs)
  */
 
 import { GroqAnalysisSchema, type GroqAnalysis } from "../schemas/ai";
 import type { Bindings } from "../types";
+import { getDb } from "../db";
 
 export interface ProviderAttempt {
   providerName: "Groq" | "OpenAI" | "Gemini";
@@ -25,6 +29,16 @@ export interface GatewayTelemetry {
   healthScores: Record<string, number>;
   failureCounts: Record<string, number>;
   activeCooldowns: Record<string, number>;
+}
+
+export interface AiUsageLogEntry {
+  requestId: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  success: boolean;
+  fallbackCount: number;
+  errorMessage?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +86,18 @@ export function isKeyInCooldown(keyId: string): boolean {
     return false;
   }
   return true;
+}
+
+/**
+ * Marks a key immediately and permanently invalid/unhealthy (HTTP 401).
+ * Sets health score directly to 0 and places in indefinite cooldown for this isolate.
+ * Avoids any retries or future attempts on this key.
+ */
+export function recordAuthFailure(keyId: string): void {
+  healthScores.set(keyId, 0);
+  failureCounts.set(keyId, 999);
+  // Mark key inactive for the lifetime of this warm isolate (1 hour)
+  cooldownExpiries.set(keyId, Date.now() + 3600 * 1000);
 }
 
 /**
@@ -216,11 +242,11 @@ ${documentText.slice(0, 8000)}`;
 }
 
 /**
- * Checks if an HTTP status code is recoverable
+ * Checks if an HTTP status code is recoverable (transient server/rate errors)
  */
 function isRecoverableStatus(status: number): boolean {
-  // 429 = Rate limited, 401 = invalid key (retry next key), 5xx = server error
-  return status === 429 || status === 401 || (status >= 500 && status <= 599);
+  // 429 = Rate limited, 5xx = server error
+  return status === 429 || (status >= 500 && status <= 599);
 }
 
 /**
@@ -270,6 +296,107 @@ function parseAndValidateResponse(rawContent: string): GroqAnalysis {
 }
 
 /**
+ * Asynchronously persists AI usage telemetry into ai_request_logs table.
+ * Non-blocking: will never throw or interrupt the main request flow.
+ */
+export async function recordAiUsageLog(
+  env: Bindings,
+  entry: AiUsageLogEntry
+): Promise<void> {
+  if (!env.DATABASE_URL) return;
+  try {
+    const sql = getDb(env.DATABASE_URL);
+    await sql`
+      CREATE TABLE IF NOT EXISTS ai_request_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        request_id VARCHAR(64) NOT NULL,
+        provider VARCHAR(32) NOT NULL,
+        model VARCHAR(64) NOT NULL,
+        latency_ms INT NOT NULL,
+        success BOOLEAN NOT NULL,
+        fallback_count INT NOT NULL DEFAULT 0,
+        error_message TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`
+      INSERT INTO ai_request_logs (
+        request_id,
+        provider,
+        model,
+        latency_ms,
+        success,
+        fallback_count,
+        error_message
+      ) VALUES (
+        ${entry.requestId},
+        ${entry.provider},
+        ${entry.model},
+        ${entry.latencyMs},
+        ${entry.success},
+        ${entry.fallbackCount},
+        ${entry.errorMessage || null}
+      )
+    `;
+  } catch (err: any) {
+    // Non-blocking telemetry warning
+    console.warn(`[AI Analytics Log Warning] Failed to persist telemetry: ${err?.message}`);
+  }
+}
+
+/**
+ * Aggregates AI usage analytics from ai_request_logs for admin dashboard.
+ */
+export async function getAiUsageAnalytics(env: Bindings) {
+  const telemetry = getAiGatewayTelemetry();
+  if (!env.DATABASE_URL) {
+    return { telemetry, error: "Database not configured" };
+  }
+  try {
+    const sql = getDb(env.DATABASE_URL);
+    const summary = await sql`
+      SELECT
+        COUNT(*)::int AS total_requests,
+        COUNT(*) FILTER (WHERE success = true)::int AS successful_requests,
+        ROUND((COUNT(*) FILTER (WHERE success = true)::numeric / NULLIF(COUNT(*), 0) * 100), 1)::float AS success_rate,
+        ROUND(AVG(latency_ms)::numeric, 1)::float AS avg_latency_ms,
+        SUM(fallback_count)::int AS total_fallbacks
+      FROM ai_request_logs
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+    `;
+    const providerStats = await sql`
+      SELECT
+        provider,
+        COUNT(*)::int AS requests,
+        COUNT(*) FILTER (WHERE success = true)::int AS successes,
+        ROUND((COUNT(*) FILTER (WHERE success = true)::numeric / NULLIF(COUNT(*), 0) * 100), 1)::float AS success_rate,
+        ROUND(AVG(latency_ms)::numeric, 1)::float AS avg_latency_ms
+      FROM ai_request_logs
+      WHERE created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY provider
+      ORDER BY requests DESC
+    `;
+    const recentLogs = await sql`
+      SELECT request_id, provider, model, latency_ms, success, fallback_count, created_at
+      FROM ai_request_logs
+      ORDER BY created_at DESC
+      LIMIT 20
+    `;
+    return {
+      telemetry,
+      summary: summary[0] || {},
+      provider_breakdown: providerStats,
+      recent_requests: recentLogs,
+    };
+  } catch (err: any) {
+    return {
+      telemetry,
+      error: err?.message,
+    };
+  }
+}
+
+/**
  * Primary Gateway Function
  * Single source of truth for all AI selection, key rotation, retries, and failovers.
  * 
@@ -277,13 +404,16 @@ function parseAndValidateResponse(rawContent: string): GroqAnalysis {
  * @param promptOrDocText Prompt or raw text of resume or email to analyze
  * @param modelOverride Optional specific model request
  * @param timeoutMs Request timeout per attempt (default: 20000ms)
+ * @param requestId Optional request ID for end-to-end tracing
  */
 export async function callAiGateway(
   env: Bindings,
   promptOrDocText: string,
   modelOverride?: string,
-  timeoutMs: number = 20000
+  timeoutMs: number = 20000,
+  requestId?: string
 ): Promise<GroqAnalysis> {
+  const reqId = requestId || `ai_${crypto.randomUUID().slice(0, 8)}`;
   const providers = resolveConfiguredProviders(env, modelOverride);
 
   if (providers.length === 0) {
@@ -297,6 +427,9 @@ export async function callAiGateway(
     : buildExtractionPrompt(promptOrDocText);
 
   let lastError: Error | null = null;
+  let fallbackCount = 0;
+  const traceSteps: string[] = [];
+  const overallStartTime = Date.now();
 
   for (let pIdx = 0; pIdx < providers.length; pIdx++) {
     const provider = providers[pIdx];
@@ -307,20 +440,21 @@ export async function callAiGateway(
         0,
         Math.ceil(((cooldownExpiries.get(provider.keyId) || 0) - Date.now()) / 1000)
       );
+      traceSteps.push(`${provider.providerName} (${provider.keyId}) → Cooldown skipped (${remainingCooldown}s remaining)`);
       console.log(
-        `Provider: ${provider.providerName}\nKey: ${provider.keyId}\nStatus: Cooldown (${remainingCooldown}s remaining)\nAction: Skipping`
+        `[Request: ${reqId}] Provider: ${provider.providerName} | Key: ${provider.keyId} | Status: Cooldown (${remainingCooldown}s remaining) | Action: Skipping`
       );
       continue;
     }
 
     const nextProvider = providers[pIdx + 1];
-    const nextDesc = nextProvider ? nextProvider.providerName : "None (Exhausted)";
+    const nextDesc = nextProvider ? `${nextProvider.providerName} (${nextProvider.keyId})` : "None (Exhausted)";
 
     // Try models in order for this provider/key
     for (const model of provider.models) {
       const startTime = Date.now();
       console.log(
-        `Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}`
+        `[Request: ${reqId}] Provider: ${provider.providerName} | Key: ${provider.keyId} | Model: ${model}`
       );
 
       try {
@@ -359,22 +493,41 @@ export async function callAiGateway(
         if (!res.ok) {
           const errBody = await res.text().catch(() => "");
           const status = res.status;
+
+          // 1. Handle HTTP 401 Unauthorized: Invalid or revoked API key
+          if (status === 401) {
+            recordAuthFailure(provider.keyId);
+            traceSteps.push(`${provider.providerName} (${provider.keyId}) → 401 Unauthorized (invalid key, disabled)`);
+            console.warn(
+              `[Request: ${reqId}] Provider: ${provider.providerName}\nKey: ${provider.keyId}\nStatus: 401 Unauthorized\nFallback reason: Invalid or revoked API key. Key marked permanently unhealthy.\nNext: ${nextDesc}`
+            );
+            lastError = new Error(
+              `${provider.providerName} (${provider.keyId}) returned HTTP 401 Unauthorized (invalid key)`
+            );
+            fallbackCount++;
+            // Do NOT retry other models on an invalid key -> immediately proceed to next provider/key
+            break;
+          }
+
           const isRecoverable = isRecoverableStatus(status);
 
           console.warn(
-            `Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}\nStatus: ${status}\nFallback reason: HTTP ${status}\nNext: ${nextDesc}`
+            `[Request: ${reqId}] Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}\nStatus: ${status}\nFallback reason: HTTP ${status}\nNext: ${nextDesc}`
           );
 
           if (isRecoverable) {
             recordFailure(provider.keyId, true);
+            traceSteps.push(`${provider.providerName} (${provider.keyId}) → HTTP ${status}`);
             lastError = new Error(
               `${provider.providerName} (${provider.keyId}) returned HTTP ${status}: ${errBody.slice(0, 150)}`
             );
-            // Recoverable error on this key/provider -> fail over to next key or provider
+            fallbackCount++;
+            // Recoverable error on this key -> fail over to next key or provider
             break;
           } else {
             const isModelError = status === 404 || (status === 400 && errBody.toLowerCase().includes("model"));
             if (isModelError) {
+              traceSteps.push(`${provider.providerName} (${provider.keyId}, ${model}) → Model unsupported (${status})`);
               lastError = new Error(
                 `Unsupported model '${model}' on ${provider.providerName}: ${errBody.slice(0, 150)}`
               );
@@ -383,6 +536,7 @@ export async function callAiGateway(
             }
 
             // Permanent client error (e.g. malformed JSON, invalid prompt) -> do not retry
+            traceSteps.push(`${provider.providerName} (${provider.keyId}) → Client error HTTP ${status}`);
             throw new Error(
               `Permanent client error HTTP ${status} from ${provider.providerName}: ${errBody.slice(0, 150)}`
             );
@@ -394,11 +548,30 @@ export async function callAiGateway(
         const analysis = parseAndValidateResponse(rawContent);
 
         const latency = Date.now() - startTime;
+        traceSteps.push(`${provider.providerName} (${provider.keyId}) → Success (${latency}ms)`);
+
         console.log(
-          `Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}\nFinal successful provider: ${provider.providerName}\nLatency: ${latency}ms`
+          `[Request: ${reqId}]\n` +
+          `Provider: ${provider.providerName}\n` +
+          `Key: ${provider.keyId}\n` +
+          `Model: ${model}\n` +
+          `Final successful provider: ${provider.providerName}\n` +
+          `Latency: ${latency}ms\n` +
+          `Trace:\n${traceSteps.map((s) => `  - ${s}`).join("\n")}`
         );
 
         recordSuccess(provider.keyId);
+
+        // Record telemetry asynchronously without blocking return
+        recordAiUsageLog(env, {
+          requestId: reqId,
+          provider: provider.providerName,
+          model,
+          latencyMs: latency,
+          success: true,
+          fallbackCount,
+        }).catch(() => {});
+
         return analysis;
       } catch (err: any) {
         // If it was already determined to be a permanent client error, rethrow immediately
@@ -408,23 +581,42 @@ export async function callAiGateway(
 
         const isTimeout = err?.message?.includes("timed out");
         if (isTimeout) {
+          traceSteps.push(`${provider.providerName} (${provider.keyId}) → Timeout (${Math.round(timeoutMs / 1000)}s)`);
           console.warn(
-            `Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}\nStatus: Timeout\nTimeout reason: Request timed out after ${Math.round(timeoutMs / 1000)}s\nNext: ${nextDesc}`
+            `[Request: ${reqId}] Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}\nStatus: Timeout\nTimeout reason: Request timed out after ${Math.round(timeoutMs / 1000)}s\nNext: ${nextDesc}`
           );
         } else {
+          traceSteps.push(`${provider.providerName} (${provider.keyId}) → Network error (${err?.message || "unknown"})`);
           console.warn(
-            `Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}\nStatus: Network/Runtime Error\nFallback reason: ${err?.message || "Unknown error"}\nNext: ${nextDesc}`
+            `[Request: ${reqId}] Provider: ${provider.providerName}\nKey: ${provider.keyId}\nModel: ${model}\nStatus: Network/Runtime Error\nFallback reason: ${err?.message || "Unknown error"}\nNext: ${nextDesc}`
           );
         }
 
         recordFailure(provider.keyId, true);
         lastError = err;
+        fallbackCount++;
 
         // On timeout or network failure, fail over to next key/provider
         break;
       }
     }
   }
+
+  // All keys, models, and providers failed
+  console.error(
+    `[Request: ${reqId}] AI Gateway Exhausted after ${fallbackCount} fallbacks.\nTrace:\n${traceSteps.map((s) => `  - ${s}`).join("\n")}`
+  );
+
+  // Record failure telemetry asynchronously
+  recordAiUsageLog(env, {
+    requestId: reqId,
+    provider: "Exhausted",
+    model: "None",
+    latencyMs: Date.now() - overallStartTime,
+    success: false,
+    fallbackCount,
+    errorMessage: lastError?.message || "All providers exhausted",
+  }).catch(() => {});
 
   throw (
     lastError ||

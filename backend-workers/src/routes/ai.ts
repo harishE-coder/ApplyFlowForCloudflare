@@ -17,7 +17,7 @@ import { requireAuth } from "../middleware/auth";
 import { GroqAnalysisSchema, type GroqAnalysis } from "../schemas/ai";
 import type { Bindings, UserPayload, Variables } from "../types";
 
-import { callAiGateway } from "../services/aiGateway";
+import { callAiGateway, getAiUsageAnalytics } from "../services/aiGateway";
 
 export const aiRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -359,13 +359,15 @@ aiRouter.post("/analyze-email", async (c) => {
     return c.json({ detail: "raw_email is required (minimum 5 characters)." }, 400);
   }
 
+  const reqId = c.get("requestId") || c.req.header("X-Request-Id") || `ai_${crypto.randomUUID().slice(0, 8)}`;
+
   let analysis: GroqAnalysis;
   try {
-    analysis = await callAiGateway(c.env, rawEmail, c.env.GROQ_MODEL);
+    analysis = await callAiGateway(c.env, rawEmail, c.env.GROQ_MODEL, 20000, reqId);
   } catch (err: any) {
     console.error("[AI Analyze Email Error]", err.message);
     const prefix = err?.message?.includes("Groq") ? "Groq AI service failure" : "AI service failure";
-    return c.json({ detail: `${prefix}: ${err.message}` }, 502);
+    return c.json({ detail: `${prefix}: ${err.message}`, request_id: reqId }, 502);
   }
 
   if (analysis.is_interview_mail === false) {
@@ -790,7 +792,7 @@ const analyzeFileHandler = async (c: any) => {
 
     let analysis: GroqAnalysis;
     try {
-      analysis = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL);
+      analysis = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL, 20000, reqId);
     } catch (err: any) {
       console.error("[AI Intake Error]", err.message);
       const prefix = err?.message?.includes("Groq") ? "Groq AI service failure" : "AI service failure";
@@ -902,5 +904,14 @@ const analyzeFileHandler = async (c: any) => {
 aiRouter.post("/analyze-file", analyzeFileHandler);
 aiRouter.post("/parse-resume", analyzeFileHandler);
 aiRouter.post("/intake", analyzeFileHandler);
+
+/**
+ * 5. GET /api/ai/analytics
+ * Provides real-time AI telemetry and usage analytics
+ */
+aiRouter.get("/analytics", async (c) => {
+  const stats = await getAiUsageAnalytics(c.env);
+  return c.json(stats);
+});
 
 export default aiRouter;

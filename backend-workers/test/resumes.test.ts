@@ -115,7 +115,7 @@ describe("Google Apps Script Storage Service & SHA-256 Deduplication", () => {
 
       // Verify fetch was called with the Apps Script URL and X-Worker-Secret header
       expect(globalThis.fetch).toHaveBeenCalledWith(
-        mockEnv.GOOGLE_APPS_SCRIPT_URL,
+        expect.stringContaining(mockEnv.GOOGLE_APPS_SCRIPT_URL),
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({
@@ -139,7 +139,7 @@ describe("Google Apps Script Storage Service & SHA-256 Deduplication", () => {
       const deleted = await deleteResume("drive-file-uuid-12345", mockEnv);
       expect(deleted).toBe(true);
       expect(globalThis.fetch).toHaveBeenCalledWith(
-        mockEnv.GOOGLE_APPS_SCRIPT_URL,
+        expect.stringContaining(mockEnv.GOOGLE_APPS_SCRIPT_URL),
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({

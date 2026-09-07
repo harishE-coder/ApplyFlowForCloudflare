@@ -12,6 +12,10 @@ import type { Bindings } from "../types";
 export interface GoogleDriveUploadResult {
   success: boolean;
   fileId: string;
+  viewUrl: string;
+  downloadUrl: string;
+  name: string;
+  mimeType: string;
   webViewLink: string;
   downloadLink: string;
   error?: string;
@@ -42,63 +46,126 @@ function bufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+function cleanScriptUrl(rawUrl: string | undefined): string {
+  if (!rawUrl) return "";
+  let cleaned = rawUrl.trim();
+  if (cleaned.startsWith("GOOGLE_APPS_SCRIPT_URL=")) {
+    cleaned = cleaned.slice("GOOGLE_APPS_SCRIPT_URL=".length).trim();
+  }
+  return cleaned.replace(/^['"]+|['"]+$/g, "");
+}
+
+function cleanSecret(rawSecret: string | undefined): string | undefined {
+  if (!rawSecret) return undefined;
+  let cleaned = rawSecret.trim();
+  if (cleaned.startsWith("GOOGLE_APPS_SCRIPT_SECRET=")) {
+    cleaned = cleaned.slice("GOOGLE_APPS_SCRIPT_SECRET=".length).trim();
+  }
+  cleaned = cleaned.replace(/^['"]+|['"]+$/g, "");
+  return cleaned || undefined;
+}
+
+function buildActionUrl(baseUrl: string, action: string): string {
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set("action", action);
+    return url.toString();
+  } catch {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${sep}action=${encodeURIComponent(action)}`;
+  }
+}
+
 /**
  * Uploads resume to Google Drive via Google Apps Script Web App.
- * Sends multipart/form-data with file blob, base64 fallback, and client name.
+ * Uses exact Google Apps Script protocol: ?action=upload with URL-encoded fields
+ * (action, filename, mimeType, base64, content, secret, client).
  */
 export async function uploadResume(
   fileBuffer: ArrayBuffer,
   filename: string,
   clientName: string,
-  env: Bindings
+  env: Bindings,
+  customMimeType?: string
 ): Promise<GoogleDriveUploadResult> {
-  const scriptUrl = env.GOOGLE_APPS_SCRIPT_URL;
+  const scriptUrl = cleanScriptUrl(env.GOOGLE_APPS_SCRIPT_URL);
   if (!scriptUrl) {
     throw new Error("GOOGLE_APPS_SCRIPT_URL is not configured on Cloudflare Worker");
   }
 
-  const formData = new FormData();
-  const blob = new Blob([fileBuffer], { type: "application/pdf" });
-  formData.append("file", blob, filename);
-  formData.append("filename", filename);
-  formData.append("client", clientName);
-  formData.append("content", bufferToBase64(fileBuffer));
-  formData.append("action", "upload");
+  const scriptSecret = cleanSecret(env.GOOGLE_APPS_SCRIPT_SECRET);
 
-  const headers: Record<string, string> = {};
-  if (env.GOOGLE_APPS_SCRIPT_SECRET) {
-    headers["X-Worker-Secret"] = env.GOOGLE_APPS_SCRIPT_SECRET;
+  const base64Content = bufferToBase64(fileBuffer);
+  const lowerName = (filename || "").toLowerCase();
+  const mimeType =
+    customMimeType ||
+    (lowerName.endsWith(".docx")
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : lowerName.endsWith(".doc")
+      ? "application/msword"
+      : "application/pdf");
+
+  const params = new URLSearchParams();
+  params.append("action", "upload");
+  params.append("filename", filename);
+  params.append("mimeType", mimeType);
+  params.append("base64", base64Content);
+  params.append("content", base64Content);
+  params.append("client", clientName || "");
+  if (scriptSecret) {
+    params.append("secret", scriptSecret);
   }
 
-  const response = await fetch(scriptUrl, {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (scriptSecret) {
+    headers["X-Worker-Secret"] = scriptSecret;
+  }
+
+  const targetUrl = buildActionUrl(scriptUrl, "upload");
+  const response = await fetch(targetUrl, {
     method: "POST",
-    body: formData,
+    body: params.toString(),
     headers,
     redirect: "follow",
   });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
+    const errorText = typeof response.text === "function" ? await response.text().catch(() => "") : "";
     throw new Error(`Google Apps Script upload failed (HTTP ${response.status}): ${errorText}`);
   }
 
-  const data = (await response.json().catch(() => ({}))) as Record<string, any>;
-  const fileId = data.fileId || data.id;
-
-  if (!fileId) {
-    throw new Error(data.message || data.error || "Google Apps Script returned invalid file metadata");
+  let data: Record<string, any> = {};
+  if (typeof (response as any).json === "function") {
+    data = (await response.json().catch(() => ({}))) as Record<string, any>;
+  } else if (typeof response.text === "function") {
+    const responseText = await response.text().catch(() => "");
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Invalid JSON response from Google Apps Script: ${responseText.slice(0, 200)}`);
+    }
   }
 
-  const webViewLink =
-    data.url || data.webViewLink || getPreviewUrl(fileId);
-  const downloadLink =
-    data.downloadUrl || data.downloadLink || getDownloadUrl(fileId);
+  if (data.success === false || (!data.fileId && !data.id)) {
+    throw new Error(data.message || data.error || "Google Apps Script failed to upload file to Google Drive");
+  }
+
+  const fileId = String(data.fileId || data.id);
+  const viewUrl = data.url || data.viewUrl || data.webViewLink || getPreviewUrl(fileId);
+  const downloadUrl = data.downloadUrl || data.downloadLink || getDownloadUrl(fileId);
+  const name = data.fileName || data.name || filename;
 
   return {
     success: true,
-    fileId: String(fileId),
-    webViewLink,
-    downloadLink,
+    fileId,
+    viewUrl,
+    downloadUrl,
+    name,
+    mimeType: data.mimeType || mimeType,
+    webViewLink: viewUrl,
+    downloadLink: downloadUrl,
   };
 }
 
@@ -110,33 +177,49 @@ export async function deleteResume(
   fileId: string,
   env: Bindings
 ): Promise<boolean> {
-  const scriptUrl = env.GOOGLE_APPS_SCRIPT_URL;
+  const scriptUrl = cleanScriptUrl(env.GOOGLE_APPS_SCRIPT_URL);
   if (!scriptUrl || !fileId) return true;
 
-  try {
-    const formData = new FormData();
-    formData.append("action", "delete");
-    formData.append("fileId", fileId);
+  const scriptSecret = cleanSecret(env.GOOGLE_APPS_SCRIPT_SECRET);
 
-    const headers: Record<string, string> = {};
-    if (env.GOOGLE_APPS_SCRIPT_SECRET) {
-      headers["X-Worker-Secret"] = env.GOOGLE_APPS_SCRIPT_SECRET;
+  try {
+    const params = new URLSearchParams();
+    params.append("action", "delete");
+    params.append("fileId", fileId);
+    if (scriptSecret) {
+      params.append("secret", scriptSecret);
     }
 
-    const response = await fetch(scriptUrl, {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+    if (scriptSecret) {
+      headers["X-Worker-Secret"] = scriptSecret;
+    }
+
+    const targetUrl = buildActionUrl(scriptUrl, "delete");
+    const response = await fetch(targetUrl, {
       method: "POST",
-      body: formData,
+      body: params.toString(),
       headers,
       redirect: "follow",
     });
 
     if (response.ok) {
-      const data = (await response.json().catch(() => ({}))) as Record<string, any>;
+      let data: Record<string, any> = {};
+      if (typeof (response as any).json === "function") {
+        data = (await response.json().catch(() => ({}))) as Record<string, any>;
+      } else if (typeof response.text === "function") {
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {}
+      }
       return Boolean(data.success !== false);
     }
     return false;
   } catch (err) {
-    console.error(`Failed to delete file ${fileId} from Google Drive via Apps Script:`, err);
+    console.error("Failed to delete resume from Google Drive:", err);
     return false;
   }
 }

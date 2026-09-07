@@ -258,36 +258,69 @@ export function ResumesPage() {
     }
   }, [deleteResumeTarget, success, selectedResume, fetchResumes, toastError]);
 
-  const handleCopyShareLink = useCallback((resume) => {
-    const shareUrl = `${window.location.origin}/api/resumes/${resume.id}/preview`;
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(shareUrl);
-      success('Link Copied', 'Internal candidate resume link copied to clipboard.');
-    } else {
-      prompt('Copy internal resume link:', shareUrl);
-    }
-  }, [success]);
+  const getPreviewUrl = useCallback((resume) => {
+    if (!resume) return '#';
+    return (
+      resume.drive_view_url ||
+      resume.drive_web_view_link ||
+      (resume.drive_file_id ? `https://drive.google.com/file/d/${resume.drive_file_id}/view` : `/api/resumes/${resume.id}/preview`)
+    );
+  }, []);
 
-  const getResumeActionMenu = useCallback((resume) => {
-    const items = [];
+  const getDownloadUrl = useCallback((resume) => {
+    if (!resume) return '#';
+    return (
+      resume.drive_download_url ||
+      resume.drive_download_link ||
+      (resume.drive_file_id ? `https://drive.google.com/uc?export=download&id=${resume.drive_file_id}` : `/api/resumes/${resume.id}/download`)
+    );
+  }, []);
 
-    items.push({
-      icon: Eye,
-      label: 'Preview PDF (Inline)',
-      onClick: () => window.open(`/api/resumes/${resume.id}/preview`, '_blank'),
-    });
+  const getShareUrl = useCallback((resume) => {
+    if (!resume) return '';
+    return (
+      resume.drive_view_url ||
+      (resume.drive_file_id
+        ? `https://drive.google.com/file/d/${resume.drive_file_id}/view?usp=sharing`
+        : `${window.location.origin}/api/resumes/${resume.id}/preview`)
+    );
+  }, []);
 
-    items.push({
-      icon: Download,
-      label: 'Download Raw PDF',
-      onClick: () => window.open(`/api/resumes/${resume.id}/download`, '_blank'),
-    });
+  const handleCopyShareLink = useCallback(
+    (resume) => {
+      const shareUrl = getShareUrl(resume);
+      if (!shareUrl) return;
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(shareUrl);
+        success('Link Copied', 'Google Drive candidate share link copied to clipboard.');
+      } else {
+        prompt('Copy candidate resume link:', shareUrl);
+      }
+    },
+    [getShareUrl, success]
+  );
 
-    items.push({
-      icon: Share2,
-      label: 'Copy Internal Link',
-      onClick: () => handleCopyShareLink(resume),
-    });
+  const getResumeActionMenu = useCallback(
+    (resume) => {
+      const items = [];
+
+      items.push({
+        icon: Eye,
+        label: 'Preview Resume (Drive)',
+        onClick: () => window.open(getPreviewUrl(resume), '_blank', 'noopener,noreferrer'),
+      });
+
+      items.push({
+        icon: Download,
+        label: 'Download Original File',
+        onClick: () => window.open(getDownloadUrl(resume), '_blank', 'noopener,noreferrer'),
+      });
+
+      items.push({
+        icon: Share2,
+        label: 'Copy Public Share Link',
+        onClick: () => handleCopyShareLink(resume),
+      });
 
     if (isAdmin || isSubAdmin || (isEmployee && resume.uploaded_by === user?.id)) {
       items.push({ divider: true });
@@ -653,12 +686,13 @@ export function ResumesPage() {
                       ATS Validated PDF
                     </span>
                     <a
-                      href={`/api/resumes/${selectedResume.id}/download`}
-                      download
+                      href={getDownloadUrl(selectedResume)}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-[#2563EB] font-semibold hover:underline flex items-center gap-1"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      Download Raw PDF
+                      Download File
                     </a>
                   </div>
                 </div>
@@ -681,19 +715,19 @@ export function ResumesPage() {
                     variant="primary"
                     size="md"
                     icon={Eye}
-                    onClick={() => window.open(`/api/resumes/${selectedResume.id}/preview`, '_blank')}
-                    title="Open PDF Preview Inline"
+                    onClick={() => window.open(getPreviewUrl(selectedResume), '_blank', 'noopener,noreferrer')}
+                    title="Open Document Preview in Google Drive"
                     className="flex-1 h-[44px] font-bold text-xs"
                   >
-                    Preview PDF
+                    Preview File
                   </Button>
 
                   <Button
                     variant="outline"
                     size="md"
                     icon={Download}
-                    onClick={() => window.open(`/api/resumes/${selectedResume.id}/download`, '_blank')}
-                    title="Download Original PDF"
+                    onClick={() => window.open(getDownloadUrl(selectedResume), '_blank', 'noopener,noreferrer')}
+                    title="Download Original File"
                     className="h-[44px] px-3.5"
                   />
 
@@ -702,7 +736,7 @@ export function ResumesPage() {
                     size="md"
                     icon={Share2}
                     onClick={() => handleCopyShareLink(selectedResume)}
-                    title="Copy Internal Share Link"
+                    title="Copy Public Share Link"
                     className="h-[44px] px-3.5"
                   />
                 </div>

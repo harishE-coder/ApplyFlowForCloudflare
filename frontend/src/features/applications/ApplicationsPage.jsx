@@ -19,6 +19,9 @@ import {
   ChevronRight,
   Target,
   Tag,
+  Eye,
+  Download,
+  Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Tabs } from '@/components/ui/Tabs';
@@ -31,6 +34,11 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/features/auth/AuthContext';
 import api from '@/services/api';
 import { formatDate, formatRelativeTime, cn } from '@/utils/cn';
+import {
+  openResumePreview,
+  openResumeDownload,
+  copyResumeShareLink,
+} from '@/utils/resumeUrls';
 
 export function ApplicationsPage() {
   const { user, isEmployee, isAdmin, isClient } = useAuth();
@@ -443,17 +451,32 @@ export function ApplicationsPage() {
             </div>
 
             {/* Resume actions */}
-            <div className="pt-2 flex gap-3">
-              <a
-                href={`/api/resumes/${selectedApp.resume_id}/download`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1"
+            <div className="pt-2 flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="md"
+                icon={Eye}
+                onClick={() => openResumePreview(selectedApp)}
+                className="flex-1 font-bold text-xs"
               >
-                <Button variant="outline" size="md" icon={FileText} className="w-full">
-                  View Full Candidate PDF
-                </Button>
-              </a>
+                Preview Resume (Drive)
+              </Button>
+              <Button
+                variant="outline"
+                size="md"
+                icon={Download}
+                onClick={() => openResumeDownload(selectedApp)}
+                title="Download Original Resume"
+                className="px-3"
+              />
+              <Button
+                variant="outline"
+                size="md"
+                icon={Share2}
+                onClick={() => copyResumeShareLink(selectedApp, success)}
+                title="Copy Public Share Link"
+                className="px-3"
+              />
             </div>
           </div>
         )}

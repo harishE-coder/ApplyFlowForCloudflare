@@ -19,6 +19,11 @@ import {
   Check,
   Mail,
   Calendar,
+  FileText,
+  Eye,
+  Download,
+  Share2,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { KPICard } from '@/components/ui/KPICard';
@@ -32,6 +37,11 @@ import { useAuth } from '@/features/auth/AuthContext';
 import ShiftTimerWidget from './employee/components/ShiftTimerWidget';
 import api from '@/services/api';
 import { formatDate, formatRelativeTime, cn } from '@/utils/cn';
+import {
+  openResumePreview,
+  openResumeDownload,
+  copyResumeShareLink,
+} from '@/utils/resumeUrls';
 
 const EmployeeCharts = lazy(() => import('./charts/EmployeeCharts'));
 
@@ -365,6 +375,109 @@ export function EmployeeDashboard() {
                     </div>
 
                     <ChevronRight className="w-4 h-4 text-[#94A3B8] group-hover:text-[#0D6EFD] shrink-0 ml-2" />
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* 3.5. Uploaded Resumes (Google Drive Synchronized) */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9] flex-wrap gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#16A34A] px-2.5 py-0.5 rounded-full bg-[#F0FDF4] border border-[#BBF7D0]">
+                    Drive Sync Active
+                  </span>
+                  <h3 className="text-h3 font-bold text-[#081226]">Uploaded Resumes</h3>
+                </div>
+                <p className="text-caption text-[#64748B] mt-0.5">
+                  Recently ingested candidates with verified Google Drive preview and direct download links
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={Upload}
+                  onClick={() => navigate('/upload')}
+                  className="h-[36px] text-xs font-bold"
+                >
+                  Upload More
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/candidates')}
+                  className="h-[36px] text-xs font-bold text-[#2563EB]"
+                >
+                  Candidate Bank →
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2.5">
+              {(data?.recent_uploaded_resumes || []).length === 0 ? (
+                <div className="py-8 text-center text-caption text-[#94A3B8] border border-dashed border-[#E2E8F0] rounded-xl">
+                  No recent candidate resumes uploaded yet today. Click "Upload More" to ingest resumes.
+                </div>
+              ) : (
+                (data?.recent_uploaded_resumes || []).map((resItem) => (
+                  <div
+                    key={resItem.id}
+                    className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/60 hover:bg-white hover:border-[#CBD5E1] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center shrink-0 border border-[#BFDBFE]">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-small font-extrabold text-[#081226] truncate">
+                            {resItem.candidate_name || 'Candidate'}
+                          </p>
+                          {resItem.resume_id_tag && (
+                            <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-white border border-[#E2E8F0] text-[#64748B]">
+                              {resItem.resume_id_tag}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-caption text-[#64748B] truncate mt-0.5">
+                          <strong className="text-[#081226]">{resItem.company || resItem.client_name || 'Client'}</strong> · {resItem.role || 'Role'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => openResumePreview(resItem)}
+                        title="Preview Candidate Resume in Google Drive"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-bold border border-[#BFDBFE] transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Preview</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openResumeDownload(resItem)}
+                        title="Download Original Resume File"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#081226] text-caption font-bold border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => copyResumeShareLink(resItem, success)}
+                        title="Copy Public Google Drive Share Link"
+                        className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

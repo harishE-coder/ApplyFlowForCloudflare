@@ -469,7 +469,23 @@ dashboardRouter.get("/client/home", async (c) => {
         : [{ c: 0 }],
       clientId
         ? sql`
-            SELECT a.id, r.candidate_name, a.company as hiring_company, a.role, a.current_round as round, a.status, a.applied_date
+            SELECT
+              a.id,
+              a.resume_id,
+              COALESCE(r.candidate_name, a.candidate_name, 'Candidate') as candidate_name,
+              a.company as hiring_company,
+              a.role,
+              a.current_round as round,
+              a.status,
+              a.applied_date,
+              r.drive_file_id,
+              r.drive_view_url,
+              r.drive_download_url,
+              r.drive_web_view_link,
+              r.drive_download_link,
+              r.file_name,
+              r.original_filename,
+              r.mime_type
             FROM applications a
             LEFT JOIN resumes r ON a.resume_id = r.id
             WHERE a.client_id = ${clientId}
@@ -498,12 +514,20 @@ dashboardRouter.get("/client/home", async (c) => {
       ],
       application_timeline: timelineRows.map((t: any) => ({
         id: t.id,
+        resume_id: t.resume_id,
         candidate_name: t.candidate_name || "Candidate",
         hiring_company: t.hiring_company || companyName,
         role: t.role || "Software Engineer",
         round: t.round || "Applied",
         status: t.status || "Submitted",
         applied_date: t.applied_date ? String(t.applied_date).split("T")[0] : "Recent",
+        drive_file_id: t.drive_file_id || null,
+        drive_view_url: t.drive_view_url || t.drive_web_view_link || (t.drive_file_id ? `https://drive.google.com/file/d/${t.drive_file_id}/view?usp=sharing` : null),
+        drive_download_url: t.drive_download_url || t.drive_download_link || (t.drive_file_id ? `https://drive.google.com/uc?export=download&id=${t.drive_file_id}` : null),
+        drive_web_view_link: t.drive_view_url || t.drive_web_view_link || (t.drive_file_id ? `https://drive.google.com/file/d/${t.drive_file_id}/view?usp=sharing` : null),
+        drive_download_link: t.drive_download_url || t.drive_download_link || (t.drive_file_id ? `https://drive.google.com/uc?export=download&id=${t.drive_file_id}` : null),
+        file_name: t.file_name || t.original_filename || null,
+        mime_type: t.mime_type || "application/pdf",
         events: [],
       })),
       hiring_companies: [companyName],
@@ -532,11 +556,35 @@ const employeeDashboardHandler = async (c: any) => {
   try {
     const todayStr = new Date().toISOString().split("T")[0];
 
-    const [todayRes, totalRes, targetRes, assignedClientsRows] = await Promise.all([
+    const [todayRes, totalRes, targetRes, assignedClientsRows, recentResumesRows] = await Promise.all([
       sql`SELECT count(*)::int as c FROM resumes WHERE uploaded_by = ${user.id} AND (resume_date = ${todayStr}::date OR (resume_date IS NULL AND upload_date::date = ${todayStr}::date))`,
       sql`SELECT count(*)::int as c FROM resumes WHERE uploaded_by = ${user.id}`,
       sql`SELECT COALESCE(SUM(daily_target), 0)::int as c FROM targets WHERE employee_id = ${user.id} AND status = 'active'`,
       sql`SELECT ec.client_id as id, c.company_name FROM employee_clients ec JOIN clients c ON ec.client_id = c.id WHERE ec.employee_id = ${user.id} AND ec.active = true`,
+      sql`
+        SELECT
+          r.id,
+          r.candidate_name,
+          r.company,
+          r.role,
+          r.resume_id_tag,
+          r.client_id,
+          c.company_name as client_name,
+          r.upload_date,
+          r.drive_file_id,
+          r.drive_view_url,
+          r.drive_download_url,
+          r.drive_web_view_link,
+          r.drive_download_link,
+          r.file_name,
+          r.original_filename,
+          r.mime_type
+        FROM resumes r
+        LEFT JOIN clients c ON c.id = r.client_id
+        WHERE r.uploaded_by = ${user.id}
+        ORDER BY r.upload_date DESC
+        LIMIT 10
+      `,
     ]);
 
     const todayUploads = todayRes[0]?.c || 0;
@@ -550,6 +598,24 @@ const employeeDashboardHandler = async (c: any) => {
       active_requirements_count: 0,
       applications_count: 0,
       growth: "+12%",
+    }));
+
+    const recentUploadedResumes = recentResumesRows.map((r: any) => ({
+      id: r.id,
+      candidate_name: r.candidate_name || "Candidate",
+      company: r.company || "Company",
+      role: r.role || "Role",
+      resume_id_tag: r.resume_id_tag || null,
+      client_id: r.client_id,
+      client_name: r.client_name || "Client",
+      upload_date: r.upload_date,
+      drive_file_id: r.drive_file_id || null,
+      drive_view_url: r.drive_view_url || r.drive_web_view_link || (r.drive_file_id ? `https://drive.google.com/file/d/${r.drive_file_id}/view?usp=sharing` : null),
+      drive_download_url: r.drive_download_url || r.drive_download_link || (r.drive_file_id ? `https://drive.google.com/uc?export=download&id=${r.drive_file_id}` : null),
+      drive_web_view_link: r.drive_view_url || r.drive_web_view_link || (r.drive_file_id ? `https://drive.google.com/file/d/${r.drive_file_id}/view?usp=sharing` : null),
+      drive_download_link: r.drive_download_url || r.drive_download_link || (r.drive_file_id ? `https://drive.google.com/uc?export=download&id=${r.drive_file_id}` : null),
+      file_name: r.file_name || r.original_filename || null,
+      mime_type: r.mime_type || "application/pdf",
     }));
 
     const dashboard = {
@@ -581,6 +647,7 @@ const employeeDashboardHandler = async (c: any) => {
       client_requirements: [],
       weekly_trend: [],
       recent_activity: [],
+      recent_uploaded_resumes: recentUploadedResumes,
     };
 
     return c.json(dashboard);

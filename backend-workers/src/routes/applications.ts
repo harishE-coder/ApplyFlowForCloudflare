@@ -69,7 +69,23 @@ async function enrichApplications(sql: any, apps: any[]): Promise<any[]> {
   const resumeMap: Record<string, any> = {};
   if (resumeIds.length > 0) {
     const resumes = await sql`
-      SELECT id, resume_id_tag, display_seq, candidate_name, company, role FROM resumes WHERE id = ANY(${resumeIds})
+      SELECT
+        id,
+        resume_id_tag,
+        display_seq,
+        candidate_name,
+        company,
+        role,
+        drive_file_id,
+        drive_view_url,
+        drive_download_url,
+        drive_web_view_link,
+        drive_download_link,
+        file_name,
+        original_filename,
+        mime_type
+      FROM resumes
+      WHERE id = ANY(${resumeIds})
     `;
     for (const r of resumes) {
       resumeMap[String(r.id)] = {
@@ -157,6 +173,13 @@ async function enrichApplications(sql: any, apps: any[]): Promise<any[]> {
       updated_at: a.updated_at || null,
       client_notes: a.client_notes || null,
       is_note_shared: a.is_note_shared !== undefined ? Boolean(a.is_note_shared) : true,
+      drive_file_id: resume.drive_file_id || null,
+      drive_view_url: resume.drive_view_url || resume.drive_web_view_link || (resume.drive_file_id ? `https://drive.google.com/file/d/${resume.drive_file_id}/view?usp=sharing` : null),
+      drive_download_url: resume.drive_download_url || resume.drive_download_link || (resume.drive_file_id ? `https://drive.google.com/uc?export=download&id=${resume.drive_file_id}` : null),
+      drive_web_view_link: resume.drive_view_url || resume.drive_web_view_link || (resume.drive_file_id ? `https://drive.google.com/file/d/${resume.drive_file_id}/view?usp=sharing` : null),
+      drive_download_link: resume.drive_download_url || resume.drive_download_link || (resume.drive_file_id ? `https://drive.google.com/uc?export=download&id=${resume.drive_file_id}` : null),
+      file_name: resume.file_name || resume.original_filename || null,
+      mime_type: resume.mime_type || "application/pdf",
       events: eventsMap[aid] || [],
     };
   });

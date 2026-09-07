@@ -20,6 +20,9 @@ import {
   ShieldAlert,
   Sparkles,
   Info,
+  Eye,
+  Download,
+  Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { BrandedLoader } from '@/components/ui/BrandedLoader';
@@ -27,6 +30,11 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/features/auth/AuthContext';
 import api from '@/services/api';
 import { formatDate, cn } from '@/utils/cn';
+import {
+  openResumePreview,
+  openResumeDownload,
+  copyResumeShareLink,
+} from '@/utils/resumeUrls';
 
 // Memoized Upload Queue Row
 const UploadQueueRow = React.memo(function UploadQueueRow({
@@ -585,6 +593,7 @@ export function UploadPage() {
         uploaded: uploaded || 0,
         duplicates: dupCount || 0,
         reviewed: reviewedCount || 0,
+        items: res.data?.items || [],
       });
 
       setQueue([]);
@@ -970,6 +979,65 @@ export function UploadPage() {
               <p className="text-h2 font-black text-[#64748B] mt-1">{uploadSuccessSummary.reviewed}</p>
             </div>
           </div>
+
+          {/* List of uploaded items with Drive Preview & Download */}
+          {(uploadSuccessSummary.items || []).length > 0 && (
+            <div className="space-y-2 pt-2">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#166534]">
+                Ingested Candidates Ready on Google Drive:
+              </p>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {uploadSuccessSummary.items.map((upItem, idx) => (
+                  <div
+                    key={upItem.id || idx}
+                    className="p-3 rounded-xl bg-white border border-[#BBF7D0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileText className="w-4 h-4 text-[#16A34A] shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-caption font-bold text-[#081226] truncate">
+                          {upItem.candidate_name || upItem.file_name || 'Candidate Resume'}
+                        </p>
+                        <p className="text-[11px] text-[#64748B] truncate">
+                          {upItem.role || 'Role'} • {upItem.company || 'Company'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={() => openResumePreview(upItem)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-bold border border-[#BFDBFE] transition-colors cursor-pointer"
+                        title="Preview on Google Drive"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Preview</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openResumeDownload(upItem)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#081226] text-caption font-bold border border-[#CBD5E1] transition-colors cursor-pointer"
+                        title="Direct Download"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => copyResumeShareLink(upItem, success)}
+                        className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors cursor-pointer"
+                        title="Copy Share Link"
+                      >
+                        <Share2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-2">
             <Button

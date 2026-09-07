@@ -2,11 +2,10 @@ import React from 'react';
 import { FileText, Download, ExternalLink, Building2, Briefcase, Calendar, CheckCircle2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { openResumePreview, openResumeDownload } from '@/utils/resumeUrls';
 
 export function ResumePreviewModal({ isOpen, onClose, resumeInfo }) {
   if (!resumeInfo) return null;
-
-  const downloadUrl = `/api/resumes/${resumeInfo.id}/download`;
 
   return (
     <Modal
@@ -45,15 +44,14 @@ export function ResumePreviewModal({ isOpen, onClose, resumeInfo }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href={downloadUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-caption font-semibold transition-colors border border-white/10"
+            <button
+              type="button"
+              onClick={() => openResumePreview(resumeInfo)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-caption font-semibold transition-colors border border-white/10 cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               Open PDF
-            </a>
+            </button>
           </div>
         </div>
 
@@ -92,14 +90,14 @@ export function ResumePreviewModal({ isOpen, onClose, resumeInfo }) {
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>
-          <a
-            href={downloadUrl}
-            download
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-small font-semibold shadow-sm transition-all"
+          <button
+            type="button"
+            onClick={() => openResumeDownload(resumeInfo)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-small font-semibold shadow-sm transition-all cursor-pointer"
           >
             <Download className="w-4 h-4" />
             Download Resume
-          </a>
+          </button>
         </div>
       </div>
     </Modal>

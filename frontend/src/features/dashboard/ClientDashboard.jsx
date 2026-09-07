@@ -18,6 +18,10 @@ import {
   ArrowRight,
   Clock,
   Send,
+  Eye,
+  Download,
+  Share2,
+  ExternalLink,
 } from 'lucide-react';
 import { KPICard } from '@/components/ui/KPICard';
 import { BrandedLoader } from '@/components/ui/BrandedLoader';
@@ -29,12 +33,17 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/features/auth/AuthContext';
 import api from '@/services/api';
 import { cn } from '@/utils/cn';
+import {
+  openResumePreview,
+  openResumeDownload,
+  copyResumeShareLink,
+} from '@/utils/resumeUrls';
 
 const ClientCharts = lazy(() => import('./charts/ClientCharts'));
 
 export function ClientDashboard() {
   const { user, bootstrapData, consumeBootstrapDashboard } = useAuth();
-  const { error: toastError } = useToast();
+  const { success, error: toastError } = useToast();
 
   const [initialData] = useState(() => {
     if (consumeBootstrapDashboard) {
@@ -360,17 +369,55 @@ export function ClientDashboard() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center flex-wrap">
                       <span className="text-caption font-semibold text-[#64748B]">
                         Applied {item.applied_date}
                       </span>
+
+                      {/* Instant Preview, Download & Share Buttons */}
+                      {item.drive_file_id || item.drive_view_url || item.resume_id ? (
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => openResumePreview(item)}
+                            title="Preview Candidate Resume in Google Drive"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#2563EB] text-caption font-bold border border-[#BFDBFE] transition-colors shadow-xs cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Preview</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => openResumeDownload(item)}
+                            title="Download Original Resume File"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#081226] text-caption font-bold border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => copyResumeShareLink(item, success)}
+                            title="Copy Public Google Drive Share Link"
+                            className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-[#94A3B8] italic">
+                          No resume linked
+                        </span>
+                      )}
+
                       <div className="w-8 h-8 rounded-full bg-[#F1F5F9] flex items-center justify-center text-[#64748B]">
                         <ChevronDown className={cn('w-4 h-4 transition-transform', isExpanded ? 'rotate-180' : '')} />
                       </div>
                     </div>
                   </div>
 
-                  {/* Expandable Step-by-step Progression Milestones */}
+                  {/* Expandable Step-by-step Progression Milestones & Document Inspection */}
                   <AnimatePresence>
                     {isExpanded && (
                       <motion.div
@@ -413,6 +460,58 @@ export function ClientDashboard() {
                             })
                           )}
                         </div>
+
+                        {/* Resume document bar in expanded view */}
+                        {/* Resume document bar in expanded view */}
+                        {item.drive_file_id || item.drive_view_url || item.resume_id ? (
+                          <div className="mt-5 pt-4 border-t border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-[#E2E8F0]">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-9 h-9 rounded-xl bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center shrink-0 border border-[#BFDBFE]">
+                                <FileText className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-caption font-bold text-[#081226] truncate">
+                                  {item.file_name || `${(item.candidate_name || 'Candidate').replace(/\s+/g, '_')}_Resume.pdf`}
+                                </p>
+                                <p className="text-[11px] text-[#16A34A] font-semibold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Google Drive Cloud Storage Attached
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => openResumePreview(item)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-bold transition-colors shadow-xs cursor-pointer"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                View Full PDF
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openResumeDownload(item)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#081226] text-caption font-bold border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                Download
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => copyResumeShareLink(item, success)}
+                                className="p-1.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#081226] border border-[#CBD5E1] transition-colors shadow-xs cursor-pointer"
+                                title="Copy Public Google Drive Share Link"
+                              >
+                                <Share2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-5 pt-4 border-t border-[#E2E8F0] p-3 rounded-2xl bg-[#F8FAFC] border border-dashed border-[#CBD5E1] text-center text-caption text-[#94A3B8]">
+                            Candidate application ingested from AI intake without an attached resume document.
+                          </div>
+                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>

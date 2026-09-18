@@ -191,28 +191,29 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
       SELECT
         r.id,
         r.client_id,
-        c.company_name as client_name,
+        COALESCE(c.company_name, 'Workspace Chat') as client_name,
         r.status,
         r.created_at,
         MAX(m.created_at) as last_message_at
       FROM chat_rooms r
-      JOIN clients c ON c.id = r.client_id
+      LEFT JOIN clients c ON c.id = r.client_id
       LEFT JOIN chat_messages m ON m.room_id = r.id
       WHERE r.client_id = ANY(${allowedClientIds})
       GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
       ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
     `;
   } else {
+    // Admin / Super-Admin: All existing rooms
     rooms = await sql`
       SELECT
         r.id,
         r.client_id,
-        c.company_name as client_name,
+        COALESCE(c.company_name, 'Workspace Chat') as client_name,
         r.status,
         r.created_at,
         MAX(m.created_at) as last_message_at
       FROM chat_rooms r
-      JOIN clients c ON c.id = r.client_id
+      LEFT JOIN clients c ON c.id = r.client_id
       LEFT JOIN chat_messages m ON m.room_id = r.id
       GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
       ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
@@ -1419,6 +1420,7 @@ chatRouter.get("/rooms/:room_id/access-audit", requireAuth, async (c) => {
   `;
 
   return c.json({
+    room: access.room?.client_name || roomId,
     room_id: roomId,
     client_id: access.room?.client_id,
     current_members: resolved.members,
@@ -1441,14 +1443,15 @@ chatRouter.post("/sync-workspaces", requireRoles("super_admin", "admin"), async 
   for (const client of missing) {
     const roomId = crypto.randomUUID();
     await sql`
-      INSERT INTO chat_rooms (id, client_id, status, created_at, updated_at)
-      VALUES (${roomId}, ${client.id}, 'active', NOW(), NOW())
+      INSERT INTO chat_rooms (id, client_id, status, created_at)
+      VALUES (${roomId}, ${client.id}, 'active', NOW())
       ON CONFLICT (client_id) DO NOTHING
     `;
     createdRoomIds.push(roomId);
   }
 
   return c.json({
+    created: createdRoomIds.length,
     synced_count: createdRoomIds.length,
     created_room_ids: createdRoomIds,
   });

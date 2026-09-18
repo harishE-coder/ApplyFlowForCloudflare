@@ -982,6 +982,7 @@ async def get_room_access_audit(db: AsyncSession, room_id: uuid.UUID, user: User
         )
 
     return {
+        "room": room.client.company_name if room.client else str(room_id),
         "room_id": str(room_id),
         "client_id": str(room.client_id),
         "current_members": members_data["members"],
@@ -1006,6 +1007,7 @@ async def sync_missing_workspaces(db: AsyncSession) -> dict:
         invalidate_chat_cache()
 
     return {
+        "created": len(created_ids),
         "synced_count": len(created_ids),
         "created_room_ids": created_ids,
     }

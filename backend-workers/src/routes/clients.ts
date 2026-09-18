@@ -277,52 +277,53 @@ clientsRouter.post("/", requireRoles("super_admin", "admin", "sub_admin"), async
   }
 
   const clientId = crypto.randomUUID();
+  const roomId = crypto.randomUUID();
   const managedBy = user.role === "sub_admin" ? user.id : null;
 
-  // Insert Client
-  const [client] = await sql`
-    INSERT INTO clients (
-      id, company_name, contact_person, email, phone, status, logo_url, is_active, managed_by, created_at
-    ) VALUES (
-      ${clientId}, ${payload.company_name}, ${payload.contact_person || null},
-      ${payload.email || null}, ${payload.phone || null}, ${payload.status || "active"},
-      ${payload.logo_url || null}, true, ${managedBy}, NOW()
-    )
-    RETURNING *
-  `;
-
-  // Optional: Create client user login
-  const loginEmail = (payload.email || "").trim().toLowerCase();
-  const loginPassword = (payload.password || "").trim();
-  if (loginEmail && loginPassword) {
-    const existingUser = await sql`
-      SELECT id FROM users WHERE email = ${loginEmail} AND role = 'client' LIMIT 1
-    `;
-    if (existingUser.length > 0) {
-      return c.json({ detail: `A client login account already exists for ${loginEmail}.` }, 409);
+  // Atomically create Client and Workspace Chat Room together
+  let client: any;
+  try {
+    if (typeof sql.transaction === "function") {
+      const results = await sql.transaction((tx: any) => [
+        tx`
+          INSERT INTO clients (
+            id, company_name, contact_person, email, phone, status, logo_url, is_active, managed_by, created_at
+          ) VALUES (
+            ${clientId}, ${payload.company_name}, ${payload.contact_person || null},
+            ${payload.email || null}, ${payload.phone || null}, ${payload.status || "active"},
+            ${payload.logo_url || null}, true, ${managedBy}, NOW()
+          )
+          RETURNING *
+        `,
+        tx`
+          INSERT INTO chat_rooms (id, client_id, status, created_at)
+          VALUES (${roomId}, ${clientId}, 'active', NOW())
+          ON CONFLICT (client_id) DO NOTHING
+        `,
+      ]);
+      client = results[0][0];
+    } else {
+      const [insertedClient] = await sql`
+        INSERT INTO clients (
+          id, company_name, contact_person, email, phone, status, logo_url, is_active, managed_by, created_at
+        ) VALUES (
+          ${clientId}, ${payload.company_name}, ${payload.contact_person || null},
+          ${payload.email || null}, ${payload.phone || null}, ${payload.status || "active"},
+          ${payload.logo_url || null}, true, ${managedBy}, NOW()
+        )
+        RETURNING *
+      `;
+      client = insertedClient;
+      await sql`
+        INSERT INTO chat_rooms (id, client_id, status, created_at)
+        VALUES (${roomId}, ${clientId}, 'active', NOW())
+        ON CONFLICT (client_id) DO NOTHING
+      `;
     }
-
-    const hashed = await hashPassword(loginPassword);
-    const userId = crypto.randomUUID();
-    const contactName = (payload.contact_person || payload.company_name).trim();
-
-    await sql`
-      INSERT INTO users (
-        id, name, email, phone, password_hash, hashed_password, role, status, client_id, is_active, created_at, updated_at
-      ) VALUES (
-        ${userId}, ${contactName}, ${loginEmail}, ${payload.phone || null},
-        ${hashed}, ${hashed}, 'client', 'active', ${clientId}, true, NOW(), NOW()
-      )
-    `;
+  } catch (err: any) {
+    console.error("Failed to create client and chat room atomically:", err);
+    return c.json({ detail: "Failed to create client workspace: " + (err.message || String(err)) }, 500);
   }
-
-  // Create associated Chat Room
-  const roomId = crypto.randomUUID();
-  await sql`
-    INSERT INTO chat_rooms (id, client_id, status, created_at, updated_at)
-    VALUES (${roomId}, ${clientId}, 'active', NOW(), NOW())
-    ON CONFLICT (client_id) DO NOTHING
-  `;
 
   // Auto-assign to Sub-Admin if created by Sub-Admin
   if (user.role === "sub_admin") {
@@ -503,7 +504,7 @@ const activateClientHandler = async (c: any) => {
   }
 
   await sql`
-    UPDATE chat_rooms SET status = 'active', updated_at = NOW() WHERE client_id = ${clientId}
+    UPDATE chat_rooms SET status = 'active' WHERE client_id = ${clientId}
   `;
 
   await sql`
@@ -548,7 +549,7 @@ clientsRouter.post("/:client_id/deactivate", requireRoles("super_admin", "admin"
   }
 
   await sql`
-    UPDATE chat_rooms SET status = 'read_only', updated_at = NOW() WHERE client_id = ${clientId}
+    UPDATE chat_rooms SET status = 'read_only' WHERE client_id = ${clientId}
   `;
 
   await sql`

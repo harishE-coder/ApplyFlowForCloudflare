@@ -83,8 +83,8 @@ export function ChatPage() {
       setRooms(sorted);
       dispatchUnreadCount(sorted);
       setActiveRoomId((prev) => {
-        if (urlRoomId) return urlRoomId;
-        if (prev) return prev;
+        if (urlRoomId && sorted.some((r) => r.id === urlRoomId)) return urlRoomId;
+        if (prev && sorted.some((r) => r.id === prev)) return prev;
         return sorted.length > 0 && window.innerWidth >= 768 ? sorted[0].id : null;
       });
     } catch (err) {

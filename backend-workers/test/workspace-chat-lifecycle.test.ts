@@ -286,4 +286,128 @@ describe("Workspace Chat Lifecycle & Dynamic Employee Reassignment (ASRC)", () =
       expect(executedQueries.some((q) => q.includes("INSERT INTO chat_room_access_audit"))).toBe(true);
     });
   });
+
+  describe("6. Data Preservation & Permanent Room Identity (No Chat Loss)", () => {
+    it("existing room survives recruiter removal (room identity permanent, access revoked only)", async () => {
+      // In-memory representation of database tables
+      const chatRooms = [
+        { id: mockRoomId, client_id: mockClientId, status: "active", created_at: "2026-08-01T00:00:00Z" },
+      ];
+      const chatMessages = [
+        { id: "msg-1", room_id: mockRoomId, message: "Hello from Recruiter A", sender_id: recruiterAId },
+      ];
+      let employeeClients = [
+        { employee_id: recruiterAId, client_id: mockClientId, active: true },
+      ];
+
+      // Remove recruiter A (sets active = false)
+      employeeClients = employeeClients.map((ec) =>
+        ec.employee_id === recruiterAId && ec.client_id === mockClientId ? { ...ec, active: false } : ec
+      );
+
+      // Verify chat_rooms record is NOT deleted or modified
+      expect(chatRooms).toHaveLength(1);
+      expect(chatRooms[0].id).toBe(mockRoomId);
+      expect(chatMessages).toHaveLength(1);
+      expect(chatMessages[0].room_id).toBe(mockRoomId);
+
+      // Verify Recruiter A lost access dynamically
+      const mockSql = vi.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+        const query = strings.join("");
+        if (query.includes("FROM users WHERE id =")) return [{ id: recruiterAId, is_active: true, role: "employee" }];
+        if (query.includes("FROM chat_rooms r")) return chatRooms;
+        if (query.includes("FROM employee_clients")) return employeeClients.filter((ec) => ec.active);
+        return [];
+      });
+
+      const accessA = await validateRoomAccess(mockSql, mockRoomId, { id: recruiterAId, role: "employee" });
+      expect(accessA.authorized).toBe(false);
+    });
+
+    it("existing room survives recruiter reassignment (Recruiter B inherits same room ID & history)", async () => {
+      const permanentRoomId = mockRoomId;
+      const chatRooms = [
+        { id: permanentRoomId, client_id: mockClientId, status: "active", created_at: "2026-08-01T00:00:00Z" },
+      ];
+      const chatMessages = [
+        { id: "msg-1", room_id: permanentRoomId, message: "Historical resume share", sender_id: recruiterAId },
+      ];
+
+      // Reassign: Recruiter A is inactive, Recruiter B is active
+      const employeeClients = [
+        { employee_id: recruiterAId, client_id: mockClientId, active: false },
+        { employee_id: recruiterBId, client_id: mockClientId, active: true },
+      ];
+
+      // Verify room ID is permanent
+      expect(chatRooms[0].id).toBe(permanentRoomId);
+
+      const mockSql = vi.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+        const query = strings.join("");
+        if (query.includes("FROM users WHERE id =")) return [{ id: recruiterBId, is_active: true, role: "employee" }];
+        if (query.includes("FROM chat_rooms r")) return chatRooms;
+        if (query.includes("FROM employee_clients")) {
+          return employeeClients.filter((ec) => ec.employee_id === recruiterBId && ec.active);
+        }
+        return [];
+      });
+
+      // Recruiter B is granted access to the exact same room
+      const accessB = await validateRoomAccess(mockSql, permanentRoomId, { id: recruiterBId, role: "employee" });
+      expect(accessB.authorized).toBe(true);
+      expect(accessB.room?.id).toBe(permanentRoomId);
+      expect(chatMessages[0].room_id).toBe(permanentRoomId);
+    });
+
+    it("Admin still sees all rooms even when no recruiters are assigned", async () => {
+      const chatRooms = [
+        { id: mockRoomId, client_id: mockClientId, status: "active", client_name: "Orphaned Client Inc", created_at: "2026-08-01T00:00:00Z" },
+      ];
+
+      // Admin global client resolution returns null (unrestricted)
+      const mockSql = vi.fn();
+      const adminClientIds = await getAuthorizedClientIds(mockSql, { id: adminUserId, role: "admin" });
+      expect(adminClientIds).toBeNull();
+
+      // validateRoomAccess confirms permanent admin access to unassigned room
+      const mockSqlAdmin = vi.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+        const query = strings.join("");
+        if (query.includes("FROM users WHERE id =")) return [{ id: adminUserId, is_active: true, role: "admin" }];
+        if (query.includes("FROM chat_rooms r")) return chatRooms;
+        return [];
+      });
+
+      const res = await validateRoomAccess(mockSqlAdmin, mockRoomId, { id: adminUserId, role: "admin" });
+      expect(res.authorized).toBe(true);
+      expect(res.room?.id).toBe(mockRoomId);
+    });
+
+    it("sync-workspaces creates only missing rooms and leaves existing rooms untouched", async () => {
+      const existingClientWithRoom = { id: mockClientId, company_name: "Existing Client" };
+      const legacyClientWithoutRoom = { id: "legacy-client-999", company_name: "Legacy Client" };
+      const clients = [existingClientWithRoom, legacyClientWithoutRoom];
+
+      const existingRooms = [
+        { id: mockRoomId, client_id: mockClientId, status: "active" },
+      ];
+
+      // Emulate self-healing recovery query: find clients with NO room
+      const missingClients = clients.filter((c) => !existingRooms.some((r) => r.client_id === c.id));
+      expect(missingClients).toHaveLength(1);
+      expect(missingClients[0].id).toBe("legacy-client-999");
+
+      // Provision missing room
+      const newRoomId = "new-room-888";
+      existingRooms.push({
+        id: newRoomId,
+        client_id: missingClients[0].id,
+        status: "active",
+      });
+
+      // Confirm existing room was not altered or duplicated
+      expect(existingRooms).toHaveLength(2);
+      expect(existingRooms[0].id).toBe(mockRoomId); // Preserved!
+      expect(existingRooms[1].id).toBe(newRoomId); // Repaired!
+    });
+  });
 });

@@ -188,6 +188,27 @@ export class ChatRoomDO {
           return;
         }
 
+        // Verify dynamic access on interactive events
+        if (["sync", "typing", "read", "delivery_ack"].includes(data.type)) {
+          if (this.env.DATABASE_URL && roomId && meta.userId) {
+            try {
+              const sql = getDb(this.env.DATABASE_URL);
+              const access = await validateRoomAccess(sql, roomId, { id: meta.userId, role: meta.role });
+              if (!access.authorized) {
+                ws.send(JSON.stringify({ type: "access_revoked", reason: access.reason || "Access Revoked" }));
+                try {
+                  ws.close(4003, "Access Revoked");
+                } catch {}
+                this.sessions.delete(ws);
+                this.broadcastPresence();
+                return;
+              }
+            } catch (err) {
+              console.warn("Error verifying room access in DO event:", err);
+            }
+          }
+        }
+
         // Reconnection Message Replay Sync Request
         if (data.type === "sync" && data.last_message_id && roomId) {
           await this.replayMissedMessages(ws, roomId, data.last_message_id);

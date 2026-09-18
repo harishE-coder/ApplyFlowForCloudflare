@@ -628,6 +628,7 @@ export function ChatPage() {
             rooms={rooms}
             activeRoomId={activeRoomId}
             onSelectRoom={handleSelectRoom}
+            onSyncWorkspaces={fetchRooms}
             loading={loadingRooms}
             onlineUsers={onlineUsers}
             typingUsers={typingUsers}

@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MessageSquare, Building2, Users, Shield, Clock, Plus } from 'lucide-react';
+import { Search, MessageSquare, Building2, Users, Shield, Clock, Plus, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import api from '@/services/api';
 
 function formatRoomTime(dateStr) {
   if (!dateStr) return '';
@@ -28,6 +29,7 @@ export function ChatRoomList({
   rooms = [],
   activeRoomId = null,
   onSelectRoom,
+  onSyncWorkspaces,
   loading = false,
   onlineUsers = [],
   typingUsers = {},
@@ -35,6 +37,21 @@ export function ChatRoomList({
   const navigate = useNavigate();
   const { user, isAdmin, isEmployee, isClient } = useAuth();
   const [search, setSearch] = useState('');
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncWorkspaces = async () => {
+    setSyncing(true);
+    try {
+      await api.post('/chat/sync-workspaces');
+      if (typeof onSyncWorkspaces === 'function') {
+        onSyncWorkspaces();
+      }
+    } catch (err) {
+      console.error('Failed to sync workspaces:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // Sort rooms descending by last message timestamp (or creation timestamp)
   const sortedRooms = useMemo(() => {
@@ -106,14 +123,42 @@ export function ChatRoomList({
               <Building2 className="w-5 h-5 text-[#60A5FA]" />
             </div>
             <p className="font-semibold text-white mb-2">
-              {search ? 'No rooms match search' : 'No service client account found'}
+              {search
+                ? 'No rooms match search'
+                : isAdmin
+                ? 'No workspace chats found'
+                : 'No service client chat assigned'}
             </p>
             <p className="text-[#94A3B8] mb-4">
               {search
                 ? 'Try another conversation name.'
-                : 'Create a Service Client account first so chat rooms can be created.'}
+                : isAdmin
+                ? 'No workspace chats are currently loaded. Run sync to repair missing chats or create a new Service Client.'
+                : 'You currently have no assigned Service Client chats.'}
             </p>
-            {!search && canCreateClient && (
+            {!search && isAdmin && (
+              <div className="flex flex-col gap-2 items-center">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  icon={RefreshCw}
+                  loading={syncing}
+                  onClick={handleSyncWorkspaces}
+                  className="mx-auto"
+                >
+                  Sync Workspace Chats
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/clients')}
+                  className="text-[11px] text-[#60A5FA] hover:underline cursor-pointer"
+                >
+                  Or create a new Service Client
+                </button>
+              </div>
+            )}
+            {!search && !isAdmin && canCreateClient && (
               <Button
                 type="button"
                 variant="primary"

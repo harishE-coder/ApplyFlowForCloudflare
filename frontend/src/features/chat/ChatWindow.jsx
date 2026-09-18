@@ -397,9 +397,54 @@ export function ChatWindow({
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-[#64748B] truncate mt-0.5">
-              {room.participants?.map((p) => p.name).join(' · ') || 'Participants'}
-            </p>
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar mt-1 max-w-[500px]">
+              {room.participants && room.participants.length > 0 ? (
+                room.participants.slice(0, 5).map((p) => {
+                  const isOnline = Array.isArray(onlineUsers) && onlineUsers.includes(String(p.id));
+                  const roleLabel =
+                    p.role === 'admin'
+                      ? 'Admin'
+                      : p.role === 'super_admin'
+                      ? 'Super Admin'
+                      : p.role === 'sub_admin'
+                      ? 'Sub-Admin'
+                      : p.role === 'client'
+                      ? 'Client'
+                      : p.is_primary
+                      ? 'Lead Recruiter'
+                      : 'Recruiter';
+
+                  return (
+                    <span
+                      key={p.id}
+                      className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border shrink-0 transition-colors ${
+                        isOnline
+                          ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200'
+                          : 'bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]'
+                      }`}
+                      title={`${p.name} • ${roleLabel} • ${isOnline ? 'Online' : 'Offline'}`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-[#94A3B8]'
+                        }`}
+                      />
+                      <span className="font-semibold truncate max-w-[80px]">
+                        {p.name.split(' ')[0]}
+                      </span>
+                      <span className="text-[9px] opacity-75">({roleLabel})</span>
+                    </span>
+                  );
+                })
+              ) : (
+                <span className="text-[11px] text-[#94A3B8]">Workspace Chat</span>
+              )}
+              {room.participants?.length > 5 && (
+                <span className="text-[10px] text-[#64748B] font-semibold">
+                  +{room.participants.length - 5} more
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -564,9 +609,12 @@ export function ChatWindow({
                       isAdmin ? (
                         <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 text-[#081226] space-y-2.5 shadow-xs max-w-full min-w-[260px]">
                           <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-900 border-b border-amber-200 pb-1.5">
-                            <Trash2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                            <span>
-                              Deleted by {msg.deleted_by_name || 'Admin'}
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                              Deleted
+                            </span>
+                            <span className="text-[#64748B] text-[11px]">
+                              by {msg.deleted_by_name || 'Admin'}
                               {msg.deleted_by_role ? ` (${msg.deleted_by_role === 'sub_admin' ? 'Sub-Admin' : msg.deleted_by_role})` : ''}
                               {msg.deleted_at ? ` at ${formatMessageTime(msg.deleted_at)}` : ''}
                             </span>
@@ -707,7 +755,7 @@ export function ChatWindow({
                       ) : (
                         <div className="p-3 rounded-2xl bg-[#F1F5F9] text-[#94A3B8] italic text-small border border-[#E2E8F0] flex items-center gap-2 select-none">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#CBD5E1]" />
-                          <span>This message was deleted.</span>
+                          <span>[Message deleted]</span>
                         </div>
                       )
                     ) : isResume ? (

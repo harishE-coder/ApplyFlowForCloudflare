@@ -45,7 +45,9 @@ export async function getAuthorizedClientIds(
   sql: any,
   user: { id: string; role: string; client_id?: string | null }
 ): Promise<string[] | null> {
-  if (user.role === "super_admin" || user.role === "admin") {
+  const role = (user?.role || "").toLowerCase().trim();
+  // Admin & Super-Admin always have unrestricted global access
+  if (role === "super_admin" || role === "admin" || role === "superadmin") {
     return null;
   }
 
@@ -87,6 +89,10 @@ export async function getAuthorizedRoomIds(
   sql: any,
   user: { id: string; role: string; client_id?: string | null }
 ): Promise<string[] | null> {
+  const role = (user?.role || "").toLowerCase().trim();
+  if (role === "super_admin" || role === "admin" || role === "superadmin") {
+    return null; // Global access
+  }
   const clientIds = await getAuthorizedClientIds(sql, user);
   if (clientIds === null) {
     return null; // Global access
@@ -224,7 +230,8 @@ export async function validateRoomAccess(
   const room = roomRows[0];
 
   // 3. Super Admin & Admin: Permanent access
-  if (dbUser.role === "super_admin" || dbUser.role === "admin") {
+  const role = (dbUser.role || user.role || "").toLowerCase().trim();
+  if (role === "super_admin" || role === "admin" || role === "superadmin") {
     return { authorized: true, room };
   }
 

@@ -130,19 +130,33 @@ export async function getChatUnreadCount(
   sql: any,
   user: { id: string; role: string; client_id?: string | null }
 ): Promise<number> {
+  const role = (user?.role || "").toLowerCase().trim();
+  const isAdmin = role === "admin" || role === "super_admin" || role === "superadmin";
+
+  let rows: any[];
+  if (isAdmin) {
+    rows = await sql`
+      SELECT COUNT(m.id)::int as count
+      FROM chat_messages m
+      JOIN chat_rooms r ON r.id = m.room_id
+      LEFT JOIN chat_reads cr ON cr.room_id = m.room_id AND cr.user_id = ${user.id}
+      WHERE (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
+        AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
+    `;
+    return rows[0]?.count || 0;
+  }
+
   const allowedClientIds = await getAllowedClientIdsForUser(sql, user);
 
   if (allowedClientIds !== null && allowedClientIds.length === 0) {
     return 0;
   }
 
-  let rows: any[];
   if (allowedClientIds !== null) {
     rows = await sql`
       SELECT COUNT(m.id)::int as count
       FROM chat_messages m
       JOIN chat_rooms r ON r.id = m.room_id
-      JOIN clients c ON c.id = r.client_id
       LEFT JOIN chat_reads cr ON cr.room_id = m.room_id AND cr.user_id = ${user.id}
       WHERE r.client_id = ANY(${allowedClientIds})
         AND (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
@@ -153,7 +167,6 @@ export async function getChatUnreadCount(
       SELECT COUNT(m.id)::int as count
       FROM chat_messages m
       JOIN chat_rooms r ON r.id = m.room_id
-      JOIN clients c ON c.id = r.client_id
       LEFT JOIN chat_reads cr ON cr.room_id = m.room_id AND cr.user_id = ${user.id}
       WHERE (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
         AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
@@ -181,12 +194,34 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  const allowedClientIds = await getAllowedClientIdsForUser(sql, user);
+  const role = (user?.role || "").toLowerCase().trim();
+  const isAdmin = role === "admin" || role === "super_admin" || role === "superadmin";
 
   let rooms: any[];
-  if (allowedClientIds !== null && allowedClientIds.length === 0) {
-    return c.json({ items: [], total_unread: 0 });
-  } else if (allowedClientIds !== null) {
+
+  if (isAdmin) {
+    // Admin / Super-Admin: Query chat_rooms directly without any client scoping
+    // Auto-repair missing rooms for legacy clients automatically
+    try {
+      const missing = await sql`
+        SELECT c.id FROM clients c
+        LEFT JOIN chat_rooms cr ON cr.client_id = c.id
+        WHERE cr.id IS NULL
+        LIMIT 100
+      `;
+      if (missing && missing.length > 0) {
+        for (const mClient of missing) {
+          await sql`
+            INSERT INTO chat_rooms (id, client_id, status, created_at)
+            VALUES (${crypto.randomUUID()}, ${mClient.id}, 'active', NOW())
+            ON CONFLICT (client_id) DO NOTHING
+          `;
+        }
+      }
+    } catch (repairErr) {
+      console.warn("Auto-repair missing rooms non-fatal warning:", repairErr);
+    }
+
     rooms = await sql`
       SELECT
         r.id,
@@ -198,26 +233,50 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
       FROM chat_rooms r
       LEFT JOIN clients c ON c.id = r.client_id
       LEFT JOIN chat_messages m ON m.room_id = r.id
-      WHERE r.client_id = ANY(${allowedClientIds})
       GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
       ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
     `;
+
+    console.log(`[Chat Rooms] User: ${user.id}, Role: ${user.role}, IsAdmin: true, AuthorizedClientIds: null, RoomCount: ${rooms.length}`);
   } else {
-    // Admin / Super-Admin: All existing rooms
-    rooms = await sql`
-      SELECT
-        r.id,
-        r.client_id,
-        COALESCE(c.company_name, 'Workspace Chat') as client_name,
-        r.status,
-        r.created_at,
-        MAX(m.created_at) as last_message_at
-      FROM chat_rooms r
-      LEFT JOIN clients c ON c.id = r.client_id
-      LEFT JOIN chat_messages m ON m.room_id = r.id
-      GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
-      ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
-    `;
+    // Non-Admin: derive authorized clients from assignments
+    const allowedClientIds = await getAllowedClientIdsForUser(sql, user);
+    console.log(`[Chat Rooms Non-Admin] User: ${user.id}, Role: ${user.role}, AuthorizedClientIds: ${allowedClientIds ? JSON.stringify(allowedClientIds) : 'null'}`);
+
+    if (allowedClientIds !== null && allowedClientIds.length === 0) {
+      return c.json({ items: [], total_unread: 0 });
+    } else if (allowedClientIds !== null) {
+      rooms = await sql`
+        SELECT
+          r.id,
+          r.client_id,
+          COALESCE(c.company_name, 'Workspace Chat') as client_name,
+          r.status,
+          r.created_at,
+          MAX(m.created_at) as last_message_at
+        FROM chat_rooms r
+        LEFT JOIN clients c ON c.id = r.client_id
+        LEFT JOIN chat_messages m ON m.room_id = r.id
+        WHERE r.client_id = ANY(${allowedClientIds})
+        GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
+        ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
+      `;
+    } else {
+      rooms = await sql`
+        SELECT
+          r.id,
+          r.client_id,
+          COALESCE(c.company_name, 'Workspace Chat') as client_name,
+          r.status,
+          r.created_at,
+          MAX(m.created_at) as last_message_at
+        FROM chat_rooms r
+        LEFT JOIN clients c ON c.id = r.client_id
+        LEFT JOIN chat_messages m ON m.room_id = r.id
+        GROUP BY r.id, r.client_id, c.company_name, r.status, r.created_at
+        ORDER BY COALESCE(MAX(m.created_at), r.created_at) DESC
+      `;
+    }
   }
 
   let totalUnread = 0;
@@ -1454,6 +1513,42 @@ chatRouter.post("/sync-workspaces", requireRoles("super_admin", "admin"), async 
     created: createdRoomIds.length,
     synced_count: createdRoomIds.length,
     created_room_ids: createdRoomIds,
+  });
+});
+
+// 19. GET /api/chat/rooms/health (Chat Room Data Integrity Health Check)
+chatRouter.get("/rooms/health", requireRoles("super_admin", "admin"), async (c) => {
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const [totalClientsRes, totalRoomsRes, missingRoomsRes, orphanRoomsRes, duplicateRoomsRes] = await Promise.all([
+    sql`SELECT count(*)::int as count FROM clients`,
+    sql`SELECT count(*)::int as count FROM chat_rooms`,
+    sql`
+      SELECT count(*)::int as count
+      FROM clients c
+      LEFT JOIN chat_rooms cr ON cr.client_id = c.id
+      WHERE cr.id IS NULL
+    `,
+    sql`
+      SELECT count(*)::int as count
+      FROM chat_rooms cr
+      LEFT JOIN clients c ON c.id = cr.client_id
+      WHERE c.id IS NULL
+    `,
+    sql`
+      SELECT count(*)::int as count
+      FROM (
+        SELECT client_id FROM chat_rooms GROUP BY client_id HAVING count(*) > 1
+      ) duplicates
+    `,
+  ]);
+
+  return c.json({
+    total_clients: totalClientsRes[0]?.count || 0,
+    rooms: totalRoomsRes[0]?.count || 0,
+    missing_rooms: missingRoomsRes[0]?.count || 0,
+    orphan_rooms: orphanRoomsRes[0]?.count || 0,
+    duplicate_rooms: duplicateRoomsRes[0]?.count || 0,
   });
 });
 

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.modules.activity_logs.models import ActivityLog
 from app.modules.applications.models import Application
-from app.modules.chat.models import ChatMessage, ChatRoom
+from app.modules.chat.models import ChatMessage, ChatRoom, ChatRoomAccessAudit
 from app.modules.clients.models import Client, EmployeeClient
 from app.modules.clients.schemas import (
     AssignedEmployeeInfo,
@@ -480,6 +480,35 @@ async def assign_employees_to_client(
 
     await db.flush()
 
+    # Log audit in chat_room_access_audit
+    room = (
+        await db.execute(select(ChatRoom).where(ChatRoom.client_id == client_id))
+    ).scalar_one_or_none()
+    if room:
+        target_ids = []
+        if assignments:
+            target_ids = [
+                (item.employee_id if hasattr(item, "employee_id") else item.get("employee_id"))
+                for item in assignments
+                if (item.active if hasattr(item, "active") else item.get("active", True))
+            ]
+        elif employee_ids:
+            target_ids = employee_ids
+
+        for eid in target_ids:
+            db.add(
+                ChatRoomAccessAudit(
+                    id=uuid.uuid4(),
+                    room_id=room.id,
+                    client_id=client_id,
+                    user_id=eid,
+                    action="assigned",
+                    performed_by=current_user.id if current_user else None,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+        await db.flush()
+
 
 async def unassign_employee(
     db: AsyncSession, client_id: uuid.UUID, employee_id: uuid.UUID, current_user: User | None = None
@@ -504,4 +533,20 @@ async def unassign_employee(
 
     if emp_map:
         emp_map.active = False
+        room = (
+            await db.execute(select(ChatRoom).where(ChatRoom.client_id == client_id))
+        ).scalar_one_or_none()
+        if room:
+            db.add(
+                ChatRoomAccessAudit(
+                    id=uuid.uuid4(),
+                    room_id=room.id,
+                    client_id=client_id,
+                    user_id=employee_id,
+                    action="removed",
+                    performed_by=current_user.id if current_user else None,
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
         await db.flush()
+

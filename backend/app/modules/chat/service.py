@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.cache import cache, invalidate_chat_cache
-from app.modules.chat.models import ChatMessage, ChatRead, ChatRoom
+from app.modules.chat.models import ChatMessage, ChatRead, ChatRoom, ChatRoomAccessAudit
 from app.modules.chat.schemas import (
     ChatMessageResponse,
     ChatMessagesListResponse,
@@ -25,6 +25,9 @@ from app.modules.users.models import SubAdminAssignment, User
 
 
 async def check_room_access(db: AsyncSession, user: User, room_id: uuid.UUID) -> ChatRoom:
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is inactive or deactivated")
+
     room = (
         await db.execute(
             select(ChatRoom)
@@ -832,3 +835,178 @@ async def export_room_chat(db: AsyncSession, room_id: uuid.UUID, user: User) -> 
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "transcript": "\n".join(transcript),
     }
+
+
+async def resolve_room_members(db: AsyncSession, room_id: uuid.UUID) -> dict:
+    room = (
+        await db.execute(select(ChatRoom).where(ChatRoom.id == room_id).options(selectinload(ChatRoom.client)))
+    ).scalar_one_or_none()
+    if not room:
+        raise HTTPException(status_code=404, detail="Chat room not found")
+
+    client_id = room.client_id
+
+    # 1. Active Admins
+    admins = (
+        await db.execute(
+            select(User).where(User.role.in_(("admin", "super_admin")), User.is_active == True).order_by(User.name)
+        )
+    ).scalars().all()
+
+    # 2. Sub Admins managing this client
+    sub_admin_q = (
+        select(User)
+        .where(
+            User.role == "sub_admin",
+            User.is_active == True,
+            or_(
+                User.id == select(Client.managed_by).where(Client.id == client_id).scalar_subquery(),
+                User.id.in_(
+                    select(SubAdminAssignment.sub_admin_id)
+                    .where(SubAdminAssignment.client_id == client_id, SubAdminAssignment.active == True)
+                    .scalar_subquery()
+                ),
+            ),
+        )
+        .order_by(User.name)
+    )
+    sub_admins = (await db.execute(sub_admin_q)).scalars().all()
+
+    # 3. Client user
+    client_users = (
+        await db.execute(
+            select(User).where(User.client_id == client_id, User.role == "client", User.is_active == True).order_by(User.name)
+        )
+    ).scalars().all()
+
+    # 4. Assigned active recruiters
+    recruiter_rows = (
+        await db.execute(
+            select(User, EmployeeClient.is_primary)
+            .join(EmployeeClient, EmployeeClient.employee_id == User.id)
+            .where(
+                EmployeeClient.client_id == client_id,
+                EmployeeClient.active == True,
+                User.is_active == True,
+            )
+            .order_by(EmployeeClient.is_primary.desc(), User.name)
+        )
+    ).all()
+
+    seen_ids = set()
+    members = []
+
+    def add_member(u, is_primary=False):
+        uid = str(u.id)
+        if uid not in seen_ids:
+            seen_ids.add(uid)
+            members.append(
+                {
+                    "id": uid,
+                    "name": u.name,
+                    "role": u.role,
+                    "email": u.email,
+                    "is_primary": is_primary,
+                }
+            )
+
+    for a in admins:
+        add_member(a)
+    for sa in sub_admins:
+        add_member(sa)
+    for c in client_users:
+        add_member(c)
+    for u, is_prim in recruiter_rows:
+        add_member(u, bool(is_prim))
+
+    return {
+        "room_id": str(room.id),
+        "client_id": str(room.client_id),
+        "members": members,
+    }
+
+
+async def log_chat_access_audit(
+    db: AsyncSession,
+    room_id: uuid.UUID,
+    client_id: uuid.UUID,
+    user_id: uuid.UUID,
+    action: str,
+    performed_by: uuid.UUID | None = None,
+) -> None:
+    audit = ChatRoomAccessAudit(
+        id=uuid.uuid4(),
+        room_id=room_id,
+        client_id=client_id,
+        user_id=user_id,
+        action=action,
+        performed_by=performed_by,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(audit)
+    await db.flush()
+
+
+async def get_room_access_audit(db: AsyncSession, room_id: uuid.UUID, user: User) -> dict:
+    room = await check_room_access(db, user, room_id)
+    members_data = await resolve_room_members(db, room_id)
+
+    history_rows = (
+        await db.execute(
+            select(ChatRoomAccessAudit)
+            .where(ChatRoomAccessAudit.room_id == room_id)
+            .options(
+                selectinload(ChatRoomAccessAudit.user),
+                selectinload(ChatRoomAccessAudit.performed_by_user),
+            )
+            .order_by(ChatRoomAccessAudit.created_at.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+
+    history = []
+    for h in history_rows:
+        history.append(
+            {
+                "id": str(h.id),
+                "room_id": str(h.room_id),
+                "client_id": str(h.client_id),
+                "user_id": str(h.user_id),
+                "action": h.action,
+                "performed_by": str(h.performed_by) if h.performed_by else None,
+                "created_at": h.created_at.isoformat() if h.created_at else None,
+                "user_name": h.user.name if h.user else "User",
+                "user_role": h.user.role if h.user else "user",
+                "performed_by_name": h.performed_by_user.name if h.performed_by_user else None,
+            }
+        )
+
+    return {
+        "room_id": str(room_id),
+        "client_id": str(room.client_id),
+        "current_members": members_data["members"],
+        "history": history,
+    }
+
+
+async def sync_missing_workspaces(db: AsyncSession) -> dict:
+    existing_room_cids = select(ChatRoom.client_id)
+    missing_clients = (
+        await db.execute(select(Client).where(Client.id.notin_(existing_room_cids)))
+    ).scalars().all()
+
+    created_ids = []
+    for c in missing_clients:
+        r = ChatRoom(id=uuid.uuid4(), client_id=c.id, status="active")
+        db.add(r)
+        created_ids.append(str(r.id))
+
+    if created_ids:
+        await db.flush()
+        invalidate_chat_cache()
+
+    return {
+        "synced_count": len(created_ids),
+        "created_room_ids": created_ids,
+    }
+

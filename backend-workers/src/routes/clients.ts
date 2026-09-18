@@ -12,12 +12,41 @@ import {
   ClientCreateSchema,
   ClientUpdateSchema,
 } from "../schemas/clients";
+import { logChatAccessAudit } from "../services/chatAccess";
 import type { Bindings, UserPayload, Variables } from "../types";
 
 export const clientsRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // All client endpoints require authentication
 clientsRouter.use("*", requireAuth);
+
+/**
+ * Helper: Notify ChatRoomDO of member updates to immediately evict or refresh users
+ */
+async function notifyRoomMembersUpdated(
+  env: Bindings,
+  roomId: string,
+  removedUserIds: string[] = [],
+  assignedUserIds: string[] = []
+) {
+  if (!env.CHAT_ROOMS || !roomId) return;
+  try {
+    const doId = env.CHAT_ROOMS.idFromName(roomId);
+    const stub = env.CHAT_ROOMS.get(doId);
+    await stub.fetch("http://do/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "room_members_updated",
+        room_id: roomId,
+        removed_user_ids: removedUserIds,
+        assigned_user_ids: assignedUserIds,
+      }),
+    });
+  } catch (err) {
+    console.warn("Failed to notify ChatRoomDO of member update:", err);
+  }
+}
 
 /**
  * Helper: Resolve permitted client IDs based on role
@@ -369,6 +398,12 @@ const updateClientHandler = async (c: any) => {
   // Update recruiter assignments if employee_ids / assigned_employee_ids / assignments provided
   const hasAssignments = payload.employee_ids !== undefined || payload.assigned_employee_ids !== undefined || payload.assignments !== undefined;
   if (hasAssignments) {
+    // Query existing active assignments for this client
+    const oldRows = await sql`
+      SELECT employee_id FROM employee_clients WHERE client_id = ${clientId} AND active = true
+    `;
+    const oldEmpIds = new Set(oldRows.map((r: any) => String(r.employee_id)));
+
     // 1. Remove existing assignments for that client
     await sql`DELETE FROM employee_clients WHERE client_id = ${clientId}`;
 
@@ -381,15 +416,49 @@ const updateClientHandler = async (c: any) => {
       assignmentItems = ids.map((eid) => ({ employee_id: eid, is_primary: false, active: true }));
     }
 
+    const newEmpIds = new Set<string>();
     const seen = new Set<string>();
     for (const item of assignmentItems) {
       if (!item.employee_id || seen.has(item.employee_id)) continue;
       seen.add(item.employee_id);
+      if (item.active !== false) {
+        newEmpIds.add(item.employee_id);
+      }
       const ecId = crypto.randomUUID();
       await sql`
         INSERT INTO employee_clients (id, client_id, employee_id, is_primary, active, assigned_at, assigned_by)
         VALUES (${ecId}, ${clientId}, ${item.employee_id}, ${Boolean(item.is_primary)}, ${item.active !== false}, NOW(), ${user.id})
       `;
+    }
+
+    const roomRows = await sql`SELECT id FROM chat_rooms WHERE client_id = ${clientId} LIMIT 1`;
+    if (roomRows.length > 0) {
+      const roomId = roomRows[0].id;
+      const removedIds = [...oldEmpIds].filter((id) => !newEmpIds.has(id));
+      const addedIds = [...newEmpIds].filter((id) => !oldEmpIds.has(id));
+
+      for (const id of addedIds) {
+        await logChatAccessAudit(sql, {
+          roomId,
+          clientId,
+          userId: id,
+          action: "assigned",
+          performedBy: user.id,
+        });
+      }
+      for (const id of removedIds) {
+        await logChatAccessAudit(sql, {
+          roomId,
+          clientId,
+          userId: id,
+          action: "removed",
+          performedBy: user.id,
+        });
+      }
+
+      if (removedIds.length > 0 || addedIds.length > 0) {
+        await notifyRoomMembersUpdated(c.env, roomId, removedIds, addedIds);
+      }
     }
   }
 
@@ -632,6 +701,9 @@ const assignEmployeesHandler = async (c: any) => {
     items = [{ employee_id: payload.employee_id, is_primary: false, active: true }];
   }
 
+  const roomRows = await sql`SELECT id FROM chat_rooms WHERE client_id = ${clientId} LIMIT 1`;
+  const roomId = roomRows[0]?.id;
+
   for (const item of items) {
     const ecId = crypto.randomUUID();
     await sql`
@@ -643,6 +715,21 @@ const assignEmployeesHandler = async (c: any) => {
         active = true,
         assigned_at = NOW()
     `;
+
+    if (roomId && item.active !== false) {
+      await logChatAccessAudit(sql, {
+        roomId,
+        clientId,
+        userId: item.employee_id,
+        action: "assigned",
+        performedBy: user.id,
+      });
+    }
+  }
+
+  if (roomId) {
+    const assignedIds = items.filter((i) => i.active !== false).map((i) => i.employee_id);
+    await notifyRoomMembersUpdated(c.env, roomId, [], assignedIds);
   }
 
   return c.json({ message: "Recruiters assigned successfully" });
@@ -675,6 +762,19 @@ clientsRouter.delete(
         active = false
       WHERE client_id = ${clientId} AND employee_id = ${employeeId}
     `;
+
+    const roomRows = await sql`SELECT id FROM chat_rooms WHERE client_id = ${clientId} LIMIT 1`;
+    if (roomRows.length > 0) {
+      const roomId = roomRows[0].id;
+      await logChatAccessAudit(sql, {
+        roomId,
+        clientId,
+        userId: employeeId,
+        action: "removed",
+        performedBy: user.id,
+      });
+      await notifyRoomMembersUpdated(c.env, roomId, [employeeId], []);
+    }
 
     return c.json({ message: "Recruiter assignment deactivated successfully" });
   }

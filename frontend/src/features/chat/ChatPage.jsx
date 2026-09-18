@@ -331,6 +331,21 @@ export function ChatPage() {
     }
   }, []);
 
+  // Handle revoked access (e.g. reassignment or deactivation)
+  const handleAccessRevoked = useCallback(
+    (reason) => {
+      toastError(reason || 'Access to this workspace has been revoked or reassigned.');
+      setActiveRoomId(null);
+      fetchRooms();
+    },
+    [toastError, fetchRooms]
+  );
+
+  // Handle dynamic member updates (e.g. recruiter assigned or unassigned)
+  const handleRoomMembersUpdated = useCallback(() => {
+    fetchRooms();
+  }, [fetchRooms]);
+
   // Real-time WebSocket hook with stable callbacks
   const {
     isConnected,
@@ -346,6 +361,8 @@ export function ChatPage() {
     onReadReceipt: handleReadReceipt,
     onMessageDeleted: handleWsMessageDeleted,
     onRoomStatusChanged: handleRoomStatusChanged,
+    onAccessRevoked: handleAccessRevoked,
+    onRoomMembersUpdated: handleRoomMembersUpdated,
   });
 
   // Action handlers
@@ -398,11 +415,15 @@ export function ChatPage() {
         });
       } catch (err) {
         console.error('Failed to send message:', err);
-        toastError('Failed to send message');
+        const detail = err.response?.data?.detail;
+        toastError(detail || 'Failed to send message');
+        if (err.response?.status === 403) {
+          fetchRooms();
+        }
         setMessages((prev) => prev.filter((m) => m.client_id !== clientId));
       }
     },
-    [activeRoomId, user, toastError, updateRoomAndSort]
+    [activeRoomId, user, toastError, updateRoomAndSort, fetchRooms]
   );
 
   const handleUploadAttachment = useCallback(
@@ -425,10 +446,14 @@ export function ChatPage() {
         toastSuccess('Attachment uploaded and sent');
       } catch (err) {
         console.error('Failed to upload attachment:', err);
-        toastError('Failed to upload file');
+        const detail = err.response?.data?.detail;
+        toastError(detail || 'Failed to upload file');
+        if (err.response?.status === 403) {
+          fetchRooms();
+        }
       }
     },
-    [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort]
+    [activeRoomId, user?.name, toastError, toastSuccess, updateRoomAndSort, fetchRooms]
   );
 
   const handleShareResume = useCallback(

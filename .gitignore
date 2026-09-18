@@ -37,6 +37,7 @@ backend/applyflow.db
 # Local Uploads & Temp Files
 uploads/
 backend/uploads/
+*.pdf
 *.pdf.bak
 *.json.bak
 

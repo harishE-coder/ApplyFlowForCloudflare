@@ -128,3 +128,32 @@ class PushSubscription(Base):
     # Relationships
     user: Mapped[User] = relationship(lazy="selectin")
 
+
+class ChatRoomAccessAudit(Base):
+    """
+    Dual-layer audit log for workspace chat assignment changes.
+    Tracks when recruiters are dynamically assigned or removed from client workspaces.
+    """
+    __tablename__ = "chat_room_access_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    room_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_rooms.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(String(20), nullable=False)  # "assigned", "removed"
+    performed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now()
+    )
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id], lazy="selectin")
+    performed_by_user: Mapped[User | None] = relationship(foreign_keys=[performed_by], lazy="selectin")
+

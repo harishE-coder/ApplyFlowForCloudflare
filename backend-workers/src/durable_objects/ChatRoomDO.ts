@@ -9,6 +9,7 @@
  */
 
 import { getDb } from "../db";
+import { validateRoomAccess } from "../services/chatAccess";
 import type { Bindings } from "../types";
 
 export interface SessionMeta {
@@ -35,8 +36,28 @@ export class ChatRoomDO {
     // 1. Internal broadcast endpoint for REST API worker
     // Called after inserting message into Neon PostgreSQL
     if (url.pathname.endsWith("/broadcast")) {
-      const payload = await request.json().catch(() => null);
+      const payload = (await request.json().catch(() => null)) as any;
       if (payload) {
+        // Targeted eviction if recruiters/users were removed
+        if (payload.type === "room_members_updated" && Array.isArray(payload.removed_user_ids)) {
+          const removedSet = new Set(payload.removed_user_ids.map(String));
+          for (const [socket, meta] of Array.from(this.sessions.entries())) {
+            if (removedSet.has(String(meta.userId))) {
+              try {
+                socket.send(
+                  JSON.stringify({
+                    type: "access_revoked",
+                    reason: "Your assignment to this workspace has ended.",
+                  })
+                );
+                socket.close(4003, "Access Revoked");
+              } catch {}
+              this.sessions.delete(socket);
+            }
+          }
+          this.broadcastPresence();
+        }
+
         this.broadcast(payload);
       }
       const onlineUserIds = Array.from(
@@ -74,6 +95,19 @@ export class ChatRoomDO {
     const userRole = request.headers.get("X-User-Role") || "user";
     const roomId = request.headers.get("X-Room-Id") || url.pathname.split("/")[3] || "";
     const lastMessageId = url.searchParams.get("last_message_id");
+
+    // Dynamic verification against Neon PostgreSQL
+    if (this.env.DATABASE_URL && roomId && userId) {
+      try {
+        const sql = getDb(this.env.DATABASE_URL);
+        const access = await validateRoomAccess(sql, roomId, { id: userId, role: userRole });
+        if (!access.authorized) {
+          return new Response(`Forbidden: ${access.reason || "Access Revoked"}`, { status: 403 });
+        }
+      } catch (err) {
+        console.warn("Error validating room access in ChatRoomDO fetch:", err);
+      }
+    }
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);

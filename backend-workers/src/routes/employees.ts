@@ -12,12 +12,67 @@ import {
   UserCreateSchema,
   UserUpdateSchema,
 } from "../schemas/employees";
+import { logChatAccessAudit } from "../services/chatAccess";
 import type { Bindings, UserPayload, Variables } from "../types";
 
 export const employeesRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // All employee and user endpoints require authentication
 employeesRouter.use("*", requireAuth);
+
+/**
+ * Helper: Immediately evict a deactivated or deleted user from assigned Workspace Chats
+ */
+async function evictUserFromChatRooms(
+  env: Bindings,
+  sql: any,
+  userId: string,
+  performedBy?: string
+) {
+  try {
+    const assignedRooms = await sql`
+      SELECT r.id as room_id, r.client_id
+      FROM employee_clients ec
+      JOIN chat_rooms r ON r.client_id = ec.client_id
+      WHERE ec.employee_id = ${userId}
+      UNION
+      SELECT r.id as room_id, r.client_id
+      FROM users u
+      JOIN chat_rooms r ON r.client_id = u.client_id
+      WHERE u.id = ${userId} AND u.client_id IS NOT NULL
+    `;
+
+    for (const row of assignedRooms) {
+      const roomId = String(row.room_id);
+      const clientId = String(row.client_id);
+      await logChatAccessAudit(sql, {
+        roomId,
+        clientId,
+        userId,
+        action: "removed",
+        performedBy,
+      });
+
+      if (env.CHAT_ROOMS) {
+        try {
+          const doId = env.CHAT_ROOMS.idFromName(roomId);
+          const stub = env.CHAT_ROOMS.get(doId);
+          await stub.fetch("http://do/broadcast", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "room_members_updated",
+              room_id: roomId,
+              removed_user_ids: [userId],
+            }),
+          });
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to evict user from chat rooms:", err);
+  }
+}
 
 /**
  * Helper: Resolve permitted employee IDs based on role
@@ -448,6 +503,7 @@ const updateUserHandler = async (c: any) => {
 
   if (statusVal === "inactive" || statusVal === "archived" || isActiveVal === false) {
     await sql`UPDATE targets SET status = 'paused' WHERE employee_id = ${userId} AND status = 'active'`;
+    await evictUserFromChatRooms(c.env, sql, userId, user.id);
   } else if (statusVal === "active" && isActiveVal === true) {
     await sql`UPDATE targets SET status = 'active' WHERE employee_id = ${userId} AND status = 'paused'`;
   }
@@ -545,6 +601,7 @@ const deactivateUserHandler = async (c: any) => {
 
   // Pause active targets for deactivated recruiter
   await sql`UPDATE targets SET status = 'paused' WHERE employee_id = ${userId} AND status = 'active'`;
+  await evictUserFromChatRooms(c.env, sql, userId, user.id);
 
   await sql`
     INSERT INTO activity_logs (id, user_id, action, details, created_at)
@@ -583,6 +640,7 @@ const archiveUserHandler = async (c: any) => {
 
   // Pause active targets for archived recruiter
   await sql`UPDATE targets SET status = 'paused' WHERE employee_id = ${userId} AND status = 'active'`;
+  await evictUserFromChatRooms(c.env, sql, userId, user.id);
 
   await sql`
     INSERT INTO activity_logs (id, user_id, action, details, created_at)
@@ -679,6 +737,8 @@ const deleteUserHandler = async (c: any) => {
       400
     );
   }
+
+  await evictUserFromChatRooms(c.env, sql, userId, user.id);
 
   // Safe delete
   await sql`DELETE FROM employee_clients WHERE employee_id = ${userId}`;

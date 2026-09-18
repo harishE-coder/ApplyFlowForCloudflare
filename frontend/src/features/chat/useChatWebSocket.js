@@ -143,6 +143,15 @@ export function useChatWebSocket(roomId, callbacks = {}) {
               callbacksRef.current.onMessageDeleted?.(data);
             } else if (data.type === 'room_status_changed') {
               callbacksRef.current.onRoomStatusChanged?.(data);
+            } else if (data.type === 'access_revoked') {
+              isManuallyClosedRef.current = true;
+              callbacksRef.current.onAccessRevoked?.(data.reason || 'Access to this workspace has been revoked.');
+              try {
+                ws.close(4003, 'Access Revoked');
+              } catch {}
+              return;
+            } else if (data.type === 'room_members_updated') {
+              callbacksRef.current.onRoomMembersUpdated?.(data);
             }
           } catch (err) {
             console.error('Error parsing WS message:', err);
@@ -152,8 +161,17 @@ export function useChatWebSocket(roomId, callbacks = {}) {
         ws.onclose = (event) => {
           clearInterval(pingInterval);
           setIsConnected(false);
+
+          // Code 4003: Access Revoked - halt reconnection immediately
+          if (event.code === 4003) {
+            isManuallyClosedRef.current = true;
+            setIsReconnecting(false);
+            callbacksRef.current.onAccessRevoked?.(event.reason || 'Access to this workspace has been revoked.');
+            return;
+          }
+
           // Do not reconnect on intentional close or unmount
-          if (!isManuallyClosedRef.current && event.code !== 4003 && roomId) {
+          if (!isManuallyClosedRef.current && roomId) {
             setIsReconnecting(true);
             const attempt = reconnectAttemptsRef.current;
             const baseDelay = Math.min(1000 * Math.pow(2, attempt), 20000);

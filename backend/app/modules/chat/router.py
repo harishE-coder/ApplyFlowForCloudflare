@@ -502,3 +502,35 @@ async def unread_count(
 ):
     """Get total unread message count across all accessible rooms."""
     return await service.get_total_unread(db, current_user)
+
+
+@router.get("/rooms/{room_id}/members")
+async def get_room_members(
+    room_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Dynamically resolve all authorized members for a chat room."""
+    await service.check_room_access(db, current_user, room_id)
+    return await service.resolve_room_members(db, room_id)
+
+
+@router.get("/rooms/{room_id}/access-audit")
+async def get_room_access_audit(
+    room_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Get audit trail of membership changes and currently active members."""
+    return await service.get_room_access_audit(db, room_id, current_user)
+
+
+@router.post("/sync-workspaces")
+async def sync_workspaces(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Self-healing provisioning for any clients missing a chat room."""
+    if current_user.role not in ("admin", "super_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await service.sync_missing_workspaces(db)

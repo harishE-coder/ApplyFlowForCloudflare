@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { getJwtSecret, verifyToken } from "../auth";
 import { getDb } from "../db";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRoles } from "../middleware/auth";
 import {
   MarkReadRequestSchema,
   NotificationPreferencesUpdateSchema,
@@ -12,6 +12,13 @@ import {
   ShareJobRequestSchema,
   ShareResumeRequestSchema,
 } from "../schemas/chat";
+import {
+  getAuthorizedClientIds,
+  getAuthorizedRoomIds,
+  logChatAccessAudit,
+  resolveRoomMembers,
+  validateRoomAccess,
+} from "../services/chatAccess";
 import {
   getDownloadUrl,
   getPreviewUrl,
@@ -110,33 +117,12 @@ const handleUpdatePreferences = async (c: any) => {
 chatRouter.put("/preferences", requireAuth, handleUpdatePreferences);
 chatRouter.patch("/preferences", requireAuth, handleUpdatePreferences);
 
-// Helper to resolve client scoping per role
+// Helper to resolve client scoping per role using centralized chatAccess service
 export async function getAllowedClientIdsForUser(
   sql: any,
   user: { id: string; role: string; client_id?: string | null }
 ): Promise<string[] | null> {
-  if (user.role === "client") {
-    return user.client_id ? [String(user.client_id)] : [];
-  } else if (user.role === "sub_admin") {
-    const assignedClients = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
-      UNION
-      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
-    `;
-    return assignedClients.map((r: any) => String(r.client_id));
-  } else if (user.role === "employee" || user.role === "recruiter") {
-    const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
-    `;
-    const cids = assigned.map((r: any) => String(r.client_id));
-    if (cids.length > 0) {
-      return cids;
-    } else {
-      const active = await sql`SELECT id FROM clients WHERE status = 'active'`;
-      return active.map((r: any) => String(r.id));
-    }
-  }
-  return null;
+  return getAuthorizedClientIds(sql, user);
 }
 
 // Helper to compute total unread messages strictly scoped to visible rooms/clients
@@ -237,7 +223,7 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
   const items = [];
 
   for (const r of rooms) {
-    const [latestMsg, unreadRes, participants] = await Promise.all([
+    const [latestMsg, unreadRes, resolved] = await Promise.all([
       sql`
         SELECT m.message, u.name as sender_name, m.created_at
         FROM chat_messages m
@@ -254,13 +240,7 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
           AND (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
           AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
       `,
-      sql`
-        SELECT u.id, u.name, u.role
-        FROM users u
-        WHERE (u.client_id = ${r.client_id} AND u.role = 'client')
-           OR u.id IN (SELECT employee_id FROM employee_clients WHERE client_id = ${r.client_id} AND active = true)
-        LIMIT 10
-      `,
+      resolveRoomMembers(sql, r.id),
     ]);
 
     const unread = unreadRes[0]?.count || 0;
@@ -274,10 +254,11 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
       client_name: r.client_name,
       status: r.status,
       created_at: r.created_at,
-      participants: participants.map((p: any) => ({
+      participants: resolved.members.slice(0, 10).map((p) => ({
         id: p.id,
         name: p.name,
         role: p.role,
+        is_primary: p.is_primary,
       })),
       last_message: latestMsg[0]?.message || null,
       last_message_sender: latestMsg[0]?.sender_name || null,
@@ -300,11 +281,17 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
 chatRouter.get("/rooms/:room_id/messages", requireAuth, async (c) => {
   const roomId = c.req.param("room_id");
   const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
+  }
+
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") || 50)));
   const offset = Math.max(0, Number(c.req.query("offset") || 0));
   const beforeId = c.req.query("before_id");
-  const sql = getDb(c.env.DATABASE_URL);
 
   let messages: any[];
   if (beforeId) {
@@ -525,6 +512,21 @@ chatRouter.post("/rooms/:room_id/messages", requireAuth, async (c) => {
   const clientMessageId = client_message_id || client_id || null;
   const sql = getDb(c.env.DATABASE_URL);
 
+  // STEP 0: Access & Write Safety Verification
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json(
+      { detail: access.reason || "You no longer have access to this workspace." },
+      403
+    );
+  }
+  if (access.room?.status === "read_only" || access.room?.status === "archived") {
+    return c.json(
+      { detail: "This workspace is currently locked or archived." },
+      403
+    );
+  }
+
   // STEP 1: Insert into Neon PostgreSQL (Source of Truth)
   const messageId = crypto.randomUUID();
   await sql`
@@ -588,29 +590,18 @@ chatRouter.post("/rooms/:room_id/messages", requireAuth, async (c) => {
   }
 
   // STEP 4: Offline Push Notification check
-  // Avoid duplicate notifications: Only dispatch push if recipients are offline
-  const room = await sql`SELECT client_id FROM chat_rooms WHERE id = ${roomId} LIMIT 1`;
-  if (room.length > 0) {
-    const clientId = room[0].client_id;
-    const participants = await sql`
-      SELECT u.id FROM users u
-      WHERE ((u.client_id = ${clientId} AND u.role = 'client')
-         OR u.id IN (SELECT employee_id FROM employee_clients WHERE client_id = ${clientId} AND active = true))
-        AND u.id != ${user.id}
+  // Resolve room members dynamically without static membership table
+  const resolved = await resolveRoomMembers(sql, roomId);
+  const offlineRecipients = resolved.members.filter(
+    (m) => m.id !== user.id && !onlineUserIds.includes(m.id)
+  );
+
+  for (const rec of offlineRecipients) {
+    const notifId = crypto.randomUUID();
+    await sql`
+      INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
+      VALUES (${notifId}, ${rec.id}, ${'New message from ' + user.name}, ${message}, 'chat', false, NOW())
     `;
-
-    const offlineRecipients = participants.filter(
-      (p: any) => !onlineUserIds.includes(String(p.id))
-    );
-
-    // If offline recipients exist, record notification in Neon notifications table
-    for (const rec of offlineRecipients) {
-      const notifId = crypto.randomUUID();
-      await sql`
-        INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
-        VALUES (${notifId}, ${rec.id}, ${'New message from ' + user.name}, ${message}, 'chat', false, NOW())
-      `;
-    }
   }
 
   return c.json(formattedMessage);
@@ -629,6 +620,20 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
 
   const { resume_id: resumeId, caption } = parseResult.data;
   const sql = getDb(c.env.DATABASE_URL);
+
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json(
+      { detail: access.reason || "You no longer have access to this workspace." },
+      403
+    );
+  }
+  if (access.room?.status === "read_only" || access.room?.status === "archived") {
+    return c.json(
+      { detail: "This workspace is currently locked or archived." },
+      403
+    );
+  }
 
   const resumeRows = await sql`
     SELECT id, candidate_name, company, role, original_filename, drive_file_id, drive_view_url, drive_download_url
@@ -712,6 +717,22 @@ chatRouter.post("/rooms/:room_id/share-resume", requireAuth, async (c) => {
 chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
   const roomId = c.req.param("room_id");
   const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json(
+      { detail: access.reason || "You no longer have access to this workspace." },
+      403
+    );
+  }
+  if (access.room?.status === "read_only" || access.room?.status === "archived") {
+    return c.json(
+      { detail: "This workspace is currently locked or archived." },
+      403
+    );
+  }
+
   const formData = await c.req.formData().catch(() => null);
 
   const file = formData?.get("file");
@@ -770,7 +791,6 @@ chatRouter.post("/rooms/:room_id/attachment", requireAuth, async (c) => {
     size: file.size,
   };
 
-  const sql = getDb(c.env.DATABASE_URL);
   const messageText = file.name;
   const messageId = crypto.randomUUID();
 
@@ -836,15 +856,21 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
   const { requirement_id: reqId, caption } = parseResult.data;
   const sql = getDb(c.env.DATABASE_URL);
 
-  // 1. Fetch chat room
-  const roomRows = await sql`
-    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
-  `;
-  if (roomRows.length === 0) {
-    return c.json({ detail: "Chat room not found" }, 404);
+  // 1. Access & Write Safety Verification
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json(
+      { detail: access.reason || "You no longer have access to this workspace." },
+      403
+    );
   }
-  const room = roomRows[0];
-  const roomClientId = room.client_id;
+  if (access.room?.status === "read_only" || access.room?.status === "archived") {
+    return c.json(
+      { detail: "This workspace is currently locked or archived." },
+      403
+    );
+  }
+  const roomClientId = access.room!.client_id;
 
   // 2. Fetch Job Opening
   const reqRows = await sql`
@@ -882,16 +908,6 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
 
     if (!isAssigned) {
       return c.json({ detail: "Forbidden: You are not assigned to this job opening." }, 403);
-    }
-
-    const assignedClient = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND client_id = ${roomClientId} AND active = true
-    `;
-    if (assignedClient.length === 0) {
-      const activeClients = await sql`SELECT id FROM clients WHERE id = ${roomClientId} AND status = 'active'`;
-      if (activeClients.length === 0) {
-        return c.json({ detail: "Forbidden: You do not have access to this Service Client." }, 403);
-      }
     }
   }
 
@@ -984,35 +1000,15 @@ chatRouter.get("/rooms/:room_id/jobs", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  // 1. Validate room exists & fetch client_id
-  const roomRows = await sql`
-    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
-  `;
-  if (roomRows.length === 0) {
-    return c.json({ detail: "Chat room not found" }, 404);
+  // 1. Validate user access to this room
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
   }
-  const room = roomRows[0];
-  const roomClientId = room.client_id;
+  const roomClientId = access.room!.client_id;
 
   if (!roomClientId) {
     return c.json([]);
-  }
-
-  // 2. Validate user access to this room
-  if (user.role === "client") {
-    if (!user.client_id || String(user.client_id) !== String(roomClientId)) {
-      return c.json({ detail: "Forbidden: You do not have access to this room" }, 403);
-    }
-  } else if (user.role === "employee" || user.role === "recruiter") {
-    const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND client_id = ${roomClientId} AND active = true
-    `;
-    if (assigned.length === 0) {
-      const activeClients = await sql`SELECT id FROM clients WHERE id = ${roomClientId} AND status = 'active'`;
-      if (activeClients.length === 0) {
-        return c.json({ detail: "Forbidden: You do not have access to this client's chat room" }, 403);
-      }
-    }
   }
 
   // 3. Apply ASRC filtering scoped strictly to room.client_id
@@ -1083,8 +1079,13 @@ const handleMarkRead = async (c: any) => {
   const messageId = parseResult.data?.message_id || null;
 
   const sql = getDb(c.env.DATABASE_URL);
-  const readId = crypto.randomUUID();
 
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
+  }
+
+  const readId = crypto.randomUUID();
   await sql`
     INSERT INTO chat_reads (id, user_id, room_id, last_read_message_id, last_read_at)
     VALUES (${readId}, ${user.id}, ${roomId}, ${messageId}, NOW())
@@ -1135,6 +1136,15 @@ chatRouter.delete("/messages/:message_id", requireAuth, async (c) => {
   }
 
   const msg = existing[0];
+
+  const access = await validateRoomAccess(sql, msg.room_id, user);
+  if (!access.authorized) {
+    return c.json(
+      { detail: access.reason || "You no longer have access to this workspace." },
+      403
+    );
+  }
+
   const isOwn = msg.sender_id === user.id;
   const callerRole = user.role;
   const senderRole = msg.sender_role || "user";
@@ -1143,14 +1153,12 @@ chatRouter.delete("/messages/:message_id", requireAuth, async (c) => {
   if (callerRole === "admin" || callerRole === "super_admin") {
     allowed = true;
   } else if (callerRole === "sub_admin") {
-    // Sub-Admin can delete own, client, or employee messages, but NOT admin/super_admin messages
     if (senderRole === "admin" || senderRole === "super_admin") {
       allowed = isOwn;
     } else {
       allowed = true;
     }
   } else {
-    // Client & Employee: own only
     allowed = isOwn;
   }
 
@@ -1209,28 +1217,13 @@ chatRouter.post("/rooms/:room_id/lock", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  if (user.role !== "admin" && user.role !== "sub_admin") {
+  if (user.role !== "admin" && user.role !== "sub_admin" && user.role !== "super_admin") {
     return c.json({ detail: "Only Admins and Sub-Admins can lock rooms" }, 403);
   }
 
-  const existing = await sql`
-    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
-  `;
-  if (existing.length === 0) {
-    return c.json({ detail: "Chat room not found" }, 404);
-  }
-
-  const room = existing[0];
-  if (user.role === "sub_admin") {
-    const assignedClients = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
-      UNION
-      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
-    `;
-    const allowed = assignedClients.map((r: any) => String(r.client_id));
-    if (!allowed.includes(String(room.client_id))) {
-      return c.json({ detail: "Forbidden: You do not have access to this client chat room" }, 403);
-    }
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
   }
 
   await sql`UPDATE chat_rooms SET status = 'read_only' WHERE id = ${roomId}`;
@@ -1260,28 +1253,13 @@ chatRouter.post("/rooms/:room_id/unlock", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  if (user.role !== "admin" && user.role !== "sub_admin") {
+  if (user.role !== "admin" && user.role !== "sub_admin" && user.role !== "super_admin") {
     return c.json({ detail: "Only Admins and Sub-Admins can unlock rooms" }, 403);
   }
 
-  const existing = await sql`
-    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
-  `;
-  if (existing.length === 0) {
-    return c.json({ detail: "Chat room not found" }, 404);
-  }
-
-  const room = existing[0];
-  if (user.role === "sub_admin") {
-    const assignedClients = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
-      UNION
-      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
-    `;
-    const allowed = assignedClients.map((r: any) => String(r.client_id));
-    if (!allowed.includes(String(room.client_id))) {
-      return c.json({ detail: "Forbidden: You do not have access to this client chat room" }, 403);
-    }
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
   }
 
   await sql`UPDATE chat_rooms SET status = 'active' WHERE id = ${roomId}`;
@@ -1311,28 +1289,13 @@ chatRouter.post("/rooms/:room_id/archive", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  if (user.role !== "admin" && user.role !== "sub_admin") {
+  if (user.role !== "admin" && user.role !== "sub_admin" && user.role !== "super_admin") {
     return c.json({ detail: "Only Admins and Sub-Admins can archive rooms" }, 403);
   }
 
-  const existing = await sql`
-    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
-  `;
-  if (existing.length === 0) {
-    return c.json({ detail: "Chat room not found" }, 404);
-  }
-
-  const room = existing[0];
-  if (user.role === "sub_admin") {
-    const assignedClients = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
-      UNION
-      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
-    `;
-    const allowed = assignedClients.map((r: any) => String(r.client_id));
-    if (!allowed.includes(String(room.client_id))) {
-      return c.json({ detail: "Forbidden: You do not have access to this client chat room" }, 403);
-    }
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
   }
 
   await sql`UPDATE chat_rooms SET status = 'archived' WHERE id = ${roomId}`;
@@ -1362,41 +1325,12 @@ chatRouter.get("/rooms/:room_id/export", requireAuth, async (c) => {
   const user = c.get("user");
   const sql = getDb(c.env.DATABASE_URL);
 
-  const existing = await sql`
-    SELECT r.id, r.client_id, r.status, c.company_name
-    FROM chat_rooms r
-    JOIN clients c ON c.id = r.client_id
-    WHERE r.id = ${roomId}
-    LIMIT 1
-  `;
-  if (existing.length === 0) {
-    return c.json({ detail: "Chat room not found" }, 404);
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
   }
 
-  const room = existing[0];
-  if (user.role === "client") {
-    if (user.client_id && String(user.client_id) !== String(room.client_id)) {
-      return c.json({ detail: "Forbidden" }, 403);
-    }
-  } else if (user.role === "sub_admin") {
-    const assignedClients = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
-      UNION
-      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
-    `;
-    const allowed = assignedClients.map((r: any) => String(r.client_id));
-    if (!allowed.includes(String(room.client_id))) {
-      return c.json({ detail: "Forbidden" }, 403);
-    }
-  } else if (user.role === "employee" || user.role === "recruiter") {
-    const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
-    `;
-    const cids = assigned.map((r: any) => String(r.client_id));
-    if (cids.length > 0 && !cids.includes(String(room.client_id))) {
-      return c.json({ detail: "Forbidden" }, 403);
-    }
-  }
+  const room = access.room!;
 
   const messages = await sql`
     SELECT m.created_at, m.message, u.name as sender_name
@@ -1412,15 +1346,116 @@ chatRouter.get("/rooms/:room_id/export", requireAuth, async (c) => {
 
   return c.json({
     room_id: roomId,
-    client_name: room.company_name || "Client",
+    client_name: room.client_name || "Client",
     exported_at: new Date().toISOString(),
     transcript,
     messages,
   });
 });
 
-// 12. WebSocket Upgrade Handler: Pure JWT HTTP-Only Cookie Authentication
-// Flow: Browser -> GET /api/chat/rooms/:room_id/ws -> Worker verifies JWT cookie -> Durable Object
+// 16. GET /api/chat/rooms/:room_id/members (Dynamic member resolution - multi-recruiter)
+chatRouter.get("/rooms/:room_id/members", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
+  }
+
+  const resolved = await resolveRoomMembers(sql, roomId);
+  return c.json({
+    room_id: roomId,
+    client_id: access.room?.client_id,
+    members: resolved.members,
+  });
+});
+
+// 17. GET /api/chat/rooms/:room_id/access-audit (Admin Audit trail)
+chatRouter.get("/rooms/:room_id/access-audit", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.json({ detail: access.reason || "Forbidden" }, 403);
+  }
+
+  const resolved = await resolveRoomMembers(sql, roomId);
+
+  // Ensure audit table exists
+  await sql`
+    CREATE TABLE IF NOT EXISTS chat_room_access_audit (
+      id UUID PRIMARY KEY,
+      room_id UUID NOT NULL,
+      client_id UUID NOT NULL,
+      user_id UUID NOT NULL,
+      action VARCHAR(20) NOT NULL,
+      performed_by UUID,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  const history = await sql`
+    SELECT
+      a.id,
+      a.room_id,
+      a.client_id,
+      a.user_id,
+      a.action,
+      a.performed_by,
+      a.created_at,
+      u.name as user_name,
+      u.role as user_role,
+      p.name as performed_by_name
+    FROM chat_room_access_audit a
+    LEFT JOIN users u ON u.id = a.user_id
+    LEFT JOIN users p ON p.id = a.performed_by
+    WHERE a.room_id = ${roomId}
+    ORDER BY a.created_at DESC
+    LIMIT 100
+  `;
+
+  return c.json({
+    room_id: roomId,
+    client_id: access.room?.client_id,
+    current_members: resolved.members,
+    history,
+  });
+});
+
+// 18. POST /api/chat/sync-workspaces (Self-healing room provisioning for all clients)
+chatRouter.post("/sync-workspaces", requireRoles("super_admin", "admin"), async (c) => {
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const missing = await sql`
+    SELECT c.id, c.company_name
+    FROM clients c
+    LEFT JOIN chat_rooms r ON r.client_id = c.id
+    WHERE r.id IS NULL
+  `;
+
+  const createdRoomIds: string[] = [];
+  for (const client of missing) {
+    const roomId = crypto.randomUUID();
+    await sql`
+      INSERT INTO chat_rooms (id, client_id, status, created_at, updated_at)
+      VALUES (${roomId}, ${client.id}, 'active', NOW(), NOW())
+      ON CONFLICT (client_id) DO NOTHING
+    `;
+    createdRoomIds.push(roomId);
+  }
+
+  return c.json({
+    synced_count: createdRoomIds.length,
+    created_room_ids: createdRoomIds,
+  });
+});
+
+// 19. WebSocket Upgrade Handler: Pure JWT HTTP-Only Cookie Authentication with Dynamic Authorization
+// Flow: Browser -> GET /api/chat/rooms/:room_id/ws -> Worker verifies JWT cookie & room authorization -> Durable Object
 export async function handleChatWebSocketUpgrade(c: any) {
   const roomId = c.req.param("room_id");
 
@@ -1451,6 +1486,18 @@ export async function handleChatWebSocketUpgrade(c: any) {
   const payload = await verifyToken(token, jwtSecret);
   if (!payload || !payload.sub) {
     return c.text("Unauthorized: Invalid or expired session", 401);
+  }
+
+  // Dynamic authorization verification before proxying to Durable Object
+  const sql = getDb(c.env.DATABASE_URL);
+  const user = {
+    id: String(payload.sub),
+    role: String(payload.role || "user"),
+    client_id: payload.client_id ? String(payload.client_id) : null,
+  };
+  const access = await validateRoomAccess(sql, roomId, user);
+  if (!access.authorized) {
+    return c.text(`Forbidden: ${access.reason || "Access Revoked"}`, 403);
   }
 
   if (!c.env.CHAT_ROOMS) {

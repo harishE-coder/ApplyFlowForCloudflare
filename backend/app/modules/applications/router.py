@@ -168,7 +168,7 @@ async def get_ai_inbox(
     status: str | None = Query(None),
     search: str | None = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page_size: int = Query(20, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

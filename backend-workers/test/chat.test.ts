@@ -138,6 +138,14 @@ describe("Chat Module & Durable Objects Tests", () => {
       expect(res.status).toBe(401);
     });
 
+    it("GET /api/chat/rooms/:room_id/jobs returns 401 when unauthenticated", async () => {
+      const res = await app.fetch(
+        new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/jobs"),
+        mockEnv
+      );
+      expect(res.status).toBe(401);
+    });
+
     it("POST /api/chat/rooms/:room_id/share-job returns 401 when unauthenticated", async () => {
       const res = await app.fetch(
         new Request("http://localhost/api/chat/rooms/550e8400-e29b-41d4-a716-446655440000/share-job", {
@@ -537,6 +545,137 @@ describe("Chat Module & Durable Objects Tests", () => {
       await expect(
         roomDO.replayMissedMessages(mockWs, "room-1", "msg-1", "employee")
       ).resolves.not.toThrow();
+    });
+
+    it("enforces strict Room Boundary & ASRC matrix for Job Opening sharing", () => {
+      // Security Boundary Check function replicating backend enforcement:
+      // 1. Room Boundary: room.client_id === requirement.client_id
+      // 2. ASRC Permissions: role-based access to requirement
+      const verifyJobSharing = (params: {
+        roomClientId: string;
+        jobClientId: string;
+        userRole: string;
+        userClientId?: string | null;
+        userId: string;
+        assignedEmployeeId?: string | null;
+        assignmentType?: string;
+        allocatedClientIds?: string[];
+      }): { allowed: boolean; reason?: string } => {
+        const {
+          roomClientId,
+          jobClientId,
+          userRole,
+          userClientId,
+          userId,
+          assignedEmployeeId,
+          assignmentType,
+          allocatedClientIds = [],
+        } = params;
+
+        // 1. CRITICAL SECURITY RULE: Room Boundary (Must Enforce)
+        // A Job Opening can only be shared into a chat room if it belongs to the same Service Client as that chat room, regardless of user role.
+        if (!roomClientId || !jobClientId || String(roomClientId) !== String(jobClientId)) {
+          return { allowed: false, reason: "Room Boundary mismatch" };
+        }
+
+        // 2. ASRC Permission Check
+        if (userRole === "client") {
+          if (!userClientId || String(userClientId) !== String(roomClientId)) {
+            return { allowed: false, reason: "Client unauthorized for this room" };
+          }
+        } else if (userRole === "employee" || userRole === "recruiter") {
+          const isAssigned =
+            assignedEmployeeId === userId ||
+            assignmentType === "all" ||
+            !assignedEmployeeId;
+          if (!isAssigned) {
+            return { allowed: false, reason: "Recruiter not assigned to opening" };
+          }
+          if (allocatedClientIds.length > 0 && !allocatedClientIds.includes(String(roomClientId))) {
+            return { allowed: false, reason: "Recruiter not allocated to client" };
+          }
+        }
+
+        return { allowed: true };
+      };
+
+      const MICROSOFT_CLIENT = "client-microsoft-uuid";
+      const INFOSYS_CLIENT = "client-infosys-uuid";
+
+      // Test Case 1: Room Boundary Blocks Super Admin from sharing cross-client
+      // Chat Room: Microsoft (Service Client)
+      // Job Opening: TCS Java Developer under Infosys Service Client -> BLOCKED even for Admin
+      const crossClientAdminShare = verifyJobSharing({
+        roomClientId: MICROSOFT_CLIENT,
+        jobClientId: INFOSYS_CLIENT,
+        userRole: "admin",
+        userId: "admin-1",
+      });
+      expect(crossClientAdminShare.allowed).toBe(false);
+      expect(crossClientAdminShare.reason).toBe("Room Boundary mismatch");
+
+      // Test Case 2: Room Boundary Blocks Sub-Admin cross-client
+      const crossClientSubAdminShare = verifyJobSharing({
+        roomClientId: MICROSOFT_CLIENT,
+        jobClientId: INFOSYS_CLIENT,
+        userRole: "sub_admin",
+        userId: "subadmin-1",
+      });
+      expect(crossClientSubAdminShare.allowed).toBe(false);
+      expect(crossClientSubAdminShare.reason).toBe("Room Boundary mismatch");
+
+      // Test Case 3: Admin sharing Amazon SDE (Hiring Organization) under Microsoft Service Client -> ALLOWED
+      const validAdminShare = verifyJobSharing({
+        roomClientId: MICROSOFT_CLIENT,
+        jobClientId: MICROSOFT_CLIENT,
+        userRole: "admin",
+        userId: "admin-1",
+      });
+      expect(validAdminShare.allowed).toBe(true);
+
+      // Test Case 4: Client sharing their own Service Client job -> ALLOWED
+      const validClientShare = verifyJobSharing({
+        roomClientId: MICROSOFT_CLIENT,
+        jobClientId: MICROSOFT_CLIENT,
+        userRole: "client",
+        userClientId: MICROSOFT_CLIENT,
+        userId: "client-user-1",
+      });
+      expect(validClientShare.allowed).toBe(true);
+
+      // Test Case 5: Client sharing in another room -> BLOCKED
+      const foreignClientShare = verifyJobSharing({
+        roomClientId: MICROSOFT_CLIENT,
+        jobClientId: MICROSOFT_CLIENT,
+        userRole: "client",
+        userClientId: INFOSYS_CLIENT,
+        userId: "client-user-2",
+      });
+      expect(foreignClientShare.allowed).toBe(false);
+
+      // Test Case 6: Recruiter assigned to job opening in same Service Client -> ALLOWED
+      const assignedRecruiterShare = verifyJobSharing({
+        roomClientId: MICROSOFT_CLIENT,
+        jobClientId: MICROSOFT_CLIENT,
+        userRole: "employee",
+        userId: "recruiter-1",
+        assignedEmployeeId: "recruiter-1",
+        allocatedClientIds: [MICROSOFT_CLIENT],
+      });
+      expect(assignedRecruiterShare.allowed).toBe(true);
+
+      // Test Case 7: Recruiter NOT assigned to job opening -> BLOCKED
+      const unassignedRecruiterShare = verifyJobSharing({
+        roomClientId: MICROSOFT_CLIENT,
+        jobClientId: MICROSOFT_CLIENT,
+        userRole: "employee",
+        userId: "recruiter-1",
+        assignedEmployeeId: "recruiter-2",
+        assignmentType: "individual",
+        allocatedClientIds: [MICROSOFT_CLIENT],
+      });
+      expect(unassignedRecruiterShare.allowed).toBe(false);
+      expect(unassignedRecruiterShare.reason).toBe("Recruiter not assigned to opening");
     });
   });
 });

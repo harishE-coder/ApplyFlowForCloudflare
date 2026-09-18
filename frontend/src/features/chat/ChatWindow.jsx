@@ -759,23 +759,11 @@ export function ChatWindow({
                       </div>
                     ) : isJob ? (
                       /* 3. Shared Job Opening Card */
-                      <div className="p-4 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] text-[#081226] space-y-2.5 shadow-xs min-w-[280px] max-w-[380px]">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h4 className="text-small font-bold text-[#081226] truncate">
-                              {msg.job_data?.title || msg.attachment_name || 'Job Opening'}
-                            </h4>
-                            <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-1">
-                              <span className="truncate font-medium text-[#081226]">
-                                {msg.job_data?.company || 'Client'}
-                              </span>
-                              <span>•</span>
-                              <span>{msg.job_data?.location || 'Remote'}</span>
-                              <span>•</span>
-                              <span className="font-medium text-emerald-700">
-                                {msg.job_data?.openings || 1} {msg.job_data?.openings === 1 ? 'opening' : 'openings'}
-                              </span>
-                            </div>
+                      <div className="p-3.5 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] text-[#081226] space-y-2.5 shadow-xs min-w-[280px] max-w-[380px]">
+                        <div className="flex items-center justify-between gap-2 border-b border-[#DCFCE7] pb-2">
+                          <div className="flex items-center gap-1.5 text-caption font-bold text-emerald-800">
+                            <Briefcase className="w-4 h-4 text-emerald-600" />
+                            <span>Job Opening</span>
                           </div>
                           <span
                             className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
@@ -783,20 +771,45 @@ export function ChatWindow({
                                 ? 'bg-rose-500/10 text-rose-600 border-rose-500/20'
                                 : (msg.job_data?.priority || '').toLowerCase() === 'medium'
                                 ? 'bg-amber-500/10 text-amber-600 border-amber-500/20'
-                                : 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                                : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
                             }`}
                           >
                             {msg.job_data?.priority || 'Medium'} Priority
                           </span>
                         </div>
 
-                        {msg.message && !msg.message.startsWith('Shared job opening:') && (
-                          <p className="text-caption text-[#334155] p-2 rounded-xl bg-white border border-[#BBF7D0]/60 font-medium">
-                            {msg.message}
+                        <div className="p-2.5 rounded-xl bg-white border border-[#BBF7D0]/60">
+                          <h4 className="text-small font-bold text-[#081226] truncate">
+                            {msg.job_data?.title || msg.attachment_name || 'Job Opening'}
+                          </h4>
+                          <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-1 flex-wrap">
+                            <span className="truncate font-medium text-[#081226]">
+                              {msg.job_data?.company || 'Organization'}
+                            </span>
+                            {msg.job_data?.client_name && msg.job_data.client_name !== msg.job_data.company && (
+                              <>
+                                <span>•</span>
+                                <span className="text-emerald-700 font-medium truncate">
+                                  Client: {msg.job_data.client_name}
+                                </span>
+                              </>
+                            )}
+                            <span>•</span>
+                            <span>{msg.job_data?.location || 'Remote'}</span>
+                            <span>•</span>
+                            <span className="font-medium text-emerald-700">
+                              {msg.job_data?.openings || 1} {msg.job_data?.openings === 1 ? 'opening' : 'openings'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {msg.message && !msg.message.startsWith('💼 Shared Job Opening:') && !msg.message.startsWith('Shared job opening:') && (
+                          <p className="text-caption text-[#334155] px-1 italic">
+                            "{msg.message}"
                           </p>
                         )}
 
-                        <div className="pt-1 flex items-center justify-end">
+                        <div className="pt-0.5 flex items-center justify-end">
                           <a
                             href={msg.job_data?.job_url || `/requirements?search=${encodeURIComponent(msg.job_data?.title || '')}`}
                             target={msg.job_data?.job_url ? '_blank' : '_self'}
@@ -1038,6 +1051,8 @@ export function ChatWindow({
       <JobShareModal
         isOpen={isJobModalOpen}
         onClose={() => setIsJobModalOpen(false)}
+        roomId={room?.id}
+        clientName={room?.client_name || room?.name}
         onShareJob={onShareJob}
       />
 

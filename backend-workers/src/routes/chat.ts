@@ -836,8 +836,20 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
   const { requirement_id: reqId, caption } = parseResult.data;
   const sql = getDb(c.env.DATABASE_URL);
 
+  // 1. Fetch chat room
+  const roomRows = await sql`
+    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
+  `;
+  if (roomRows.length === 0) {
+    return c.json({ detail: "Chat room not found" }, 404);
+  }
+  const room = roomRows[0];
+  const roomClientId = room.client_id;
+
+  // 2. Fetch Job Opening
   const reqRows = await sql`
     SELECT r.id, r.job_title, r.role, r.role_code, r.company, r.priority, r.status, r.job_url, r.notes,
+           r.client_id, r.assignment_type, r.assigned_employee_id,
            c.company_name as client_company_name
     FROM requirements r
     LEFT JOIN clients c ON c.id = r.client_id
@@ -850,7 +862,41 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
   }
 
   const req = reqRows[0];
+
+  // 3. CRITICAL SECURITY RULE: Room Boundary (Must Enforce)
+  // A Job Opening can only be shared into a chat room if it belongs to the same Service Client as that chat room, regardless of user role.
+  if (!roomClientId || !req.client_id || String(roomClientId) !== String(req.client_id)) {
+    return c.json({ detail: "Forbidden: Job opening does not belong to this room's Service Client." }, 403);
+  }
+
+  // 4. ASRC Permission Check
+  if (user.role === "client") {
+    if (!user.client_id || String(user.client_id) !== String(roomClientId)) {
+      return c.json({ detail: "Forbidden: You are not authorized to share in this room." }, 403);
+    }
+  } else if (user.role === "employee" || user.role === "recruiter") {
+    const isAssigned =
+      req.assigned_employee_id === user.id ||
+      req.assignment_type === "all" ||
+      req.assigned_employee_id === null;
+
+    if (!isAssigned) {
+      return c.json({ detail: "Forbidden: You are not assigned to this job opening." }, 403);
+    }
+
+    const assignedClient = await sql`
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND client_id = ${roomClientId} AND active = true
+    `;
+    if (assignedClient.length === 0) {
+      const activeClients = await sql`SELECT id FROM clients WHERE id = ${roomClientId} AND status = 'active'`;
+      if (activeClients.length === 0) {
+        return c.json({ detail: "Forbidden: You do not have access to this Service Client." }, 403);
+      }
+    }
+  }
+
   const companyName = req.company || req.client_company_name || "Client Company";
+  const clientName = req.client_company_name || companyName;
   const jobTitle = req.job_title || req.role || "Open Role";
 
   const messageText =
@@ -864,6 +910,8 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
     role: req.role || jobTitle,
     role_code: req.role_code || null,
     company: companyName,
+    client_name: clientName,
+    client_id: req.client_id,
     priority: req.priority || "Medium",
     location: "Remote",
     openings: 1,
@@ -927,6 +975,103 @@ chatRouter.post("/rooms/:room_id/share-job", requireAuth, async (c) => {
   }
 
   return c.json(formattedMessage);
+});
+
+// 9d. GET /api/chat/rooms/:room_id/jobs
+// Returns active job openings scoped strictly to the room's Service Client under ASRC visibility rules
+chatRouter.get("/rooms/:room_id/jobs", requireAuth, async (c) => {
+  const roomId = c.req.param("room_id");
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  // 1. Validate room exists & fetch client_id
+  const roomRows = await sql`
+    SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
+  `;
+  if (roomRows.length === 0) {
+    return c.json({ detail: "Chat room not found" }, 404);
+  }
+  const room = roomRows[0];
+  const roomClientId = room.client_id;
+
+  if (!roomClientId) {
+    return c.json([]);
+  }
+
+  // 2. Validate user access to this room
+  if (user.role === "client") {
+    if (!user.client_id || String(user.client_id) !== String(roomClientId)) {
+      return c.json({ detail: "Forbidden: You do not have access to this room" }, 403);
+    }
+  } else if (user.role === "employee" || user.role === "recruiter") {
+    const assigned = await sql`
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND client_id = ${roomClientId} AND active = true
+    `;
+    if (assigned.length === 0) {
+      const activeClients = await sql`SELECT id FROM clients WHERE id = ${roomClientId} AND status = 'active'`;
+      if (activeClients.length === 0) {
+        return c.json({ detail: "Forbidden: You do not have access to this client's chat room" }, 403);
+      }
+    }
+  }
+
+  // 3. Apply ASRC filtering scoped strictly to room.client_id
+  let jobs: any[] = [];
+  if (user.role === "super_admin" || user.role === "admin" || user.role === "sub_admin") {
+    // Admin / Sub-Admin: all active Job Openings for room's Service Client
+    jobs = await sql`
+      SELECT r.id, r.job_title, r.role, r.role_code, r.company, r.priority, r.status,
+             r.job_url, r.notes, r.client_id, r.assignment_type, r.assigned_employee_id,
+             c.company_name as client_name
+      FROM requirements r
+      LEFT JOIN clients c ON c.id = r.client_id
+      WHERE r.client_id = ${roomClientId} AND r.status = 'active'
+      ORDER BY r.created_at DESC
+    `;
+  } else if (user.role === "employee" || user.role === "recruiter") {
+    // Recruiter: assigned openings within the current room's Service Client
+    jobs = await sql`
+      SELECT r.id, r.job_title, r.role, r.role_code, r.company, r.priority, r.status,
+             r.job_url, r.notes, r.client_id, r.assignment_type, r.assigned_employee_id,
+             c.company_name as client_name
+      FROM requirements r
+      LEFT JOIN clients c ON c.id = r.client_id
+      WHERE r.client_id = ${roomClientId}
+        AND r.status = 'active'
+        AND (r.assigned_employee_id = ${user.id} OR r.assignment_type = 'all' OR r.assigned_employee_id IS NULL)
+      ORDER BY r.created_at DESC
+    `;
+  } else if (user.role === "client") {
+    // Client: openings for their own Service Client only
+    jobs = await sql`
+      SELECT r.id, r.job_title, r.role, r.role_code, r.company, r.priority, r.status,
+             r.job_url, r.notes, r.client_id, r.assignment_type, r.assigned_employee_id,
+             c.company_name as client_name
+      FROM requirements r
+      LEFT JOIN clients c ON c.id = r.client_id
+      WHERE r.client_id = ${roomClientId}
+        AND r.status = 'active'
+      ORDER BY r.created_at DESC
+    `;
+  }
+
+  const formattedJobs = jobs.map((r: any) => ({
+    id: r.id,
+    job_title: r.job_title || r.role || "Open Role",
+    role: r.role || r.job_title || "Open Role",
+    role_code: r.role_code || null,
+    company: r.company || r.client_name || "Company",
+    client_id: r.client_id,
+    client_name: r.client_name || "Service Client",
+    priority: r.priority || "Medium",
+    status: r.status,
+    location: "Remote",
+    openings: 1,
+    job_url: r.job_url || null,
+    notes: r.notes || null,
+  }));
+
+  return c.json(formattedJobs);
 });
 
 // 10. POST /api/chat/rooms/:room_id/mark-read (and PATCH/POST /read)

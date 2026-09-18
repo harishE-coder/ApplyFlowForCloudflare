@@ -53,6 +53,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Modal, Drawer } from '@/components/ui/Modal';
 import { BrandedLoader } from '@/components/ui/BrandedLoader';
+import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/features/auth/AuthContext';
 import api from '@/services/api';
@@ -128,6 +129,10 @@ export function AIResponseInboxPage() {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [search, setSearch] = useState('');
 
+  // Pagination State (20 records per page by default)
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
   // AI Intake Mode: 'paste' | 'eml' | 'pdf' | 'screenshot'
   const [intakeMode, setIntakeMode] = useState('paste');
 
@@ -184,16 +189,26 @@ export function AIResponseInboxPage() {
   }, []);
 
   // Fetch AI inbox feed
-  const fetchInbox = async () => {
+  const fetchInbox = async (targetPage = page) => {
     setLoadingFeed(true);
     try {
-      const params = {};
+      const params = {
+        page: targetPage,
+        page_size: pageSize,
+      };
       if (selectedClient) params.client_id = selectedClient;
       if (selectedStatus) params.status = selectedStatus;
       if (search) params.search = search;
 
       const res = await api.get('/ai/inbox', { params });
       setInboxData(res.data);
+
+      // If filtering reduces available pages below current page, automatically move to a valid page
+      const serverTotal = res.data?.total || 0;
+      const maxPages = Math.max(1, Math.ceil(serverTotal / pageSize));
+      if (targetPage > maxPages) {
+        setPage(maxPages);
+      }
     } catch (err) {
       console.error('Failed to load AI inbox:', err);
       toastError('Error', 'Failed to load Applications feed');
@@ -203,8 +218,8 @@ export function AIResponseInboxPage() {
   };
 
   useEffect(() => {
-    fetchInbox();
-  }, [selectedClient, selectedStatus, search]);
+    fetchInbox(page);
+  }, [page, selectedClient, selectedStatus, search]);
 
   // Fetch timeline when an app is selected
   const fetchTimeline = async (appId) => {
@@ -530,6 +545,12 @@ export function AIResponseInboxPage() {
     : isSubAdmin
     ? `All Managed Clients (${clients.length})`
     : `All Clients (${clients.length})`;
+
+  // Render only current page's records (fallback slice if API returns unpaginated array)
+  const displayedItems =
+    inboxData?.items && inboxData.items.length > pageSize
+      ? inboxData.items.slice((page - 1) * pageSize, page * pageSize)
+      : inboxData?.items || [];
 
   return (
     <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto pb-12 select-none">
@@ -1188,7 +1209,7 @@ export function AIResponseInboxPage() {
                 <h3 className="text-h3 font-bold text-[#081226]">Confirmed Applications</h3>
               </div>
               <span className="text-caption font-bold text-[#64748B]">
-                {inboxData?.items?.length ?? 0} Records
+                {inboxData?.total ?? 0} Applications
               </span>
             </div>
 
@@ -1197,14 +1218,14 @@ export function AIResponseInboxPage() {
                 <div className="p-12 text-center bg-white rounded-3xl border border-[#E2E8F0]">
                   <BrandedLoader size="md" label="Loading confirmed records..." />
                 </div>
-              ) : !inboxData || inboxData.items?.length === 0 ? (
+              ) : !inboxData || displayedItems.length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-3xl border border-[#E2E8F0] space-y-3">
                   <Mail className="w-10 h-10 text-[#2563EB] mx-auto" />
                   <h4 className="text-h3 font-bold text-[#081226]">No emails confirmed yet</h4>
                   <p className="text-small text-[#64748B]">Paste interview emails on the left and confirm to build candidate timelines.</p>
                 </div>
               ) : (
-                inboxData.items.map((item) => {
+                displayedItems.map((item) => {
                   const isNew = item.action_type === 'new';
 
                   return (
@@ -1269,6 +1290,18 @@ export function AIResponseInboxPage() {
                 })
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {inboxData && inboxData.total > 0 && (
+              <Pagination
+                page={page}
+                pageSize={pageSize}
+                total={inboxData.total}
+                onPageChange={(newPage) => setPage(newPage)}
+                isLoading={loadingFeed}
+                itemName="applications"
+              />
+            )}
           </div>
         </div>
       )}
@@ -1343,7 +1376,7 @@ export function AIResponseInboxPage() {
                 </p>
               </div>
             ) : (
-              inboxData.items.map((item) => {
+              displayedItems.map((item) => {
                 const isExpanded = !!expandedCards[item.id];
 
                 return (
@@ -1446,6 +1479,18 @@ export function AIResponseInboxPage() {
               })
             )}
           </div>
+
+          {/* Pagination Controls */}
+          {inboxData && inboxData.total > 0 && (
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={inboxData.total}
+              onPageChange={(newPage) => setPage(newPage)}
+              isLoading={loadingFeed}
+              itemName="applications"
+            />
+          )}
         </div>
       )}
 

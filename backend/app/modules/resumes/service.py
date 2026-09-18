@@ -54,7 +54,7 @@ async def get_allowed_client_ids(db: AsyncSession, current_user: User) -> list[u
     Returns allowed client IDs for current user.
     None means full access (Admin).
     """
-    if current_user.role == "admin":
+    if current_user.role in ("admin", "super_admin"):
         return None
     elif current_user.role == "sub_admin":
         from app.modules.users.service import get_sub_admin_client_ids

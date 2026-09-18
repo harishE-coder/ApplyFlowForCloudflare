@@ -188,13 +188,13 @@ const getInboxHandler = async (c: any) => {
   const status = c.req.query("status") || null;
   const search = c.req.query("search") || null;
   const page = Math.max(1, Number(c.req.query("page")) || 1);
-  const pageSize = Math.min(200, Math.max(1, Number(c.req.query("page_size")) || 50));
+  const pageSize = Math.min(200, Math.max(1, Number(c.req.query("page_size")) || 20));
   const offset = (page - 1) * pageSize;
 
   try {
     const scopedCids = await getScopedClientIdsForAI(sql, user);
     if (scopedCids !== null && scopedCids.length === 0) {
-      return c.json({ items: [], total: 0, today_processed: 0, new_count: 0, followup_count: 0, client_breakdown: {} });
+      return c.json({ items: [], total: 0, page, page_size: pageSize, total_pages: 1, today_processed: 0, new_count: 0, followup_count: 0, client_breakdown: {} });
     }
 
     const conditions: string[] = [];
@@ -327,9 +327,13 @@ const getInboxHandler = async (c: any) => {
       };
     });
 
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
     return c.json({
       items,
       total,
+      page,
+      page_size: pageSize,
+      total_pages: totalPages,
       today_processed: items.length,
       new_count: newCount || (items.length > 0 ? Math.ceil(items.length / 2) : 0),
       followup_count: followupCount || (items.length > 0 ? Math.floor(items.length / 2) : 0),

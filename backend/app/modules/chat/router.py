@@ -378,7 +378,14 @@ async def share_job(
         created_at=res.created_at,
     )
 
-    return res
+@router.get("/rooms/{room_id}/jobs")
+async def get_room_jobs(
+    room_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Fetch active job openings scoped strictly to the room's Service Client under ASRC visibility rules."""
+    return await service.get_room_jobs(db, room_id, current_user)
 
 
 

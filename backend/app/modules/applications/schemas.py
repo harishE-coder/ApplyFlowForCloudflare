@@ -176,9 +176,12 @@ class AIInboxItemResponse(BaseModel):
 class AIInboxOverviewResponse(BaseModel):
     items: list[AIInboxItemResponse]
     total: int
-    today_processed: int
-    new_count: int
-    followup_count: int
+    page: int = 1
+    page_size: int = 20
+    total_pages: int = 1
+    today_processed: int = 0
+    new_count: int = 0
+    followup_count: int = 0
     client_breakdown: dict[str, int] = {}
 
 

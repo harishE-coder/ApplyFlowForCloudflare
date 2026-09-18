@@ -4,7 +4,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import api from '@/services/api';
 
-export function JobShareModal({ isOpen, onClose, onShareJob }) {
+export function JobShareModal({ isOpen, onClose, roomId, clientName, onShareJob }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -19,28 +19,37 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
     setCaption('');
     setSearch('');
 
+    const endpoint = roomId ? `/chat/rooms/${roomId}/jobs` : '/requirements';
     api
-      .get('/requirements')
+      .get(endpoint)
       .then((res) => {
         const list = Array.isArray(res.data) ? res.data : (res.data?.items || []);
         setJobs(list);
       })
       .catch((err) => {
-        console.error('Failed to fetch job requirements:', err);
+        console.error('Failed to fetch job openings:', err);
+        setJobs([]);
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [isOpen]);
+  }, [isOpen, roomId]);
 
   const filteredJobs = (Array.isArray(jobs) ? jobs : []).filter((j) => {
     const term = (search || '').toLowerCase().trim();
     if (!term) return true;
     const title = (j?.job_title || j?.role || '').toLowerCase();
-    const company = (j?.company || j?.client_name || '').toLowerCase();
+    const company = (j?.company || '').toLowerCase();
+    const client = (j?.client_name || '').toLowerCase();
     const location = (j?.location || '').toLowerCase();
     const roleCode = (j?.role_code || '').toLowerCase();
-    return title.includes(term) || company.includes(term) || location.includes(term) || roleCode.includes(term);
+    return (
+      title.includes(term) ||
+      company.includes(term) ||
+      client.includes(term) ||
+      location.includes(term) ||
+      roleCode.includes(term)
+    );
   });
 
   const handleShare = async () => {
@@ -50,7 +59,7 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
       await onShareJob(selectedJobId, caption.trim());
       onClose();
     } catch (err) {
-      console.error('Failed to share job requirement:', err);
+      console.error('Failed to share job opening:', err);
     } finally {
       setSharing(false);
     }
@@ -67,15 +76,25 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
     return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
   };
 
+  const displayRoomTitle = clientName ? `${clientName} Workspace Chat` : 'Workspace Chat';
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title="Share Job Opening in Chat"
-      description="Reference an existing job opening to share as a discussion point or reminder."
+      description={`Sharing in: ${displayRoomTitle}`}
       maxWidth="max-w-xl"
     >
       <div className="space-y-4 pt-2">
+        {/* Room Boundary Banner */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#EFF6FF] border border-[#BFDBFE]/70 text-caption text-[#1E40AF]">
+          <Building2 className="w-4 h-4 text-[#2563EB] shrink-0" />
+          <span>
+            Sharing in: <strong className="font-semibold text-[#081226]">{displayRoomTitle}</strong>
+          </span>
+        </div>
+
         {/* Search Input */}
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
@@ -93,14 +112,24 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
           {loading ? (
             <div className="py-12 flex flex-col items-center justify-center gap-2 text-[#64748B]">
               <Loader2 className="w-6 h-6 animate-spin text-[#2563EB]" />
-              <p className="text-caption font-medium">Loading job openings...</p>
+              <p className="text-caption font-medium">Loading job openings for this Service Client...</p>
+            </div>
+          ) : jobs.length === 0 ? (
+            <div className="py-12 text-center text-[#64748B]">
+              <Briefcase className="w-10 h-10 mx-auto text-[#CBD5E1] mb-2" />
+              <p className="text-small font-semibold text-[#081226]">
+                No active Job Openings available for this Service Client.
+              </p>
+              <p className="text-caption mt-1 text-[#64748B]">
+                Active job openings added for {clientName || 'this client'} will appear here.
+              </p>
             </div>
           ) : filteredJobs.length === 0 ? (
             <div className="py-12 text-center text-[#64748B]">
               <Briefcase className="w-10 h-10 mx-auto text-[#CBD5E1] mb-2" />
-              <p className="text-small font-semibold text-[#081226]">No Job Openings Found</p>
-              <p className="text-caption mt-0.5">
-                {search ? 'Try adjusting your search query' : 'No active job openings found.'}
+              <p className="text-small font-semibold text-[#081226]">No Matching Job Openings Found</p>
+              <p className="text-caption mt-0.5 text-[#64748B]">
+                Try adjusting your search query for {clientName || 'this Service Client'}.
               </p>
             </div>
           ) : (
@@ -108,6 +137,7 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
               const isSelected = selectedJobId === job.id;
               const title = job.job_title || job.role || 'Open Role';
               const company = job.company || job.client_name || 'Client';
+              const serviceClient = job.client_name;
               const location = job.location || 'Remote';
               const openings = job.openings || 1;
               const priority = job.priority || 'Medium';
@@ -145,18 +175,26 @@ export function JobShareModal({ isOpen, onClose, onShareJob }) {
                           {priority} Priority
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-1">
-                        <span className="truncate flex items-center gap-1">
+                      <div className="flex items-center gap-2 text-[11px] text-[#64748B] mt-1 flex-wrap">
+                        <span className="truncate flex items-center gap-1 font-medium text-[#081226]">
                           <Building2 className="w-3 h-3 text-[#94A3B8]" />
                           {company}
                         </span>
+                        {serviceClient && serviceClient !== company && (
+                          <>
+                            <span>•</span>
+                            <span className="text-[#2563EB] font-medium truncate">
+                              Client: {serviceClient}
+                            </span>
+                          </>
+                        )}
                         <span>•</span>
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3 h-3 text-[#94A3B8]" />
                           {location}
                         </span>
                         <span>•</span>
-                        <span className="flex items-center gap-1 font-medium text-[#2563EB]">
+                        <span className="flex items-center gap-1 font-medium text-emerald-700">
                           <Users className="w-3 h-3" />
                           {openings} {openings === 1 ? 'opening' : 'openings'}
                         </span>

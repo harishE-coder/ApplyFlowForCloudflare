@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -251,6 +251,61 @@ async def get_messages(
                     break
 
     is_admin = user.role in ("admin", "super_admin")
+
+    # Batch load rich metadata for job and resume attachments
+    job_ids = []
+    resume_ids = []
+    for msg in messages:
+        if msg.attachment_reference:
+            try:
+                ref_uuid = uuid.UUID(msg.attachment_reference)
+                if msg.attachment_type == "job":
+                    job_ids.append(ref_uuid)
+                elif msg.attachment_type == "resume":
+                    resume_ids.append(ref_uuid)
+            except ValueError:
+                pass
+
+    job_map = {}
+    if job_ids:
+        from app.modules.requirements.models import Requirement
+        j_res = await db.execute(
+            select(Requirement, Client.company_name.label("client_name"))
+            .outerjoin(Client, Client.id == Requirement.client_id)
+            .where(Requirement.id.in_(job_ids))
+        )
+        for req, c_name in j_res.all():
+            job_map[str(req.id)] = {
+                "id": str(req.id),
+                "title": req.job_title or req.role or "Open Role",
+                "role": req.role,
+                "role_code": req.role_code,
+                "company": req.company,
+                "client_name": c_name or req.company,
+                "client_id": str(req.client_id),
+                "priority": req.priority or "Medium",
+                "status": req.status or "active",
+                "job_url": req.job_url,
+                "notes": req.notes,
+                "location": "Remote",
+                "openings": 1,
+            }
+
+    resume_map = {}
+    if resume_ids:
+        r_res = await db.execute(select(Resume).where(Resume.id.in_(resume_ids)))
+        for r in r_res.scalars().all():
+            resume_map[str(r.id)] = {
+                "id": str(r.id),
+                "candidate_name": r.candidate_name,
+                "company": r.company,
+                "role": r.role_designation,
+                "status": r.status,
+                "drive_view_url": r.drive_view_link,
+                "drive_download_url": r.drive_download_link,
+                "filename": r.original_filename,
+            }
+
     items = []
     for msg in reversed(messages):
         sender_info = MessageSender(
@@ -298,6 +353,9 @@ async def get_messages(
             del_role = None
             del_at = None
 
+        job_data = job_map.get(str(att_ref)) if (att_type == "job" and att_ref) else None
+        resume_data = resume_map.get(str(att_ref)) if (att_type == "resume" and att_ref) else None
+
         items.append(
             ChatMessageResponse(
                 id=msg.id,
@@ -306,6 +364,8 @@ async def get_messages(
                 message=m_text,
                 attachment_type=att_type,
                 attachment_reference=att_ref,
+                job_data=job_data,
+                resume_data=resume_data,
                 status=msg_status,
                 created_at=msg.created_at,
                 edited_at=msg.edited_at,
@@ -436,7 +496,7 @@ async def share_job(
     db: AsyncSession, room_id: uuid.UUID, user: User, requirement_id: uuid.UUID, caption: str | None = None
 ) -> ChatMessageResponse:
     from app.modules.requirements.models import Requirement
-    await check_room_access(db, user, room_id)
+    room = await check_room_access(db, user, room_id)
 
     req = (
         await db.execute(
@@ -450,10 +510,76 @@ async def share_job(
             detail="Job requirement not found.",
         )
 
+    # CRITICAL SECURITY RULE: Room Boundary (Must Enforce)
+    # A Job Opening can only be shared into a chat room if it belongs to the same Service Client as that chat room, regardless of user role.
+    if not room.client_id or not req.client_id or str(room.client_id) != str(req.client_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Job opening does not belong to this room's Service Client.",
+        )
+
+    # ASRC Permission Check
+    if user.role == "client":
+        if not user.client_id or str(user.client_id) != str(room.client_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You are not authorized to share in this room.",
+            )
+    elif user.role in ("employee", "recruiter"):
+        is_assigned = (
+            req.assigned_employee_id == user.id
+            or req.assignment_type == "all"
+            or req.assigned_employee_id is None
+        )
+        if not is_assigned:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Forbidden: You are not assigned to this job opening.",
+            )
+
+        assigned_client = (
+            await db.execute(
+                select(EmployeeClient).where(
+                    EmployeeClient.employee_id == user.id,
+                    EmployeeClient.client_id == room.client_id,
+                    EmployeeClient.active == True,
+                )
+            )
+        ).scalar_one_or_none()
+        if not assigned_client:
+            active_client = (
+                await db.execute(
+                    select(Client).where(Client.id == room.client_id, Client.is_active == True)
+                )
+            ).scalar_one_or_none()
+            if not active_client:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Forbidden: You do not have access to this Service Client.",
+                )
+
     title = req.job_title or req.role or "Open Role"
     company = req.company or "Company"
+    client_name = room.client.company_name if (room.client and room.client.company_name) else company
     text = caption.strip() if caption and caption.strip() else f"💼 Shared Job Opening: {title} ({company})"
-    return await send_message(
+
+    job_data = {
+        "id": str(req.id),
+        "title": title,
+        "role": req.role or title,
+        "role_code": req.role_code or "",
+        "company": company,
+        "client_name": client_name,
+        "client_id": str(req.client_id),
+        "priority": req.priority or "Medium",
+        "status": req.status or "active",
+        "job_url": req.job_url or None,
+        "notes": req.notes or None,
+        "location": "Remote",
+        "openings": 1,
+    }
+
+    res = await send_message(
         db,
         room_id,
         user,
@@ -462,6 +588,71 @@ async def share_job(
         attachment_reference=str(req.id),
         attachment_filename=title,
     )
+    res.job_data = job_data
+    return res
+
+
+async def get_room_jobs(
+    db: AsyncSession, room_id: uuid.UUID, user: User
+) -> list[dict]:
+    from app.modules.requirements.models import Requirement
+    room = await check_room_access(db, user, room_id)
+    if not room.client_id:
+        return []
+
+    # Room Boundary: only requirements matching room.client_id and status = active
+    query = (
+        select(Requirement, Client.company_name.label("client_name"))
+        .outerjoin(Client, Client.id == Requirement.client_id)
+        .where(
+            Requirement.client_id == room.client_id,
+            Requirement.status == "active",
+        )
+    )
+
+    if user.role in ("super_admin", "admin", "sub_admin"):
+        # Admin / Sub-Admin: all active openings in the room's Service Client
+        pass
+    elif user.role in ("employee", "recruiter"):
+        # Recruiter: assigned openings within the current room's Service Client
+        query = query.where(
+            or_(
+                Requirement.assigned_employee_id == user.id,
+                Requirement.assignment_type == "all",
+                Requirement.assigned_employee_id.is_(None),
+            )
+        )
+    elif user.role == "client":
+        # Client: openings for their own Service Client only
+        if not user.client_id or str(user.client_id) != str(room.client_id):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this room")
+    else:
+        return []
+
+    query = query.order_by(Requirement.created_at.desc())
+    res = await db.execute(query)
+    rows = res.all()
+
+    jobs = []
+    for req, client_name in rows:
+        jobs.append({
+            "id": str(req.id),
+            "job_title": req.job_title or req.role or "Open Role",
+            "role": req.role,
+            "role_code": req.role_code,
+            "company": req.company,
+            "client_name": client_name or req.company,
+            "client_id": str(req.client_id),
+            "priority": req.priority or "Medium",
+            "status": req.status,
+            "job_url": req.job_url,
+            "notes": req.notes,
+            "assignment_type": req.assignment_type,
+            "assigned_employee_id": str(req.assigned_employee_id) if req.assigned_employee_id else None,
+            "location": "Remote",
+            "openings": 1,
+        })
+    return jobs
 
 
 async def mark_read(

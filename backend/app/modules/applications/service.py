@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import desc, func, or_, select, text
+from sqlalchemy import bindparam, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -685,7 +685,7 @@ async def get_ai_inbox_feed(
     status: str | None = None,
     search: str | None = None,
     page: int = 1,
-    page_size: int = 50,
+    page_size: int = 20,
 ) -> AIInboxOverviewResponse:
     """
     Fetch AI Response Inbox feed cards with aggregated metrics via fast flat SQL.
@@ -697,13 +697,13 @@ async def get_ai_inbox_feed(
 
     if allowed_clients is not None:
         if not allowed_clients:
-            return AIInboxOverviewResponse(items=[], total=0, today_processed=0, new_count=0, followup_count=0)
-        where_clauses.append("a.client_id = ANY(:allowed_cids)")
+            return AIInboxOverviewResponse(items=[], total=0, page=page, page_size=page_size, total_pages=1, today_processed=0, new_count=0, followup_count=0)
+        where_clauses.append("a.client_id IN :allowed_cids")
         params["allowed_cids"] = list(allowed_clients)
 
     if client_id:
         if allowed_clients is not None and client_id not in allowed_clients:
-            return AIInboxOverviewResponse(items=[], total=0, today_processed=0, new_count=0, followup_count=0)
+            return AIInboxOverviewResponse(items=[], total=0, page=page, page_size=page_size, total_pages=1, today_processed=0, new_count=0, followup_count=0)
         where_clauses.append("a.client_id = :client_id")
         params["client_id"] = client_id
 
@@ -734,6 +734,8 @@ async def get_ai_inbox_feed(
         LEFT JOIN clients c ON a.client_id = c.id
         {where_sql}
     """)
+    if "allowed_cids" in params:
+        count_sql = count_sql.bindparams(bindparam("allowed_cids", expanding=True))
     total = (await db.execute(count_sql, params)).scalar() or 0
 
     # 2. Paginated rows
@@ -757,6 +759,8 @@ async def get_ai_inbox_feed(
         ORDER BY COALESCE(a.updated_at, a.applied_date) DESC
         LIMIT :limit OFFSET :offset;
     """)
+    if "allowed_cids" in params:
+        fetch_sql = fetch_sql.bindparams(bindparam("allowed_cids", expanding=True))
     rows = (await db.execute(fetch_sql, params)).mappings().all()
 
     # 3. Pre-fetch event counts for returned rows in 1 query
@@ -766,9 +770,9 @@ async def get_ai_inbox_feed(
         ev_q = text("""
             SELECT application_id, COUNT(id) AS ev_count
             FROM application_events
-            WHERE application_id = ANY(:app_ids)
+            WHERE application_id IN :app_ids
             GROUP BY application_id;
-        """)
+        """).bindparams(bindparam("app_ids", expanding=True))
         ev_rows = (await db.execute(ev_q, {"app_ids": app_ids})).mappings().all()
         event_counts = {e["application_id"]: e["ev_count"] for e in ev_rows}
 
@@ -820,9 +824,14 @@ async def get_ai_inbox_feed(
             )
         )
 
+    total_pages = max(1, (total + page_size - 1) // page_size) if page_size > 0 else 1
+
     return AIInboxOverviewResponse(
         items=items,
         total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
         today_processed=len(items),
         new_count=new_count or max(1, len(items) // 2),
         followup_count=followup_count or max(1, len(items) // 2),

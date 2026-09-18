@@ -74,9 +74,12 @@ export function ChatPage() {
     window.dispatchEvent(new CustomEvent('chat:unread-updated', { detail: { total_unread: totalUnread } }));
   }, []);
 
+  const [roomsError, setRoomsError] = useState(null);
+
   // Fetch all accessible rooms (backend returns sorted by latest message)
   const fetchRooms = useCallback(async () => {
     try {
+      setRoomsError(null);
       const res = await api.get('/chat/rooms');
       const items = res.data.items || [];
       const sorted = sortRoomsByActivity(items);
@@ -89,6 +92,7 @@ export function ChatPage() {
       });
     } catch (err) {
       console.error('Failed to fetch chat rooms:', err);
+      setRoomsError(err?.response?.data?.detail || err?.message || 'Failed to load conversations');
     } finally {
       setLoadingRooms(false);
     }
@@ -630,6 +634,8 @@ export function ChatPage() {
             onSelectRoom={handleSelectRoom}
             onSyncWorkspaces={fetchRooms}
             loading={loadingRooms}
+            error={roomsError}
+            onRetry={fetchRooms}
             onlineUsers={onlineUsers}
             typingUsers={typingUsers}
           />

@@ -203,21 +203,14 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
     // Admin / Super-Admin: Query chat_rooms directly without any client scoping
     // Auto-repair missing rooms for legacy clients automatically
     try {
-      const missing = await sql`
-        SELECT c.id FROM clients c
+      await sql`
+        INSERT INTO chat_rooms (id, client_id, status, created_at)
+        SELECT gen_random_uuid(), c.id, 'active', NOW()
+        FROM clients c
         LEFT JOIN chat_rooms cr ON cr.client_id = c.id
         WHERE cr.id IS NULL
-        LIMIT 100
+        ON CONFLICT (client_id) DO NOTHING
       `;
-      if (missing && missing.length > 0) {
-        for (const mClient of missing) {
-          await sql`
-            INSERT INTO chat_rooms (id, client_id, status, created_at)
-            VALUES (${crypto.randomUUID()}, ${mClient.id}, 'active', NOW())
-            ON CONFLICT (client_id) DO NOTHING
-          `;
-        }
-      }
     } catch (repairErr) {
       console.warn("Auto-repair missing rooms non-fatal warning:", repairErr);
     }
@@ -279,53 +272,187 @@ chatRouter.get("/rooms", requireAuth, async (c) => {
     }
   }
 
+  if (rooms.length === 0) {
+    return c.json({ items: [], total_unread: 0 });
+  }
+
+  const roomIds = rooms.map((r) => r.id);
+  const clientIds = Array.from(new Set(rooms.map((r) => r.client_id).filter(Boolean)));
+
+  // Batch query all supplementary data in parallel (Constant number of queries instead of O(N) queries)
+  const [
+    latestMessages,
+    unreadCounts,
+    admins,
+    clientUsers,
+    recruiters,
+    subAdminAssignments,
+    managedBySubAdmins,
+  ] = await Promise.all([
+    sql`
+      SELECT DISTINCT ON (m.room_id)
+        m.room_id,
+        m.message,
+        m.created_at,
+        u.name as sender_name
+      FROM chat_messages m
+      LEFT JOIN users u ON u.id = m.sender_id
+      WHERE m.room_id = ANY(${roomIds})
+      ORDER BY m.room_id, m.created_at DESC
+    `,
+    sql`
+      SELECT m.room_id, COUNT(m.id)::int as count
+      FROM chat_messages m
+      LEFT JOIN chat_reads cr ON cr.room_id = m.room_id AND cr.user_id = ${user.id}
+      WHERE m.room_id = ANY(${roomIds})
+        AND (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
+        AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
+      GROUP BY m.room_id
+    `,
+    sql`
+      SELECT id, name, role
+      FROM users
+      WHERE role IN ('admin', 'super_admin') AND is_active = true
+      ORDER BY name ASC
+    `,
+    clientIds.length > 0
+      ? sql`
+          SELECT id, name, role, client_id
+          FROM users
+          WHERE client_id = ANY(${clientIds}) AND role = 'client' AND is_active = true
+          ORDER BY name ASC
+        `
+      : Promise.resolve([]),
+    clientIds.length > 0
+      ? sql`
+          SELECT u.id, u.name, u.role, ec.client_id, ec.is_primary
+          FROM employee_clients ec
+          JOIN users u ON u.id = ec.employee_id
+          WHERE ec.client_id = ANY(${clientIds}) AND ec.active = true AND u.is_active = true
+          ORDER BY ec.is_primary DESC, u.name ASC
+        `
+      : Promise.resolve([]),
+    clientIds.length > 0
+      ? sql`
+          SELECT u.id, u.name, u.role, sa.client_id
+          FROM sub_admin_assignments sa
+          JOIN users u ON u.id = sa.sub_admin_id
+          WHERE sa.client_id = ANY(${clientIds}) AND sa.active = true AND u.is_active = true
+          ORDER BY u.name ASC
+        `
+      : Promise.resolve([]),
+    clientIds.length > 0
+      ? sql`
+          SELECT u.id, u.name, u.role, c.id as client_id
+          FROM clients c
+          JOIN users u ON u.id = c.managed_by
+          WHERE c.id = ANY(${clientIds}) AND u.is_active = true
+          ORDER BY u.name ASC
+        `
+      : Promise.resolve([]),
+  ]);
+
+  const lastMsgMap = new Map<string, any>();
+  for (const msg of latestMessages) {
+    lastMsgMap.set(msg.room_id, msg);
+  }
+
+  const unreadMap = new Map<string, number>();
   let totalUnread = 0;
-  const items = [];
+  for (const row of unreadCounts) {
+    const c = Number(row.count) || 0;
+    unreadMap.set(row.room_id, c);
+    totalUnread += c;
+  }
 
-  for (const r of rooms) {
-    const [latestMsg, unreadRes, resolved] = await Promise.all([
-      sql`
-        SELECT m.message, u.name as sender_name, m.created_at
-        FROM chat_messages m
-        LEFT JOIN users u ON u.id = m.sender_id
-        WHERE m.room_id = ${r.id}
-        ORDER BY m.created_at DESC
-        LIMIT 1
-      `,
-      sql`
-        SELECT COUNT(m.id)::int as count
-        FROM chat_messages m
-        LEFT JOIN chat_reads cr ON cr.room_id = ${r.id} AND cr.user_id = ${user.id}
-        WHERE m.room_id = ${r.id}
-          AND (cr.last_read_at IS NULL OR m.created_at > cr.last_read_at)
-          AND (m.sender_id IS NULL OR m.sender_id != ${user.id})
-      `,
-      resolveRoomMembers(sql, r.id),
-    ]);
+  const clientUsersMap = new Map<string, any[]>();
+  for (const cu of clientUsers) {
+    if (!clientUsersMap.has(cu.client_id)) clientUsersMap.set(cu.client_id, []);
+    clientUsersMap.get(cu.client_id)!.push(cu);
+  }
 
-    const unread = unreadRes[0]?.count || 0;
-    totalUnread += unread;
+  const recruitersMap = new Map<string, any[]>();
+  for (const rec of recruiters) {
+    if (!recruitersMap.has(rec.client_id)) recruitersMap.set(rec.client_id, []);
+    recruitersMap.get(rec.client_id)!.push(rec);
+  }
 
-    const lastMsgTime = latestMsg[0]?.created_at || r.last_message_at || null;
+  const subAdminsMap = new Map<string, any[]>();
+  for (const sa of subAdminAssignments) {
+    if (!subAdminsMap.has(sa.client_id)) subAdminsMap.set(sa.client_id, []);
+    subAdminsMap.get(sa.client_id)!.push(sa);
+  }
+  for (const mb of managedBySubAdmins) {
+    if (!subAdminsMap.has(mb.client_id)) subAdminsMap.set(mb.client_id, []);
+    subAdminsMap.get(mb.client_id)!.push(mb);
+  }
 
-    items.push({
+  const adminParticipants = admins.map((a: any) => ({
+    id: String(a.id),
+    name: a.name,
+    role: a.role,
+    is_primary: false,
+  }));
+
+  const items = rooms.map((r) => {
+    const lastMsg = lastMsgMap.get(r.id);
+    const unread = unreadMap.get(r.id) || 0;
+    const lastMsgTime = lastMsg?.created_at || r.last_message_at || r.created_at;
+
+    const seenMemberIds = new Set<string>();
+    const roomMembers: any[] = [];
+
+    // Add admins
+    for (const a of adminParticipants) {
+      if (!seenMemberIds.has(a.id)) {
+        seenMemberIds.add(a.id);
+        roomMembers.push(a);
+      }
+    }
+
+    // Add assigned/managing sub-admins
+    const roomSubAdmins = subAdminsMap.get(r.client_id) || [];
+    for (const sa of roomSubAdmins) {
+      const saId = String(sa.id);
+      if (!seenMemberIds.has(saId)) {
+        seenMemberIds.add(saId);
+        roomMembers.push({ id: saId, name: sa.name, role: sa.role, is_primary: false });
+      }
+    }
+
+    // Add clients
+    const roomClients = clientUsersMap.get(r.client_id) || [];
+    for (const c of roomClients) {
+      const cId = String(c.id);
+      if (!seenMemberIds.has(cId)) {
+        seenMemberIds.add(cId);
+        roomMembers.push({ id: cId, name: c.name, role: c.role, is_primary: false });
+      }
+    }
+
+    // Add recruiters
+    const roomRecruiters = recruitersMap.get(r.client_id) || [];
+    for (const rec of roomRecruiters) {
+      const recId = String(rec.id);
+      if (!seenMemberIds.has(recId)) {
+        seenMemberIds.add(recId);
+        roomMembers.push({ id: recId, name: rec.name, role: rec.role, is_primary: Boolean(rec.is_primary) });
+      }
+    }
+
+    return {
       id: r.id,
       client_id: r.client_id,
       client_name: r.client_name,
       status: r.status,
       created_at: r.created_at,
-      participants: resolved.members.slice(0, 10).map((p) => ({
-        id: p.id,
-        name: p.name,
-        role: p.role,
-        is_primary: p.is_primary,
-      })),
-      last_message: latestMsg[0]?.message || null,
-      last_message_sender: latestMsg[0]?.sender_name || null,
+      participants: roomMembers.slice(0, 10),
+      last_message: lastMsg?.message || null,
+      last_message_sender: lastMsg?.sender_name || null,
       last_message_at: lastMsgTime,
       unread_count: unread,
-    });
-  }
+    };
+  });
 
   // Sort items descending by latest activity timestamp (last_message_at or created_at)
   items.sort((a, b) => {

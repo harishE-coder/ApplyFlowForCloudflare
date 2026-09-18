@@ -31,6 +31,8 @@ export function ChatRoomList({
   onSelectRoom,
   onSyncWorkspaces,
   loading = false,
+  error = null,
+  onRetry,
   onlineUsers = [],
   typingUsers = {},
 }) {
@@ -116,6 +118,23 @@ export function ChatRoomList({
         {loading ? (
           <div className="py-12 text-center text-caption text-[#64748B]">
             Loading conversation channels...
+          </div>
+        ) : error ? (
+          <div className="py-10 px-4 text-center text-caption text-[#CBD5E1]">
+            <p className="font-semibold text-rose-400 mb-2">Unable to load conversations</p>
+            <p className="text-[#94A3B8] mb-4 text-xs">{error}</p>
+            {onRetry && (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                icon={RefreshCw}
+                onClick={onRetry}
+                className="mx-auto"
+              >
+                Retry
+              </Button>
+            )}
           </div>
         ) : filteredRooms.length === 0 ? (
           <div className="py-10 px-4 text-center text-caption text-[#CBD5E1]">

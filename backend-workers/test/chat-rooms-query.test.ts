@@ -50,6 +50,22 @@ vi.mock("../src/db", () => {
         if (queryText.includes("FROM chat_rooms r")) {
           return mockRooms;
         }
+        if (queryText.includes("DISTINCT ON (m.room_id)")) {
+          return [
+            {
+              room_id: "room-older-created-recent-message",
+              message: "Latest update from Hari Prakash",
+              sender_name: "Hari",
+              created_at: "2026-09-07T08:00:00Z",
+            },
+            {
+              room_id: "room-oldest",
+              message: "Old chat",
+              sender_name: "Admin",
+              created_at: "2026-07-02T00:00:00Z",
+            },
+          ];
+        }
         if (queryText.includes("FROM chat_messages m") && queryText.includes("LIMIT 1")) {
           const roomId = values[0];
           if (roomId === "room-older-created-recent-message") {

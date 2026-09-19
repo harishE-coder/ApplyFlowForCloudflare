@@ -14,7 +14,9 @@ import {
   uploadResume,
 } from "../services/googleAppsScript";
 import type { Bindings, UserPayload, Variables } from "../types";
-import { parseResumeFilename } from "../utils/resumeParser";
+import { parseResumeFilename, resolveResumeMetadata } from "../utils/resumeParser";
+import { extractTextFromFile } from "./ai";
+import { callAiGateway } from "../services/aiGateway";
 
 export const resumesRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -100,6 +102,7 @@ resumesRouter.get("/companies", async (c) => {
     rows = await sql`
       SELECT DISTINCT company FROM resumes
       WHERE company IS NOT NULL AND TRIM(company) != ''
+        AND LOWER(TRIM(company)) != 'general'
       ORDER BY company ASC
     `;
   } else if (allowed.length === 0) {
@@ -109,6 +112,7 @@ resumesRouter.get("/companies", async (c) => {
       SELECT DISTINCT company FROM resumes
       WHERE client_id = ANY(${allowed})
         AND company IS NOT NULL AND TRIM(company) != ''
+        AND LOWER(TRIM(company)) != 'general'
       ORDER BY company ASC
     `;
   }
@@ -432,17 +436,28 @@ resumesRouter.get("/", async (c) => {
       }
     }
 
+    const rawCompany = (r.company || "").trim();
+    const rawRole = (r.role || "").trim();
+    const cleanCompany =
+      !rawCompany || rawCompany.toLowerCase() === "general"
+        ? "Unknown Hiring Organization"
+        : rawCompany;
+    const cleanRole =
+      !rawRole || rawRole.toLowerCase() === "general" || rawRole.toLowerCase() === "general role"
+        ? "Unknown Target Role"
+        : rawRole;
+
     return {
       id: r.id,
       display_id: r.resume_id_tag || (r.display_seq ? `RES${1000 + r.display_seq}` : `RES1000`),
-      candidate_name: r.candidate_name,
-      company: r.company,
-      role: r.role,
+      candidate_name: r.candidate_name || "Candidate",
+      company: cleanCompany,
+      role: cleanRole,
       resume_id_tag: r.resume_id_tag,
       requirement_id: r.requirement_id,
       requirement_code: r.requirement_code,
       client_id: r.client_id,
-      client_name: r.client_name || "Client",
+      client_name: r.client_name || "Service Client",
       uploaded_by: r.uploaded_by,
       uploader_name: r.uploader_name || "Recruiter",
       file_name: fileName,
@@ -586,9 +601,50 @@ resumesRouter.post("/upload", async (c) => {
   let rejectedCount = 0;
   const createdDriveFileIds: string[] = [];
 
+  const metadataRaw = body["metadata"];
+  let metadataOverrides: Record<string, any> = {};
+  if (metadataRaw && typeof metadataRaw === "string") {
+    try {
+      const parsedMeta = JSON.parse(metadataRaw);
+      if (Array.isArray(parsedMeta)) {
+        for (const m of parsedMeta) {
+          if (m?.filename) metadataOverrides[m.filename] = m;
+        }
+      }
+    } catch {}
+  }
+
   for (const file of files) {
     const filename = file.name;
     const parsed = parseResumeFilename(filename, clientName);
+
+    // AI Extraction First:
+    // 1. Attempt document text extraction
+    // 2. Call AI gateway (Groq -> OpenAI -> Gemini) for entity extraction
+    // 3. Resolve metadata with strict priority: AI -> Filename -> Fallbacks
+    let aiExtracted: any = null;
+    try {
+      const extractedText = await extractTextFromFile(file);
+      if (
+        extractedText &&
+        extractedText.trim().length >= 20 &&
+        (c.env.GROQ_API_KEY || c.env.OPENAI_API_KEY || c.env.GEMINI_API_KEY)
+      ) {
+        const reqId = c.get("requestId") || `resume-ai-${crypto.randomUUID().slice(0, 8)}`;
+        let execCtx: any;
+        try {
+          execCtx = c.executionCtx;
+        } catch {}
+        aiExtracted = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL, 15000, reqId, execCtx);
+      }
+    } catch (aiErr) {
+      console.warn("[Resume AI Extraction Warning]", (aiErr as Error)?.message);
+    }
+
+    const resolved = resolveResumeMetadata(aiExtracted, parsed, clientName);
+    const candidateName = metadataOverrides[filename]?.candidate_name || resolved.candidate_name;
+    const company = metadataOverrides[filename]?.company || resolved.company;
+    const role = metadataOverrides[filename]?.role || resolved.role;
 
     if (parsed.status === "needs_review") {
       needsReviewCount++;
@@ -598,9 +654,9 @@ resumesRouter.post("/upload", async (c) => {
         message: parsed.error || "File requires manual review",
         client_name: clientName,
         client_id: clientId,
-        candidate_name: parsed.candidate_name,
-        company: parsed.company,
-        role: parsed.role,
+        candidate_name: candidateName,
+        company: company,
+        role: role,
         resume_id_tag: parsed.resume_id_tag,
       });
       continue;
@@ -616,7 +672,7 @@ resumesRouter.post("/upload", async (c) => {
       WHERE client_id = ${clientId}
         AND (
           file_hash = ${fileHash}
-          OR (LOWER(candidate_name) = ${parsed.candidate_name.toLowerCase()} AND LOWER(company) = ${parsed.company.toLowerCase()})
+          OR (LOWER(candidate_name) = ${candidateName.toLowerCase()} AND LOWER(company) = ${company.toLowerCase()})
         )
       LIMIT 1
     `;
@@ -628,9 +684,9 @@ resumesRouter.post("/upload", async (c) => {
         status: "duplicate",
         message: "Duplicate resume already exists for candidate and company",
         is_duplicate: true,
-        candidate_name: parsed.candidate_name,
-        company: parsed.company,
-        role: parsed.role,
+        candidate_name: candidateName,
+        company: company,
+        role: role,
         saved_resume_id: duplicateRows[0].id,
       });
       continue;
@@ -666,7 +722,7 @@ resumesRouter.post("/upload", async (c) => {
           file_hash, file_size,
           resume_date, upload_date, created_at, work_date
         ) VALUES (
-          ${resumeId}, ${parsed.candidate_name}, ${parsed.company}, ${parsed.role}, ${parsed.resume_id_tag},
+          ${resumeId}, ${candidateName}, ${company}, ${role}, ${parsed.resume_id_tag},
           ${requirementId}, ${clientId}, ${user.id},
           ${uploadRes.fileId}, ${uploadRes.viewUrl}, ${uploadRes.downloadUrl},
           ${uploadRes.viewUrl}, ${uploadRes.downloadUrl},
@@ -689,9 +745,9 @@ resumesRouter.post("/upload", async (c) => {
         status: "saved",
         message: "Successfully uploaded to Google Drive via Apps Script and saved",
         saved_resume_id: resumeId,
-        candidate_name: parsed.candidate_name,
-        company: parsed.company,
-        role: parsed.role,
+        candidate_name: candidateName,
+        company: company,
+        role: role,
         resume_id_tag: parsed.resume_id_tag,
         drive_file_id: uploadRes.fileId,
         drive_view_url: uploadRes.viewUrl,
@@ -780,17 +836,28 @@ resumesRouter.get("/:id", async (c) => {
   const fileName = r.file_name || r.original_filename;
   const mimeType = r.mime_type || r.content_type || "application/pdf";
 
+  const rawCompany = (r.company || "").trim();
+  const rawRole = (r.role || "").trim();
+  const cleanCompany =
+    !rawCompany || rawCompany.toLowerCase() === "general"
+      ? "Unknown Hiring Organization"
+      : rawCompany;
+  const cleanRole =
+    !rawRole || rawRole.toLowerCase() === "general" || rawRole.toLowerCase() === "general role"
+      ? "Unknown Target Role"
+      : rawRole;
+
   return c.json({
     id: r.id,
     display_id: r.resume_id_tag || (r.display_seq ? `RES${1000 + r.display_seq}` : "RES1000"),
-    candidate_name: r.candidate_name,
-    company: r.company,
-    role: r.role,
+    candidate_name: r.candidate_name || "Candidate",
+    company: cleanCompany,
+    role: cleanRole,
     resume_id_tag: r.resume_id_tag,
     requirement_id: r.requirement_id,
     requirement_code: r.requirement_code,
     client_id: r.client_id,
-    client_name: r.client_name || "Client",
+    client_name: r.client_name || "Service Client",
     uploaded_by: r.uploaded_by,
     uploader_name: r.uploader_name || "Recruiter",
     file_name: fileName,

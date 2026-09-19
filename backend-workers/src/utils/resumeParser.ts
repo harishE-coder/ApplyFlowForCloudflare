@@ -52,21 +52,54 @@ export function formatRoleTitle(roleRaw?: string | null): string {
     return raw.toUpperCase();
   }
 
-  if (raw.includes("-") || (/\d/.test(raw) && /[A-Za-z]/.test(raw) && raw.length <= 10)) {
-    return raw.toUpperCase();
-  }
-
   if (raw === raw.toUpperCase() && raw.length <= 5) {
     return raw;
   }
 
-  let spaced = raw.replace(/([a-z])([A-Z])/g, "$1 $2");
-  spaced = spaced.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
-  spaced = spaced.replace(/_/g, " ").trim();
+  // Split on delimiters: underscores, hyphens, or spaces
+  const words = raw.replace(/[-_]+/g, " ").trim().split(/\s+/).filter(Boolean);
 
+  return words
+    .map((w) => {
+      if (w === w.toUpperCase() && w.length <= 5) {
+        return w;
+      }
+      if (w === w.toLowerCase()) {
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      }
+      // If already has mixed case / PascalCase (e.g. ServiceNow, DevOps, CloudEngineer), preserve it!
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
+
+export function formatCompanyName(companyRaw?: string | null): string {
+  if (!companyRaw || !companyRaw.trim()) return "";
+  const raw = companyRaw.trim();
+  // Short acronyms like TCS, AWS, IBM, Wipro
+  if (raw.length <= 4 && /^[a-zA-Z]+$/.test(raw)) {
+    return raw.toUpperCase();
+  }
+  // If already PascalCase / mixed case without separators (e.g. SpatialFront)
+  if (!raw.includes("_") && !raw.includes(" ") && !raw.includes("-")) {
+    if (raw === raw.toLowerCase()) {
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+    return raw;
+  }
+  const spaced = raw.replace(/[-_]+/g, " ").trim();
   return spaced
-    .split(" ")
-    .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => {
+      if (w.length <= 4 && /^[a-zA-Z]+$/.test(w) && w === w.toUpperCase()) {
+        return w;
+      }
+      if (w === w.toLowerCase()) {
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      }
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
     .join(" ");
 }
 
@@ -77,89 +110,148 @@ export function formatClientName(clientRaw?: string | null): string {
   return spaced.trim();
 }
 
+const TRAILING_NOISE_REGEX = /^(resume|cv|biodata|final|latest|updated|v\d+|version\d*|version|[\(\[\{]\d+[\)\]\}]|\d+)$/i;
+
 export function parseResumeFilename(
   filename: string,
   selectedClientName?: string | null
 ): ParsedResumeResult {
   // Strip extension
   const stem = filename.replace(/\.[^/.]+$/, "").trim();
-  const parts = stem.split("_").map((p) => p.trim()).filter(Boolean);
 
-  const rawFirst = parts[0] || "";
-  const normFirst = normalizeClientName(rawFirst);
-  const normSelected = normalizeClientName(selectedClientName);
-
-  const hasNoise = parts.some((p) =>
-    /\b(resume|cv|biodata)\b|[\(\[\{]\d+[\)\]\}]/i.test(p)
-  );
-
-  let serviceClient =
-    selectedClientName || (rawFirst ? formatClientName(rawFirst) : "ServiceClient");
-  let company = "";
-  let role = "";
-  const resumeIdentifier = parts.length > 1 ? parts[parts.length - 1] : stem;
-  let candidateName = "Candidate";
-  let status: "valid" | "needs_review" = "valid";
-  let error: string | null = null;
-  let clientMatch = true;
-
-  // 1. Standard structured format without noise (e.g. Teksystems_Google_Data Analyst.pdf)
-  if (parts.length >= 2 && !hasNoise) {
-    company = parts[1].length <= 4 ? parts[1].toUpperCase() : formatRoleTitle(parts[1]);
-    if (parts.length >= 3) {
-      const roleRaw = parts.length === 3 ? parts.slice(2).join("_") : parts.slice(2, -1).join("_");
-      role = formatRoleTitle(roleRaw);
-      candidateName = cleanCandidateName(parts.length >= 4 ? parts[parts.length - 1] : parts[0]);
-    } else {
-      candidateName = cleanCandidateName(parts[0]);
-    }
-
-    if (selectedClientName) {
-      if (normFirst === normSelected) {
-        serviceClient = selectedClientName;
-        status = "valid";
-        clientMatch = true;
-        error = null;
-      } else {
-        status = "needs_review";
-        clientMatch = false;
-        error = "ServiceClient Mismatch";
-      }
-    } else {
-      serviceClient = formatClientName(parts[0]);
-      status = "valid";
-      clientMatch = true;
-    }
+  // Split primarily by underscore (recruiter format: Candidate_Company_Role)
+  // If no underscore, split by hyphen or double space
+  let parts: string[] = [];
+  if (stem.includes("_")) {
+    parts = stem.split("_").map((p) => p.trim()).filter(Boolean);
+  } else if (stem.includes(" - ")) {
+    parts = stem.split(" - ").map((p) => p.trim()).filter(Boolean);
+  } else if (stem.includes("-")) {
+    parts = stem.split("-").map((p) => p.trim()).filter(Boolean);
   } else {
-    // 2. Natural candidate filenames (e.g. Suresh_resume (2).pdf, John_Doe.pdf)
-    candidateName = cleanCandidateName(rawFirst || stem);
-    if (selectedClientName) {
-      serviceClient = selectedClientName;
-      status = "valid";
-      clientMatch = true;
-      error = null;
-    } else {
-      serviceClient = "ServiceClient";
-      status = "needs_review";
-      clientMatch = false;
-      error = "Cannot detect ServiceClient from filename";
-    }
+    parts = [stem];
   }
 
+  // Strip trailing noise tokens (Resume, CV, Final, Latest, Updated, v1, v2, Version, etc.)
+  while (parts.length > 1 && TRAILING_NOISE_REGEX.test(parts[parts.length - 1])) {
+    parts.pop();
+  }
+
+  // Service Client: NEVER inferred from filename. Always the selected client.
+  const serviceClient = (selectedClientName && selectedClientName.trim()) || "Service Client";
+
+  let candidateName = "Candidate";
+  let company = "";
+  let role = "";
+
+  if (parts.length >= 3) {
+    // Format: Candidate_Company_Role_With_Multiple_Words
+    // First token -> Candidate Name
+    candidateName = cleanCandidateName(parts[0]);
+    // Second token -> Hiring Organization
+    company = formatCompanyName(parts[1]);
+    // Remaining meaningful tokens -> Target Role
+    const roleTokens = parts.slice(2);
+    // Filter out any interior noise tokens from role
+    const filteredRoleTokens = roleTokens.filter((t) => !TRAILING_NOISE_REGEX.test(t));
+    const roleRaw = (filteredRoleTokens.length > 0 ? filteredRoleTokens : roleTokens).join(" ");
+    role = formatRoleTitle(roleRaw);
+  } else if (parts.length === 2) {
+    // Format: Candidate_Company or Candidate_Role
+    candidateName = cleanCandidateName(parts[0]);
+    company = formatCompanyName(parts[1]);
+  } else if (parts.length === 1) {
+    // Single token: Candidate Name
+    candidateName = cleanCandidateName(parts[0]);
+  }
+
+  const resumeIdentifier = parts.length > 1 ? parts[parts.length - 1] : stem;
   const hasDigits = resumeIdentifier ? /\d/.test(resumeIdentifier) : false;
   const resumeIdTag = hasDigits ? resumeIdentifier : null;
 
   return {
-    success: status === "valid",
+    success: true,
     service_client: serviceClient,
-    company: company || "General",
-    role: role || "General Role",
+    company: company || "Unknown Hiring Organization",
+    role: role || "Unknown Target Role",
     resume_identifier: resumeIdentifier || "RES01",
     resume_id_tag: resumeIdTag,
     candidate_name: candidateName || "Candidate",
-    status,
-    client_match: clientMatch,
-    confidence: status === "valid" ? "high" : "low",
-    error,
+    status: "valid",
+    client_match: true,
+    confidence: "high",
+    error: null,
+  };
+}
+
+export interface ResolvedMetadata {
+  candidate_name: string;
+  company: string;
+  role: string;
+  service_client: string;
+}
+
+export function isPlaceholderCompany(val?: string | null): boolean {
+  if (!val) return true;
+  const v = val.trim().toLowerCase();
+  return ["general", "unknown", "unknown hiring organization", "n/a", "none", "company"].includes(v);
+}
+
+export function isPlaceholderRole(val?: string | null): boolean {
+  if (!val) return true;
+  const v = val.trim().toLowerCase();
+  return ["general", "general role", "unknown", "unknown target role", "n/a", "none", "role"].includes(v);
+}
+
+export function isPlaceholderCandidate(val?: string | null): boolean {
+  if (!val) return true;
+  const v = val.trim().toLowerCase();
+  return ["candidate", "unknown", "resume", "cv", "name"].includes(v);
+}
+
+/**
+ * Resolves metadata using the strict priority hierarchy:
+ * 1. Service Client: Upload form selection (highest priority, never inferred from filename)
+ * 2. Candidate Name: AI extraction -> Filename fallback -> "Candidate"
+ * 3. Hiring Organization: AI extraction -> Filename fallback -> "Unknown Hiring Organization" (never "General")
+ * 4. Target Role: AI extraction -> Filename fallback -> "Unknown Target Role" (never "General Role")
+ */
+export function resolveResumeMetadata(
+  aiExtracted?: { candidate_name?: string | null; company?: string | null; role?: string | null } | null,
+  filenameParsed?: { candidate_name?: string | null; company?: string | null; role?: string | null } | null,
+  selectedClientName?: string | null
+): ResolvedMetadata {
+  // Candidate Name
+  let candidate_name = "Candidate";
+  if (aiExtracted?.candidate_name && !isPlaceholderCandidate(aiExtracted.candidate_name)) {
+    candidate_name = aiExtracted.candidate_name.trim();
+  } else if (filenameParsed?.candidate_name && !isPlaceholderCandidate(filenameParsed.candidate_name)) {
+    candidate_name = filenameParsed.candidate_name.trim();
+  }
+
+  // Hiring Organization
+  let company = "Unknown Hiring Organization";
+  if (aiExtracted?.company && !isPlaceholderCompany(aiExtracted.company)) {
+    company = aiExtracted.company.trim();
+  } else if (filenameParsed?.company && !isPlaceholderCompany(filenameParsed.company)) {
+    company = filenameParsed.company.trim();
+  }
+
+  // Target Role
+  let role = "Unknown Target Role";
+  if (aiExtracted?.role && !isPlaceholderRole(aiExtracted.role)) {
+    role = aiExtracted.role.trim();
+  } else if (filenameParsed?.role && !isPlaceholderRole(filenameParsed.role)) {
+    role = filenameParsed.role.trim();
+  }
+
+  // Service Client: Single source of truth is the selected client
+  const service_client = (selectedClientName && selectedClientName.trim()) || "Service Client";
+
+  return {
+    candidate_name,
+    company,
+    role,
+    service_client,
   };
 }

@@ -75,82 +75,82 @@ def format_client_name(client_raw: str | None) -> str:
     return spaced.strip()
 
 
+TRAILING_NOISE_PATTERN = re.compile(
+    r'^(resume|cv|biodata|final|latest|updated|v\d+|version\d*|version|[\(\[\{]\d+[\)\]\}]|\d+)$',
+    re.IGNORECASE
+)
+
+
+def format_company_name(company_raw: str | None) -> str:
+    if not company_raw or not company_raw.strip():
+        return ""
+    raw = company_raw.strip()
+    if len(raw) <= 4 and raw.isalpha():
+        return raw.upper()
+    spaced = re.sub(r'([a-z])([A-Z])', r'\1 \2', raw)
+    spaced = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', spaced)
+    spaced = re.sub(r'[-_]+', ' ', spaced).strip()
+    return " ".join(w.capitalize() for w in spaced.split())
+
+
 def parse_resume_filename(
     filename: str,
     selected_client_name: str | None = None,
     all_clients: list[str] | None = None,
 ) -> dict:
     """
-    Parse resume filename with strict ServiceClient validation.
+    Parse resume filename with recruiter-style parsing:
+    Candidate_Company_Role_With_Multiple_Words.pdf
+    Service Client is NEVER inferred from filename.
     """
     stem = Path(filename).stem.strip()
-    parts = [p.strip() for p in stem.split('_') if p.strip()]
+    
+    if "_" in stem:
+        parts = [p.strip() for p in stem.split('_') if p.strip()]
+    elif " - " in stem:
+        parts = [p.strip() for p in stem.split(' - ') if p.strip()]
+    elif "-" in stem:
+        parts = [p.strip() for p in stem.split('-') if p.strip()]
+    else:
+        parts = [stem]
 
-    raw_first = parts[0] if parts else ""
-    norm_first = _normalize_client_name(raw_first)
-    norm_selected = _normalize_client_name(selected_client_name) if selected_client_name else ""
+    # Strip trailing noise tokens (Resume, CV, Final, Latest, Updated, v1, v2, Version, etc.)
+    while len(parts) > 1 and TRAILING_NOISE_PATTERN.match(parts[-1]):
+        parts.pop()
 
-    has_noise = any(re.search(r'\b(resume|cv|biodata)\b|[\(\[\{]\d+[\)\]\}]', p, re.IGNORECASE) for p in parts)
-
-    service_client = selected_client_name or (format_client_name(raw_first) if raw_first else "ServiceClient")
+    service_client = (selected_client_name and selected_client_name.strip()) or "Service Client"
     company = ""
     role = ""
-    resume_identifier = parts[-1] if len(parts) > 1 else stem
     candidate_name = "Candidate"
-    status = "valid"
-    error = None
-    client_match = True
 
-    # 1. Standard structured format without noise (e.g. Teksystems_Google_Data Analyst.pdf, Infosys_Amazon_QA.pdf)
-    if len(parts) >= 2 and not has_noise:
-        company = parts[1].upper() if len(parts[1]) <= 4 else parts[1].title()
-        if len(parts) >= 3:
-            role = format_role_title("_".join(parts[2:] if len(parts) == 3 else parts[2:-1]))
-            candidate_name = _clean_candidate_name(parts[-1] if len(parts) >= 4 else parts[0])
-        else:
-            candidate_name = _clean_candidate_name(parts[0])
+    if len(parts) >= 3:
+        # First token -> Candidate Name
+        candidate_name = _clean_candidate_name(parts[0])
+        # Second token -> Hiring Organization
+        company = format_company_name(parts[1])
+        # Remaining meaningful tokens -> Target Role
+        role_tokens = [t for t in parts[2:] if not TRAILING_NOISE_PATTERN.match(t)]
+        if not role_tokens:
+            role_tokens = parts[2:]
+        role = format_role_title(" ".join(role_tokens))
+    elif len(parts) == 2:
+        candidate_name = _clean_candidate_name(parts[0])
+        company = format_company_name(parts[1])
+    elif len(parts) == 1:
+        candidate_name = _clean_candidate_name(parts[0])
 
-        if selected_client_name:
-            if norm_first == norm_selected:
-                service_client = selected_client_name
-                status = "valid"
-                client_match = True
-                error = None
-            else:
-                # First segment is a distinct mismatching client name
-                status = "needs_review"
-                client_match = False
-                error = "ServiceClient Mismatch"
-        else:
-            service_client = format_client_name(parts[0])
-            status = "valid"
-            client_match = True
-
-    # 2. Natural / Candidate filenames (e.g. Suresh_resume (2).pdf, Suresh_resume.pdf, John_Doe.pdf)
-    else:
-        candidate_name = _clean_candidate_name(raw_first or stem)
-        if selected_client_name:
-            # Auto-assign selected ServiceClient
-            service_client = selected_client_name
-            status = "valid"
-            client_match = True
-            error = None
-        else:
-            service_client = "ServiceClient"
-            status = "needs_review"
-            client_match = False
-            error = "Cannot detect ServiceClient from filename"
+    resume_identifier = parts[-1] if len(parts) > 1 else stem
 
     return {
-        "success": status == "valid",
+        "success": True,
         "service_client": service_client,
-        "company": company or "General",
-        "role": role or "General Role",
+        "company": company or "Unknown Hiring Organization",
+        "role": role or "Unknown Target Role",
         "resume_identifier": resume_identifier or "RES01",
         "resume_id_tag": resume_identifier if (resume_identifier and bool(re.search(r'\d', resume_identifier))) else None,
         "candidate_name": candidate_name or "Candidate",
-        "status": status,
-        "client_match": client_match,
-        "confidence": "high" if status == "valid" else "low",
-        "error": error,
+        "status": "valid",
+        "client_match": True,
+        "confidence": "high",
+        "error": None,
     }

@@ -11,8 +11,10 @@ import {
 import type { Bindings } from "../src/types";
 import {
   cleanCandidateName,
+  formatCompanyName,
   formatRoleTitle,
   parseResumeFilename,
+  resolveResumeMetadata,
 } from "../src/utils/resumeParser";
 
 const mockEnv: Bindings = {
@@ -27,7 +29,7 @@ const mockEnv: Bindings = {
   APP_CORS_ORIGINS: "http://localhost:5173",
 };
 
-describe("Resume Parser & Utility Tests", () => {
+describe("Resume Parser & Recruiter Filename Tests", () => {
   it("cleans candidate names correctly", () => {
     expect(cleanCandidateName("Suresh_resume (2).pdf")).toBe("Suresh");
     expect(cleanCandidateName("john_doe_cv.pdf")).toBe("John Doe");
@@ -35,37 +37,107 @@ describe("Resume Parser & Utility Tests", () => {
     expect(cleanCandidateName("")).toBe("Candidate");
   });
 
+  it("formats company names nicely preserving acronyms", () => {
+    expect(formatCompanyName("tcs")).toBe("TCS");
+    expect(formatCompanyName("SpatialFront")).toBe("SpatialFront");
+    expect(formatCompanyName("infosys")).toBe("Infosys");
+  });
+
   it("formats role titles nicely", () => {
     expect(formatRoleTitle("sde2")).toBe("SDE 2");
     expect(formatRoleTitle("sde_ii")).toBe("Sde Ii");
     expect(formatRoleTitle("data_analyst")).toBe("Data Analyst");
     expect(formatRoleTitle("QA")).toBe("QA");
+    expect(formatRoleTitle("ServiceNow Developer")).toBe("ServiceNow Developer");
   });
 
-  it("parses standard structured resume filenames with matching client", () => {
-    const result = parseResumeFilename("Teksystems_Google_Data Analyst.pdf", "Teksystems");
+  it("parses Rachana_SpatialFront_ServiceNow_Developer_Resume.pdf correctly", () => {
+    const result = parseResumeFilename("Rachana_SpatialFront_ServiceNow_Developer_Resume.pdf", "ABC Staffing");
     expect(result.success).toBe(true);
     expect(result.status).toBe("valid");
-    expect(result.service_client).toBe("Teksystems");
-    expect(result.company).toBe("Google");
+    expect(result.service_client).toBe("ABC Staffing");
+    expect(result.candidate_name).toBe("Rachana");
+    expect(result.company).toBe("SpatialFront");
+    expect(result.role).toBe("ServiceNow Developer");
+  });
+
+  it("parses John_TCS_Java_Developer.pdf correctly", () => {
+    const result = parseResumeFilename("John_TCS_Java_Developer.pdf", "Acme Staffing");
+    expect(result.success).toBe(true);
+    expect(result.service_client).toBe("Acme Staffing");
+    expect(result.candidate_name).toBe("John");
+    expect(result.company).toBe("TCS");
+    expect(result.role).toBe("Java Developer");
+  });
+
+  it("parses Priya_Infosys_Data_Analyst_Final.pdf correctly stripping trailing Final token", () => {
+    const result = parseResumeFilename("Priya_Infosys_Data_Analyst_Final.pdf", "Global Tech");
+    expect(result.success).toBe(true);
+    expect(result.service_client).toBe("Global Tech");
+    expect(result.candidate_name).toBe("Priya");
+    expect(result.company).toBe("Infosys");
     expect(result.role).toBe("Data Analyst");
-    expect(result.candidate_name).toBe("Teksystems");
   });
 
-  it("flags needs_review when filename client mismatches selected client", () => {
-    const result = parseResumeFilename("Teksystems_Google_Data Analyst.pdf", "Infosys");
-    expect(result.success).toBe(false);
-    expect(result.status).toBe("needs_review");
-    expect(result.client_match).toBe(false);
-    expect(result.error).toBe("ServiceClient Mismatch");
+  it("strips various trailing noise tokens (Resume, CV, Final, Latest, Updated, v1, v2, Version)", () => {
+    const tokens = ["Resume", "CV", "Final", "Latest", "Updated", "v1", "v2", "Version"];
+    for (const token of tokens) {
+      const res = parseResumeFilename(`Alex_Google_SDE_${token}.pdf`, "Apex Corp");
+      expect(res.candidate_name).toBe("Alex");
+      expect(res.company).toBe("Google");
+      expect(res.role).toBe("SDE");
+    }
   });
 
-  it("handles natural candidate filenames and inherits selected client", () => {
-    const result = parseResumeFilename("Suresh_Kumar_Resume.pdf", "Acme Corp");
-    expect(result.success).toBe(true);
-    expect(result.status).toBe("valid");
-    expect(result.service_client).toBe("Acme Corp");
-    expect(result.candidate_name).toBe("Suresh");
+  it("never infers service client from filename or candidate name", () => {
+    const result = parseResumeFilename("Rachana_SpatialFront_ServiceNow_Developer_Resume.pdf");
+    expect(result.service_client).toBe("Service Client");
+    expect(result.service_client).not.toBe("Rachana");
+  });
+
+  it("never uses 'General' or 'General Role' as fallback placeholders", () => {
+    const result = parseResumeFilename("Rachana.pdf");
+    expect(result.candidate_name).toBe("Rachana");
+    expect(result.company).toBe("Unknown Hiring Organization");
+    expect(result.role).toBe("Unknown Target Role");
+    expect(result.company).not.toContain("General");
+    expect(result.role).not.toContain("General");
+  });
+
+  it("resolves metadata applying AI priority over filename fallback", () => {
+    const aiExtracted = {
+      candidate_name: "Rachana M",
+      company: "SpatialFront Inc",
+      role: "Lead ServiceNow Architect",
+    };
+    const filenameParsed = {
+      candidate_name: "Rachana",
+      company: "SpatialFront",
+      role: "ServiceNow Developer",
+    };
+    const resolved = resolveResumeMetadata(aiExtracted, filenameParsed, "ABC Staffing");
+    expect(resolved.candidate_name).toBe("Rachana M");
+    expect(resolved.company).toBe("SpatialFront Inc");
+    expect(resolved.role).toBe("Lead ServiceNow Architect");
+    expect(resolved.service_client).toBe("ABC Staffing");
+  });
+
+  it("falls back to filename when AI extraction is missing or has placeholders", () => {
+    const aiExtracted = {
+      candidate_name: "",
+      company: "General",
+      role: "General Role",
+    };
+    const filenameParsed = {
+      candidate_name: "Rachana",
+      company: "SpatialFront",
+      role: "ServiceNow Developer",
+    };
+    const resolved = resolveResumeMetadata(aiExtracted, filenameParsed, "ABC Staffing");
+    expect(resolved.candidate_name).toBe("Rachana");
+    expect(resolved.company).toBe("SpatialFront");
+    expect(resolved.role).toBe("ServiceNow Developer");
+    expect(resolved.service_client).toBe("ABC Staffing");
   });
 });
 

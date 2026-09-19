@@ -270,107 +270,120 @@ export function UploadPage() {
   // Clean candidate name from filename noise
   const cleanCandidateName = (raw) => {
     if (!raw) return 'Candidate';
-    let cleaned = raw.replace(/\.pdf$/i, '');
+    let cleaned = raw.replace(/\.[^/.]+$/i, '');
     cleaned = cleaned.replace(/[\(\[\{]\d+[\)\]\}]/g, '');
     cleaned = cleaned.replace(/\b(resume|cv|biodata|profile|curriculum|vitae)\b/gi, '');
     cleaned = cleaned.replace(/[-_]+/g, ' ');
-    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2');
     cleaned = cleaned.replace(/\s+/g, ' ').trim();
-    return cleaned.replace(/\b\w/g, (c) => c.toUpperCase()) || 'Candidate';
+    if (!cleaned) return 'Candidate';
+    return cleaned
+      .split(' ')
+      .filter(Boolean)
+      .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
+      .join(' ');
   };
 
-  // Client-side Filename Parser (Strict ServiceClient Filename Verification Only):
-  // Format: ServiceClient_HiringCompany_Role.pdf
-  // 1. Parse filename using '_' as separator.
-  // 2. Extract first segment as ServiceClient.
-  // 3. Compare with selected ServiceClient in upload form.
-  // 4. Ignore Hiring Company and Role validation.
+  const formatCompanyName = (companyRaw) => {
+    if (!companyRaw || !companyRaw.trim()) return '';
+    const raw = companyRaw.trim();
+    if (raw.length <= 4 && /^[a-zA-Z]+$/.test(raw)) {
+      return raw.toUpperCase();
+    }
+    if (!raw.includes('_') && !raw.includes(' ') && !raw.includes('-')) {
+      if (raw === raw.toLowerCase()) {
+        return raw.charAt(0).toUpperCase() + raw.slice(1);
+      }
+      return raw;
+    }
+    const spaced = raw.replace(/[-_]+/g, ' ').trim();
+    return spaced
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => {
+        if (w.length <= 4 && /^[a-zA-Z]+$/.test(w) && w === w.toUpperCase()) return w;
+        if (w === w.toLowerCase()) return w.charAt(0).toUpperCase() + w.slice(1);
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      })
+      .join(' ');
+  };
+
+  const formatRoleTitle = (roleRaw) => {
+    if (!roleRaw || !roleRaw.trim()) return '';
+    const raw = roleRaw.trim();
+    if (/^SDE[IVX\d]*$/i.test(raw)) {
+      const match = raw.match(/^(SDE)([IVX\d]+)$/i);
+      return match ? `${match[1].toUpperCase()} ${match[2].toUpperCase()}` : raw.toUpperCase();
+    }
+    if (raw === raw.toUpperCase() && raw.length <= 5) return raw;
+    const words = raw.replace(/[-_]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+    return words
+      .map((w) => {
+        if (w === w.toUpperCase() && w.length <= 5) return w;
+        if (w === w.toLowerCase()) return w.charAt(0).toUpperCase() + w.slice(1);
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      })
+      .join(' ');
+  };
+
+  const TRAILING_NOISE_REGEX = /^(resume|cv|biodata|final|latest|updated|v\d+|version\d*|version|[\(\[\{]\d+[\)\]\}]|\d+)$/i;
+
+  // Client-side Recruiter Filename Parser:
+  // Format: Candidate_Company_Role_With_Multiple_Words.pdf
+  // 1. Strip trailing noise tokens (Resume, CV, Final, Latest, Updated, v1, v2, Version)
+  // 2. Token 1 -> Candidate Name
+  // 3. Token 2 -> Hiring Organization
+  // 4. Remaining tokens -> Target Role
+  // 5. Service Client -> ALWAYS selectedClientName (never inferred from filename)
   const parseFilename = (filename, selectedClientName = '') => {
     const stem = filename.replace(/\.[^/.]+$/, '').trim();
-    const parts = stem.split('_').map((p) => p.trim()).filter(Boolean);
 
-    const rawFirst = parts[0] || '';
-    const normFirst = rawFirst.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    const normSelected = selectedClientName ? selectedClientName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() : '';
+    let parts = [];
+    if (stem.includes('_')) {
+      parts = stem.split('_').map((p) => p.trim()).filter(Boolean);
+    } else if (stem.includes(' - ')) {
+      parts = stem.split(' - ').map((p) => p.trim()).filter(Boolean);
+    } else if (stem.includes('-')) {
+      parts = stem.split('-').map((p) => p.trim()).filter(Boolean);
+    } else {
+      parts = [stem];
+    }
 
-    let serviceClient = selectedClientName || (rawFirst ? rawFirst.replace(/([a-z])([A-Z])/g, '$1 $2').trim() : 'ServiceClient');
+    // Strip trailing noise tokens
+    while (parts.length > 1 && TRAILING_NOISE_REGEX.test(parts[parts.length - 1])) {
+      parts.pop();
+    }
+
+    // Service Client is always the selected client from the upload form
+    const serviceClient = selectedClientName || 'Service Client';
+    let candidateName = 'Candidate';
     let company = '';
     let role = '';
-    let resumeIdentifier = parts.length > 1 ? parts[parts.length - 1] : stem;
-    let resumeIdTag = '';
-    let candidateName = 'Candidate';
-    let status = 'valid';
-    let error = null;
-    let clientMatch = true;
 
-    const hasNoise = parts.some((p) => /\b(resume|cv|biodata)\b|[\(\[\{]\d+[\)\]\}]/i.test(p));
-
-    if (parts.length >= 3 && !hasNoise) {
-      company = parts[1].length <= 4 ? parts[1].toUpperCase() : parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
-      const roleRaw = parts.slice(2).join('_');
-      role = roleRaw.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').trim();
-      candidateName = cleanCandidateName(parts.length >= 4 ? parts[parts.length - 1] : parts[0]);
-
-      if (selectedClientName) {
-        if (normFirst === normSelected) {
-          serviceClient = selectedClientName;
-          status = 'valid';
-          clientMatch = true;
-          error = null;
-        } else {
-          status = 'needs_review';
-          clientMatch = false;
-          error = 'ServiceClient Mismatch';
-        }
-      } else {
-        serviceClient = rawFirst;
-        status = 'valid';
-        clientMatch = true;
-      }
-    } else if (parts.length === 2 && !hasNoise) {
-      company = parts[1].length <= 4 ? parts[1].toUpperCase() : parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
+    if (parts.length >= 3) {
       candidateName = cleanCandidateName(parts[0]);
-      if (selectedClientName) {
-        if (normFirst === normSelected) {
-          serviceClient = selectedClientName;
-          status = 'valid';
-          clientMatch = true;
-          error = null;
-        } else {
-          status = 'needs_review';
-          clientMatch = false;
-          error = 'ServiceClient Mismatch';
-        }
-      } else {
-        serviceClient = rawFirst;
-        status = 'valid';
-        clientMatch = true;
-      }
-    } else {
-      candidateName = cleanCandidateName(rawFirst || stem);
-      if (selectedClientName) {
-        serviceClient = selectedClientName;
-        status = 'valid';
-        clientMatch = true;
-        error = null;
-      } else {
-        serviceClient = 'ServiceClient';
-        status = 'needs_review';
-        clientMatch = false;
-        error = 'Cannot detect ServiceClient from filename';
-      }
+      company = formatCompanyName(parts[1]);
+      const roleTokens = parts.slice(2).filter((t) => !TRAILING_NOISE_REGEX.test(t));
+      role = formatRoleTitle((roleTokens.length > 0 ? roleTokens : parts.slice(2)).join(' '));
+    } else if (parts.length === 2) {
+      candidateName = cleanCandidateName(parts[0]);
+      company = formatCompanyName(parts[1]);
+    } else if (parts.length === 1) {
+      candidateName = cleanCandidateName(parts[0]);
     }
+
+    const resumeIdentifier = parts.length > 1 ? parts[parts.length - 1] : stem;
+    const hasDigits = resumeIdentifier ? /\d/.test(resumeIdentifier) : false;
 
     return {
       service_client: serviceClient,
-      company: company || 'General',
-      role: role || 'General Role',
+      company: company || 'Unknown Hiring Organization',
+      role: role || 'Unknown Target Role',
       resume_identifier: resumeIdentifier || 'RES01',
-      resume_id_tag: resumeIdTag,
+      resume_id_tag: hasDigits ? resumeIdentifier : '',
       candidate_name: candidateName || 'Candidate',
-      status,
-      error,
-      clientMatch,
+      status: 'valid',
+      error: null,
+      clientMatch: true,
     };
   };
 
@@ -513,26 +526,7 @@ export function UploadPage() {
     setQueue((prev) =>
       prev.map((it) => {
         if (it.id === id) {
-          const updated = { ...it, [field]: value };
-          const selectedClientObj = assignedClients.find((c) => c.id === selectedClientId);
-          const selName = selectedClientObj?.company_name || '';
-
-          const normParsed = (updated.service_client || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          const normSelected = selName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          const match = !selName || normParsed === normSelected;
-
-          if (updated.status !== 'duplicate') {
-            if (match) {
-              updated.status = 'valid';
-              updated.error = null;
-              updated.clientMatch = true;
-            } else {
-              updated.status = 'needs_review';
-              updated.error = 'ServiceClient Mismatch';
-              updated.clientMatch = false;
-            }
-          }
-          return updated;
+          return { ...it, [field]: value };
         }
         return it;
       })
@@ -591,6 +585,14 @@ export function UploadPage() {
         formData.append('files', item.file);
       }
     });
+
+    const metadataPayload = filesToUpload.map((item) => ({
+      filename: item.filename,
+      candidate_name: item.candidate_name,
+      company: item.company,
+      role: item.role,
+    }));
+    formData.append('metadata', JSON.stringify(metadataPayload));
 
     let progressInterval;
     try {

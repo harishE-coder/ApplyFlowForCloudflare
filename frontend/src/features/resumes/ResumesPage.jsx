@@ -95,9 +95,17 @@ const CandidateRow = React.memo(function CandidateRow({
           </div>
 
           <p className="text-caption text-[#64748B] mt-0.5 truncate flex items-center gap-1.5">
-            <span className="font-semibold text-[#334155]">{candidate.company || 'General'}</span>
+            <span className="font-semibold text-[#334155]">
+              {(!candidate.company || candidate.company.trim().toLowerCase() === 'general')
+                ? 'Unknown Hiring Organization'
+                : candidate.company}
+            </span>
             <span>•</span>
-            <span className="truncate">{candidate.role}</span>
+            <span className="truncate">
+              {(!candidate.role || candidate.role.trim().toLowerCase() === 'general' || candidate.role.trim().toLowerCase() === 'general role')
+                ? 'Unknown Target Role'
+                : candidate.role}
+            </span>
           </p>
         </div>
       </div>
@@ -111,7 +119,7 @@ const CandidateRow = React.memo(function CandidateRow({
         )}
 
         <span className="hidden md:inline-block text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] max-w-[110px] truncate">
-          {candidate.client_name || 'Client'}
+          {candidate.client_name || 'Service Client'}
         </span>
 
         <div className="flex items-center gap-1">
@@ -229,8 +237,10 @@ export function ResumesPage() {
   const openEditModal = useCallback((resume) => {
     setEditResumeTarget(resume);
     setEditName(resume.candidate_name);
-    setEditCompany(resume.company || '');
-    setEditRole(resume.role || '');
+    const initialCompany = (!resume.company || resume.company.trim().toLowerCase() === 'general') ? '' : resume.company;
+    const initialRole = (!resume.role || resume.role.trim().toLowerCase() === 'general' || resume.role.trim().toLowerCase() === 'general role') ? '' : resume.role;
+    setEditCompany(initialCompany);
+    setEditRole(initialRole);
     setEditClientId(resume.client_id || '');
     setIsEditOpen(true);
   }, []);
@@ -632,7 +642,9 @@ export function ResumesPage() {
                       <span>Hiring Organization</span>
                     </div>
                     <p className="text-small font-bold text-[#081226] mt-1 truncate">
-                      {selectedResume.company || 'Direct Hiring'}
+                      {(!selectedResume.company || selectedResume.company.trim().toLowerCase() === 'general')
+                        ? 'Unknown Hiring Organization'
+                        : selectedResume.company}
                     </p>
                   </div>
 
@@ -642,7 +654,9 @@ export function ResumesPage() {
                       <span>Role / Code</span>
                     </div>
                     <p className="text-small font-bold text-[#081226] mt-1 truncate">
-                      {selectedResume.role || 'Software Engineer'}
+                      {(!selectedResume.role || selectedResume.role.trim().toLowerCase() === 'general' || selectedResume.role.trim().toLowerCase() === 'general role')
+                        ? 'Unknown Target Role'
+                        : selectedResume.role}
                     </p>
                   </div>
 

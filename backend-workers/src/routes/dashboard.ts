@@ -225,13 +225,13 @@ dashboardRouter.get("/admin/home", async (c) => {
     const yesterdayUploads = uploadStats.yesterday;
     const uploadsTrend = uploadStats.trend;
 
-    const totalApplications = appStats.total;
-    const todayApplications = appStats.today;
-    const yesterdayApplications = appStats.yesterday;
-    const applicationsTrend = appStats.trend;
+    const totalApplications = Math.max(appStats.total, uploadStats.total);
+    const todayApplications = Math.max(appStats.today, uploadStats.today);
+    const yesterdayApplications = Math.max(appStats.yesterday, uploadStats.yesterday);
+    const applicationsTrend = calculateTrend(todayApplications, yesterdayApplications);
 
     const targetSum = targetsRes[0]?.c || 0;
-    const selectedApplications = appStats.count;
+    const selectedApplications = Math.max(appStats.count, uploadStats.count);
     const selectedUploads = uploadStats.count;
     const targetCompletionPct =
       targetSum > 0 ? Number(((selectedApplications / targetSum) * 100).toFixed(1)) : (selectedApplications > 0 ? 100.0 : 0.0);
@@ -378,10 +378,14 @@ dashboardRouter.get("/admin/home", async (c) => {
       const uploadsTrend = calculateTrend(todayUploads, yesterdayUploads);
       const backfilledToday = backfilledMap[eid] || 0;
 
-      const totalApplications = totalAppsMap[eid] || 0;
-      const todayApplications = todayAppsMap[eid] || 0;
-      const yesterdayApplications = yesterdayAppsMap[eid] || 0;
-      const selectedApplications = selectedAppsMap[eid] !== undefined ? selectedAppsMap[eid] : todayApplications;
+      // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+      const totalApplications = Math.max(totalAppsMap[eid] || 0, totalUploads);
+      const todayApplications = Math.max(todayAppsMap[eid] || 0, todayUploads);
+      const yesterdayApplications = Math.max(yesterdayAppsMap[eid] || 0, yesterdayUploads);
+      const selectedApplications = Math.max(
+        selectedAppsMap[eid] !== undefined ? selectedAppsMap[eid] : todayApplications,
+        selectedUploads
+      );
       const applicationsTrend = calculateTrend(todayApplications, yesterdayApplications);
 
       const dt = targetMap[eid] || 0;
@@ -723,10 +727,11 @@ dashboardRouter.get("/client/home", async (c) => {
     const yesterdayUploads = uploadStats.yesterday;
     const uploadsTrend = uploadStats.trend;
 
-    const totalApplications = appStats.total;
-    const todayApplications = appStats.today;
-    const yesterdayApplications = appStats.yesterday;
-    const applicationsTrend = appStats.trend;
+    // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+    const totalApplications = Math.max(appStats.total, totalResumes);
+    const todayApplications = Math.max(appStats.today, todayUploads);
+    const yesterdayApplications = Math.max(appStats.yesterday, yesterdayUploads);
+    const applicationsTrend = calculateTrend(todayApplications, yesterdayApplications);
 
     const dashboard = {
       company_name: companyName,
@@ -839,10 +844,11 @@ const employeeDashboardHandler = async (c: any) => {
     const yesterdayUploads = uploadStats.yesterday;
     const uploadsTrend = uploadStats.trend;
 
-    const totalApplications = appStats.total;
-    const todayApplications = appStats.today;
-    const yesterdayApplications = appStats.yesterday;
-    const applicationsTrend = appStats.trend;
+    // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+    const totalApplications = Math.max(appStats.total, totalUploads);
+    const todayApplications = Math.max(appStats.today, todayUploads);
+    const yesterdayApplications = Math.max(appStats.yesterday, yesterdayUploads);
+    const applicationsTrend = calculateTrend(todayApplications, yesterdayApplications);
 
     const todayTarget = targetRes[0]?.c || 0;
     const targetProgressPct = todayTarget > 0 ? Number(((todayApplications / todayTarget) * 100).toFixed(1)) : (todayApplications > 0 ? 100.0 : 0.0);

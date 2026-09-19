@@ -251,11 +251,22 @@ export async function getApplicationStats(
     ${whereClause}
   `;
 
-  const res = await (sql as any)(queryStr, params);
-  const total = Number(res[0]?.total) || 0;
-  const today = Number(res[0]?.today) || 0;
-  const yesterday = Number(res[0]?.yesterday) || 0;
-  const rangeCount = res[0]?.range_count !== undefined ? Number(res[0]?.range_count) : today;
+  // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+  // Concurrently query resume uploads so applications count takes the max of applications and uploaded resumes
+  const [appRes, resStats] = await Promise.all([
+    (sql as any)(queryStr, params),
+    getResumeStats(sql, scope, range, customDate),
+  ]);
+
+  const rawAppTotal = Number(appRes[0]?.total) || 0;
+  const rawAppToday = Number(appRes[0]?.today) || 0;
+  const rawAppYesterday = Number(appRes[0]?.yesterday) || 0;
+  const rawAppRangeCount = appRes[0]?.range_count !== undefined ? Number(appRes[0]?.range_count) : rawAppToday;
+
+  const total = Math.max(rawAppTotal, resStats.total);
+  const today = Math.max(rawAppToday, resStats.today);
+  const yesterday = Math.max(rawAppYesterday, resStats.yesterday);
+  const rangeCount = Math.max(rawAppRangeCount, resStats.count);
   const trend = calculateTrend(today, yesterday);
 
   return {
@@ -350,6 +361,25 @@ export async function getTeamPerformanceMaps(
     todayAppsMap[eid] = Number(r.today) || 0;
     yesterdayAppsMap[eid] = Number(r.yesterday) || 0;
     selectedAppsMap[eid] = Number(r.range_count) || 0;
+  }
+
+  // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+  // If an employee uploaded resumes, those count as their applied submissions
+  for (const eid of empIds) {
+    const resToday = todayUploadsMap[eid] || 0;
+    const resYesterday = yesterdayUploadsMap[eid] || 0;
+    const resTotal = totalUploadsMap[eid] || 0;
+    const resSelected = selectedUploadsMap[eid] || 0;
+
+    const appsToday = todayAppsMap[eid] || 0;
+    const appsYesterday = yesterdayAppsMap[eid] || 0;
+    const appsTotalCount = totalAppsMap[eid] || 0;
+    const appsSelected = selectedAppsMap[eid] || 0;
+
+    todayAppsMap[eid] = Math.max(resToday, appsToday);
+    yesterdayAppsMap[eid] = Math.max(resYesterday, appsYesterday);
+    totalAppsMap[eid] = Math.max(resTotal, appsTotalCount);
+    selectedAppsMap[eid] = Math.max(resSelected, appsSelected);
   }
 
   return {

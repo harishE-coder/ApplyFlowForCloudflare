@@ -101,6 +101,29 @@ describe("Dashboard Module Parity Tests", () => {
       expect(maps.todayAppsMap).toEqual({});
     });
 
+    it("enforces Employee Uploaded Resumes = Applied in getTeamPerformanceMaps", async () => {
+      const mockSql = async (query: any) => {
+        const queryStr = String(query);
+        if (queryStr.includes("FROM resumes")) {
+          return [
+            { employee_id: "rajesh-1", total: 10, today: 1, yesterday: 2, range_count: 1 },
+          ];
+        }
+        if (queryStr.includes("FROM applications")) {
+          return [
+            { employee_id: "rajesh-1", total: 0, today: 0, yesterday: 0, range_count: 0 },
+          ];
+        }
+        return [];
+      };
+
+      const maps = await getTeamPerformanceMaps(mockSql, ["rajesh-1"]);
+      expect(maps.todayUploadsMap["rajesh-1"]).toBe(1);
+      expect(maps.todayAppsMap["rajesh-1"]).toBe(1);
+      expect(maps.totalAppsMap["rajesh-1"]).toBe(10);
+      expect(maps.selectedAppsMap["rajesh-1"]).toBe(1);
+    });
+
     it("builds correct IST timezone conditions in buildDateFilter", () => {
       const col = "COALESCE(created_at, upload_date)";
       const todayCond = buildDateFilter(col, "today");

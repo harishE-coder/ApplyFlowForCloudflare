@@ -259,6 +259,16 @@ export function AdminDashboard() {
       submittedCount = Number(overview?.today_applications ?? 0);
     }
 
+    // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+    const uploadCount = Number(
+      (quickDateFilter === 'yesterday'
+        ? overview?.yesterday_uploads
+        : quickDateFilter === 'this_week' || quickDateFilter === 'this_month'
+        ? (overview?.selected_uploads ?? overview?.today_uploads)
+        : overview?.today_uploads) ?? 0
+    );
+    submittedCount = Math.max(submittedCount, uploadCount);
+
     const recruiters = selectedClientId
       ? (availableEmployees.length || 0)
       : (availableEmployees.length || allEmployees.length || 0);
@@ -289,6 +299,10 @@ export function AdminDashboard() {
   const recruiterRows = useMemo(() => {
     let list = teamPerformance.map((emp) => {
       const target = emp.daily_target ?? 0;
+      const todayUploads = Number(emp.today_uploads ?? 0);
+      const yesterdayUploads = Number(emp.yesterday_uploads ?? 0);
+      const selectedUploads = Number(emp.selected_uploads ?? todayUploads);
+
       let submitted = 0;
       if (emp.selected_applications !== undefined && emp.selected_applications !== null) {
         submitted = Number(emp.selected_applications);
@@ -299,10 +313,18 @@ export function AdminDashboard() {
       } else {
         submitted = Number(emp.today_applications ?? 0);
       }
+
+      // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+      const relevantUploads = quickDateFilter === 'yesterday'
+        ? yesterdayUploads
+        : quickDateFilter === 'this_week' || quickDateFilter === 'this_month'
+        ? selectedUploads
+        : todayUploads;
+      submitted = Math.max(submitted, relevantUploads);
+
       const remaining = Math.max(0, target - submitted);
       const completion = target > 0 ? Math.min(Math.round((submitted / target) * 100), 100) : 0;
       const backfilledToday = Number(emp.backfilled_today ?? 0);
-      const todayUploads = Number(emp.today_uploads ?? 0);
 
       return {
         ...emp,

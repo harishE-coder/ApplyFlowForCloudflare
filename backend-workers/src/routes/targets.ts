@@ -245,24 +245,32 @@ targetsRouter.get("/progress", async (c) => {
     targetEmpId = requestedEmpId;
   }
 
-  // Neon SQL-aggregated progress
+  // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+  // Neon SQL-aggregated progress counting uploaded resumes and applications today (IST)
   const rows = await sql`
     SELECT
       t.id,
       t.client_id,
       c.company_name as client_name,
       t.daily_target,
-      COALESCE(COUNT(a.id), 0)::int as achieved_count,
+      GREATEST(
+        COALESCE(COUNT(DISTINCT r.id), 0),
+        COALESCE(COUNT(DISTINCT a.id), 0)
+      )::int as achieved_count,
       CASE
-        WHEN t.daily_target > 0 THEN ROUND((COALESCE(COUNT(a.id), 0)::numeric / t.daily_target) * 100, 1)::float
+        WHEN t.daily_target > 0 THEN ROUND((GREATEST(COALESCE(COUNT(DISTINCT r.id), 0), COALESCE(COUNT(DISTINCT a.id), 0))::numeric / t.daily_target) * 100, 1)::float
         ELSE 0.0
       END as completion_percentage
     FROM targets t
     JOIN clients c ON c.id = t.client_id
+    LEFT JOIN resumes r
+      ON r.uploaded_by = t.employee_id
+      AND r.client_id = t.client_id
+      AND (COALESCE(r.work_date, r.resume_date, (r.created_at AT TIME ZONE 'Asia/Kolkata')::date) = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
     LEFT JOIN applications a
       ON a.employee_id = t.employee_id
       AND a.client_id = t.client_id
-      AND a.created_at >= CURRENT_DATE
+      AND (COALESCE(a.applied_date, (a.created_at AT TIME ZONE 'Asia/Kolkata')::date) = (NOW() AT TIME ZONE 'Asia/Kolkata')::date)
     WHERE t.employee_id = ${targetEmpId} AND t.status = 'active'
     GROUP BY t.id, t.client_id, c.company_name, t.daily_target
   `;

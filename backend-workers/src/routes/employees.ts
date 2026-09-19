@@ -261,7 +261,11 @@ employeesRouter.get("/employees", requireRoles("super_admin", "admin", "sub_admi
 
   const performanceList = empRows.map((e) => {
     const eid = String(e.id);
-    const todayApps = appsTodayMap[eid] || 0;
+    const todayUploads = resTodayMap[eid] || 0;
+    const totalUploads = resTotalMap[eid] || 0;
+    // Project Rule: Employee Uploaded Resumes = Applied / Submitted
+    const todayApps = Math.max(appsTodayMap[eid] || 0, todayUploads);
+    const totalApps = Math.max(appsTotalMap[eid] || 0, totalUploads);
     const isUserActive = Boolean(e.is_active) && (e.status === "active" || !e.status);
     const tData = targetsMap[eid] || { active_sum: 0, total_sum: 0 };
     const dailyTarget = isUserActive ? tData.active_sum : 0;
@@ -277,9 +281,9 @@ employeesRouter.get("/employees", requireRoles("super_admin", "admin", "sub_admi
       status: e.status || (e.is_active ? "active" : "inactive"),
       is_active: Boolean(e.is_active),
       assigned_clients: clientsMap[eid] || [],
-      total_uploads: resTotalMap[eid] || 0,
-      today_uploads: resTodayMap[eid] || 0,
-      total_applications: appsTotalMap[eid] || 0,
+      total_uploads: totalUploads,
+      today_uploads: todayUploads,
+      total_applications: totalApps,
       today_applications: todayApps,
       daily_target: dailyTarget,
       configured_target: configuredTarget,

@@ -14,7 +14,14 @@ import {
   uploadResume,
 } from "../services/googleAppsScript";
 import type { Bindings, UserPayload, Variables } from "../types";
-import { parseResumeFilename, resolveResumeMetadata } from "../utils/resumeParser";
+import {
+  isPlaceholderCandidate,
+  isPlaceholderCompany,
+  isPlaceholderRole,
+  parseResumeFilename,
+  resolveResumeMetadata,
+} from "../utils/resumeParser";
+import { parseResumeFilename as parseFilenameFast } from "../utils/resumeFilenameParser";
 import { extractTextFromFile } from "./ai";
 import { callAiGateway } from "../services/aiGateway";
 
@@ -438,19 +445,56 @@ resumesRouter.get("/", async (c) => {
 
     const rawCompany = (r.company || "").trim();
     const rawRole = (r.role || "").trim();
-    const cleanCompany =
-      !rawCompany || rawCompany.toLowerCase() === "general"
-        ? "Unknown Hiring Organization"
-        : rawCompany;
-    const cleanRole =
-      !rawRole || rawRole.toLowerCase() === "general" || rawRole.toLowerCase() === "general role"
-        ? "Unknown Target Role"
-        : rawRole;
+    const rawCandidate = (r.candidate_name || "").trim();
+
+    let cleanCompany = rawCompany;
+    let cleanRole = rawRole;
+    let cleanCandidate = rawCandidate;
+
+    const isBadCompany =
+      !cleanCompany ||
+      cleanCompany.toLowerCase() === "general" ||
+      cleanCompany.toLowerCase() === "unknown" ||
+      cleanCompany.toLowerCase() === "unknown hiring organization";
+
+    const isBadRole =
+      !cleanRole ||
+      cleanRole.toLowerCase() === "general" ||
+      cleanRole.toLowerCase() === "general role" ||
+      cleanRole.toLowerCase() === "unknown" ||
+      cleanRole.toLowerCase() === "unknown target role";
+
+    const isBadCandidate = !cleanCandidate || cleanCandidate.toLowerCase() === "candidate";
+
+    // If company, role, or candidate is missing or placeholder in DB, extract from original_filename
+    const filenameToParse = r.original_filename || r.file_name;
+    if ((isBadCompany || isBadRole || isBadCandidate) && filenameToParse) {
+      const parsedFn = parseFilenameFast(filenameToParse);
+      if (isBadCompany && parsedFn.hiringOrganization !== "Unknown Hiring Organization") {
+        cleanCompany = parsedFn.hiringOrganization;
+      }
+      if (isBadRole && parsedFn.targetRole !== "Unknown Target Role") {
+        cleanRole = parsedFn.targetRole;
+      }
+      if (isBadCandidate && parsedFn.candidateName !== "Candidate") {
+        cleanCandidate = parsedFn.candidateName;
+      }
+    }
+
+    if (!cleanCompany || cleanCompany.toLowerCase() === "general") {
+      cleanCompany = "Unknown Hiring Organization";
+    }
+    if (!cleanRole || cleanRole.toLowerCase() === "general" || cleanRole.toLowerCase() === "general role") {
+      cleanRole = "Unknown Target Role";
+    }
+    if (!cleanCandidate) {
+      cleanCandidate = "Candidate";
+    }
 
     return {
       id: r.id,
       display_id: r.resume_id_tag || (r.display_seq ? `RES${1000 + r.display_seq}` : `RES1000`),
-      candidate_name: r.candidate_name || "Candidate",
+      candidate_name: cleanCandidate,
       company: cleanCompany,
       role: cleanRole,
       resume_id_tag: r.resume_id_tag,
@@ -616,12 +660,19 @@ resumesRouter.post("/upload", async (c) => {
 
   for (const file of files) {
     const filename = file.name;
+    const filenameParsed = parseFilenameFast(filename);
     const parsed = parseResumeFilename(filename, clientName);
 
-    // AI Extraction First:
-    // 1. Attempt document text extraction
-    // 2. Call AI gateway (Groq -> OpenAI -> Gemini) for entity extraction
-    // 3. Resolve metadata with strict priority: AI -> Filename -> Fallbacks
+    // Metadata Priority Hierarchy:
+    // 1. Explicit form values (manual overrides)
+    // 2. AI/OCR extraction (if confidence is high and valid)
+    // 3. Filename parser (resumeFilenameParser.ts)
+    // 4. Fallback to Unknown only when all fail
+    let candidateName = filenameParsed.candidateName;
+    let company = filenameParsed.hiringOrganization;
+    let role = filenameParsed.targetRole;
+
+    // AI Extraction: Attempt text extraction & AI gateway
     let aiExtracted: any = null;
     try {
       const extractedText = await extractTextFromFile(file);
@@ -641,10 +692,33 @@ resumesRouter.post("/upload", async (c) => {
       console.warn("[Resume AI Extraction Warning]", (aiErr as Error)?.message);
     }
 
-    const resolved = resolveResumeMetadata(aiExtracted, parsed, clientName);
-    const candidateName = metadataOverrides[filename]?.candidate_name || resolved.candidate_name;
-    const company = metadataOverrides[filename]?.company || resolved.company;
-    const role = metadataOverrides[filename]?.role || resolved.role;
+    // Priority 2: AI extraction (if not empty / placeholder)
+    if (aiExtracted?.candidate_name && !isPlaceholderCandidate(aiExtracted.candidate_name)) {
+      candidateName = aiExtracted.candidate_name.trim();
+    }
+    if (aiExtracted?.company && !isPlaceholderCompany(aiExtracted.company)) {
+      company = aiExtracted.company.trim();
+    }
+    if (aiExtracted?.role && !isPlaceholderRole(aiExtracted.role)) {
+      role = aiExtracted.role.trim();
+    }
+
+    // Priority 1: Explicit form / manual override if entered and not placeholder
+    const manualMeta = metadataOverrides[filename];
+    if (manualMeta?.candidate_name && !isPlaceholderCandidate(manualMeta.candidate_name)) {
+      candidateName = manualMeta.candidate_name.trim();
+    }
+    if (manualMeta?.company && !isPlaceholderCompany(manualMeta.company)) {
+      company = manualMeta.company.trim();
+    }
+    if (manualMeta?.role && !isPlaceholderRole(manualMeta.role)) {
+      role = manualMeta.role.trim();
+    }
+
+    // Final safety fallbacks
+    if (!candidateName) candidateName = "Candidate";
+    if (!company) company = "Unknown Hiring Organization";
+    if (!role) role = "Unknown Target Role";
 
     if (parsed.status === "needs_review") {
       needsReviewCount++;
@@ -838,19 +912,55 @@ resumesRouter.get("/:id", async (c) => {
 
   const rawCompany = (r.company || "").trim();
   const rawRole = (r.role || "").trim();
-  const cleanCompany =
-    !rawCompany || rawCompany.toLowerCase() === "general"
-      ? "Unknown Hiring Organization"
-      : rawCompany;
-  const cleanRole =
-    !rawRole || rawRole.toLowerCase() === "general" || rawRole.toLowerCase() === "general role"
-      ? "Unknown Target Role"
-      : rawRole;
+  const rawCandidate = (r.candidate_name || "").trim();
+
+  let cleanCompany = rawCompany;
+  let cleanRole = rawRole;
+  let cleanCandidate = rawCandidate;
+
+  const isBadCompany =
+    !cleanCompany ||
+    cleanCompany.toLowerCase() === "general" ||
+    cleanCompany.toLowerCase() === "unknown" ||
+    cleanCompany.toLowerCase() === "unknown hiring organization";
+
+  const isBadRole =
+    !cleanRole ||
+    cleanRole.toLowerCase() === "general" ||
+    cleanRole.toLowerCase() === "general role" ||
+    cleanRole.toLowerCase() === "unknown" ||
+    cleanRole.toLowerCase() === "unknown target role";
+
+  const isBadCandidate = !cleanCandidate || cleanCandidate.toLowerCase() === "candidate";
+
+  const filenameToParse = r.original_filename || r.file_name;
+  if ((isBadCompany || isBadRole || isBadCandidate) && filenameToParse) {
+    const parsedFn = parseFilenameFast(filenameToParse);
+    if (isBadCompany && parsedFn.hiringOrganization !== "Unknown Hiring Organization") {
+      cleanCompany = parsedFn.hiringOrganization;
+    }
+    if (isBadRole && parsedFn.targetRole !== "Unknown Target Role") {
+      cleanRole = parsedFn.targetRole;
+    }
+    if (isBadCandidate && parsedFn.candidateName !== "Candidate") {
+      cleanCandidate = parsedFn.candidateName;
+    }
+  }
+
+  if (!cleanCompany || cleanCompany.toLowerCase() === "general") {
+    cleanCompany = "Unknown Hiring Organization";
+  }
+  if (!cleanRole || cleanRole.toLowerCase() === "general" || cleanRole.toLowerCase() === "general role") {
+    cleanRole = "Unknown Target Role";
+  }
+  if (!cleanCandidate) {
+    cleanCandidate = "Candidate";
+  }
 
   return c.json({
     id: r.id,
     display_id: r.resume_id_tag || (r.display_seq ? `RES${1000 + r.display_seq}` : "RES1000"),
-    candidate_name: r.candidate_name || "Candidate",
+    candidate_name: cleanCandidate,
     company: cleanCompany,
     role: cleanRole,
     resume_id_tag: r.resume_id_tag,

@@ -14,16 +14,16 @@ export function Table({
   pagination, // { page, pageSize, total, onPageChange }
 }) {
   return (
-    <div className={cn('w-full flex flex-col bg-white rounded-2xl border border-[#E2E8F0] shadow-card overflow-hidden', className)}>
-      <div className="w-full overflow-x-auto">
+    <div className={cn('w-full flex flex-col bg-white rounded-[20px] border border-[#E2E8F0] shadow-card overflow-hidden', className)}>
+      <div className="w-full overflow-x-auto max-h-[70vh]">
         <table className="w-full text-left border-collapse text-small">
-          <thead>
-            <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+          <thead className="sticky top-0 z-10 bg-[#F8FAFC]/95 backdrop-blur-md border-b border-[#E2E8F0] shadow-[0_1px_2px_rgba(8,18,38,0.03)]">
+            <tr>
               {columns.map((col, idx) => (
                 <th
                   key={col.key || idx}
                   className={cn(
-                    'px-4 py-3.5 text-caption font-semibold text-[#64748B] uppercase tracking-wider select-none whitespace-nowrap',
+                    'px-5 py-3.5 text-caption font-semibold text-[#64748B] uppercase tracking-wider select-none whitespace-nowrap',
                     col.align === 'right' && 'text-right',
                     col.align === 'center' && 'text-center',
                     col.headerClassName
@@ -44,15 +44,15 @@ export function Table({
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i} className="animate-pulse">
                   {columns.map((_, j) => (
-                    <td key={j} className="px-4 py-4">
-                      <div className="h-4 bg-[#F1F5F9] rounded-md w-3/4" />
+                    <td key={j} className="px-5 py-4">
+                      <div className="h-4 skeleton-shimmer rounded-[6px] w-3/4" />
                     </td>
                   ))}
                 </tr>
               ))
             ) : data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-12 text-center text-[#64748B]">
+                <td colSpan={columns.length} className="px-5 py-14 text-center text-[#64748B]">
                   <p className="text-small font-medium">{emptyMessage}</p>
                 </td>
               </tr>
@@ -64,16 +64,17 @@ export function Table({
                     key={row[idKey] || rowIdx}
                     onClick={() => onRowClick?.(row)}
                     className={cn(
-                      'transition-colors duration-100 group',
-                      onRowClick ? 'cursor-pointer hover:bg-[#F8FAFC]' : '',
-                      isSelected ? 'bg-[#EFF6FF]/70 hover:bg-[#EFF6FF]' : 'hover:bg-[#F8FAFC]/80'
+                      'transition-colors duration-150 group',
+                      rowIdx % 2 === 1 ? 'bg-[#FAFBFD]/60' : 'bg-white',
+                      onRowClick ? 'cursor-pointer hover:bg-[#F1F5F9]/80' : 'hover:bg-[#F8FAFC]/70',
+                      isSelected ? 'bg-[#EFF6FF] hover:bg-[#DBEAFE]/80' : ''
                     )}
                   >
                     {columns.map((col, colIdx) => (
                       <td
                         key={col.key || colIdx}
                         className={cn(
-                          'px-4 py-3.5 text-[#081226] align-middle whitespace-nowrap',
+                          'px-5 py-3.5 text-[#081226] align-middle whitespace-nowrap',
                           col.align === 'right' && 'text-right',
                           col.align === 'center' && 'text-center',
                           col.className
@@ -103,16 +104,18 @@ export function Table({
               type="button"
               disabled={pagination.page <= 1}
               onClick={() => pagination.onPageChange(pagination.page - 1)}
-              className="p-1.5 rounded-lg border border-[#E2E8F0] bg-white text-[#081226] hover:bg-[#F1F5F9] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 rounded-[10px] border border-[#E2E8F0] bg-white text-[#081226] hover:bg-[#F1F5F9] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              aria-label="Previous page"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="px-2 font-medium text-[#081226]">Page {pagination.page}</span>
+            <span className="px-2 font-semibold text-[#081226]">Page {pagination.page}</span>
             <button
               type="button"
               disabled={pagination.page * pagination.pageSize >= pagination.total}
               onClick={() => pagination.onPageChange(pagination.page + 1)}
-              className="p-1.5 rounded-lg border border-[#E2E8F0] bg-white text-[#081226] hover:bg-[#F1F5F9] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="p-1.5 rounded-[10px] border border-[#E2E8F0] bg-white text-[#081226] hover:bg-[#F1F5F9] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+              aria-label="Next page"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

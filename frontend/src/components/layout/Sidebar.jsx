@@ -182,7 +182,7 @@ export function Sidebar({
                         if (onCloseMobile) onCloseMobile();
                       }}
                       className={cn(
-                        'relative flex items-center justify-between px-3.5 py-2.5 min-h-[44px] rounded-xl text-small font-medium transition-all duration-150 group',
+                        'relative flex items-center justify-between px-3.5 py-2.5 min-h-[44px] rounded-[12px] text-small font-medium transition-colors duration-180 group',
                         isActive
                           ? 'text-white'
                           : 'text-[#94A3B8] hover:text-white hover:bg-[#101F3D]/60'
@@ -191,15 +191,15 @@ export function Sidebar({
                       {isActive && (
                         <motion.div
                           layoutId="active-sidebar-pill"
-                          className="absolute inset-0 bg-[#2563EB] rounded-xl shadow-md"
-                          transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                          className="absolute inset-0 bg-[#2563EB] rounded-[12px] shadow-[0_2px_14px_rgba(37,99,235,0.4)]"
+                          transition={{ type: 'spring', stiffness: 450, damping: 35 }}
                         />
                       )}
 
                       <div className="relative z-10 flex items-center gap-3">
                         <Icon
                           className={cn(
-                            'w-[18px] h-[18px] transition-colors',
+                            'w-[18px] h-[18px] transition-all duration-180 group-hover:scale-110',
                             isActive ? 'text-white' : 'text-[#94A3B8] group-hover:text-white'
                           )}
                         />
@@ -305,7 +305,7 @@ export function Sidebar({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={onCloseMobile}
-              className="lg:hidden fixed inset-0 bg-black/70 backdrop-blur-xs z-50 transition-opacity"
+              className="lg:hidden fixed inset-0 bg-black/70 backdrop-blur-md z-50 transition-opacity"
             />
 
             {/* Slide-out Drawer */}
@@ -313,7 +313,7 @@ export function Sidebar({
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="lg:hidden fixed top-0 left-0 bottom-0 w-[290px] max-w-[85vw] bg-[#081226] z-50 shadow-2xl flex flex-col border-r border-[#1E2E4E] overflow-hidden"
             >
               {sidebarInnerContent}

@@ -198,7 +198,7 @@ export function ApplicationsPage() {
   return (
     <div className="space-y-6">
       {/* Top Header & Fast View Switcher */}
-      <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -216,12 +216,12 @@ export function ApplicationsPage() {
 
           <div className="flex items-center gap-3">
             {/* View Mode Toggle (Table / Kanban) */}
-            <div className="bg-[#F1F5F9] p-1 rounded-xl flex items-center gap-1 border border-[#E2E8F0]">
+            <div className="bg-[#F1F5F9] p-1 rounded-[12px] flex items-center gap-1 border border-[#E2E8F0]">
               <button
                 type="button"
                 onClick={() => setViewMode('kanban')}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-small font-semibold transition-colors cursor-pointer',
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-small font-semibold transition-colors cursor-pointer',
                   viewMode === 'kanban'
                     ? 'bg-white text-[#081226] shadow-xs'
                     : 'text-[#64748B] hover:text-[#081226]'
@@ -235,7 +235,7 @@ export function ApplicationsPage() {
                 type="button"
                 onClick={() => setViewMode('table')}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-small font-semibold transition-colors cursor-pointer',
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-small font-semibold transition-colors cursor-pointer',
                   viewMode === 'table'
                     ? 'bg-white text-[#081226] shadow-xs'
                     : 'text-[#64748B] hover:text-[#081226]'
@@ -274,7 +274,7 @@ export function ApplicationsPage() {
                 setSelectedClient(e.target.value);
                 setPage(1);
               }}
-              className="w-full h-[44px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
+              className="w-full h-[44px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
             >
               <option value="">All Service Clients</option>
               {clients.map((c) => (
@@ -292,7 +292,7 @@ export function ApplicationsPage() {
                 setSelectedStatus(e.target.value);
                 setPage(1);
               }}
-              className="w-full h-[44px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
+              className="w-full h-[44px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
             >
               <option value="">All Pipeline Stages</option>
               {PIPELINE_STAGES.map((st) => (
@@ -311,7 +311,7 @@ export function ApplicationsPage() {
           {kanbanColumns.map((col) => (
             <div
               key={col.id}
-              className="bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] p-3 flex flex-col min-w-[240px]"
+              className="bg-[#F8FAFC] rounded-[16px] border border-[#E2E8F0] p-3 flex flex-col min-w-[240px]"
             >
               {/* Column Header */}
               <div className="flex items-center justify-between px-2 py-2 mb-2 border-b border-[#E2E8F0]/70">
@@ -339,8 +339,9 @@ export function ApplicationsPage() {
                     <motion.div
                       key={app.id}
                       onClick={() => setSelectedApp(app)}
-                      whileHover={{ y: -2 }}
-                      className="bg-white p-3.5 rounded-xl border border-[#E2E8F0] shadow-card hover:shadow-card-hover hover:border-[#CBD5E1] transition-all duration-120 cursor-pointer space-y-2.5"
+                      whileHover={{ y: -2, scale: 1.01 }}
+                      transition={{ duration: 0.15 }}
+                      className="bg-white p-3.5 rounded-[14px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated hover:border-[#CBD5E1] transition-all duration-120 cursor-pointer space-y-2.5"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <Avatar name={app.candidate_name} size="xs" variant="blue" />

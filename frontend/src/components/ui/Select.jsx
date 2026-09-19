@@ -45,13 +45,13 @@ export const Select = forwardRef(({
           disabled={disabled}
           required={required}
           className={cn(
-            'w-full h-[48px] px-4 rounded-xl text-small bg-white text-[#081226] appearance-none pr-10',
+            'w-full h-[48px] px-4 rounded-[14px] text-small bg-white text-[#081226] appearance-none pr-10',
             'border border-[#E2E8F0] shadow-xs transition-all duration-150 cursor-pointer',
             'hover:border-[#CBD5E1]',
-            'focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10',
+            'focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 focus:shadow-sm',
             'disabled:bg-[#F8FAFC] disabled:text-[#94A3B8] disabled:cursor-not-allowed',
             Icon && 'pl-11',
-            error && 'border-[#EF4444] focus:border-[#EF4444] focus:ring-[#EF4444]/10',
+            error && 'border-[#EF4444] focus:border-[#EF4444] focus:ring-[#EF4444]/15 animate-input-shake',
             className
           )}
           {...props}

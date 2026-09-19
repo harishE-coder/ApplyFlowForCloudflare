@@ -110,7 +110,7 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-lg border font-medium select-none shrink-0 transition-colors',
+        'inline-flex items-center rounded-full border font-medium select-none shrink-0 transition-colors',
         config.bg,
         config.text,
         config.border,

@@ -33,12 +33,12 @@ export function Dropdown({
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            initial={{ opacity: 0, scale: 0.96, y: -4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -4 }}
-            transition={{ duration: 0.12 }}
+            exit={{ opacity: 0, scale: 0.96, y: -4 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
             className={cn(
-              'absolute z-50 mt-2 min-w-[180px] bg-white rounded-xl border border-[#E2E8F0] shadow-dropdown py-1.5 focus:outline-none overflow-hidden',
+              'absolute z-50 mt-2 min-w-[180px] bg-white rounded-[14px] border border-[#E2E8F0] shadow-dropdown py-1.5 focus:outline-none overflow-hidden',
               align === 'right' ? 'right-0 origin-top-right' : 'left-0 origin-top-left',
               className
             )}

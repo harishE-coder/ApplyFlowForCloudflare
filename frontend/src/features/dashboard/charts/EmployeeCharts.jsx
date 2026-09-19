@@ -6,11 +6,12 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  CartesianGrid,
 } from 'recharts';
 
 export const EmployeeCharts = React.memo(function EmployeeCharts({ weeklyTrend = [] }) {
   return (
-    <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 space-y-6">
+    <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-h3 font-bold text-[#081226]">
@@ -36,6 +37,7 @@ export const EmployeeCharts = React.memo(function EmployeeCharts({ weeklyTrend =
       <div className="h-60 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={weeklyTrend}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
             <XAxis dataKey="date" stroke="#94A3B8" fontSize={12} />
             <YAxis stroke="#94A3B8" fontSize={12} />
             <Tooltip
@@ -43,7 +45,9 @@ export const EmployeeCharts = React.memo(function EmployeeCharts({ weeklyTrend =
                 backgroundColor: '#081226',
                 borderRadius: '12px',
                 border: '1px solid #1E2E4E',
+                boxShadow: '0 8px 24px rgba(8,18,38,0.25)',
                 color: '#FFF',
+                padding: '8px 12px',
               }}
             />
             <Bar dataKey="uploads" name="Uploads" fill="#0D6EFD" radius={[6, 6, 0, 0]} />

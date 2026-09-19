@@ -375,8 +375,8 @@ export function TargetsPage() {
       </div>
 
       {/* Info Card */}
-      <div className="bg-[#EFF6FF] border border-[#BFDBFE] rounded-2xl p-4 flex items-start gap-3.5">
-        <div className="w-8 h-8 rounded-xl bg-[#2563EB]/10 flex items-center justify-center text-[#2563EB] shrink-0">
+      <div className="bg-[#EFF6FF] border border-[#BFDBFE] rounded-[20px] p-4 flex items-start gap-3.5">
+        <div className="w-8 h-8 rounded-[10px] bg-[#2563EB]/10 flex items-center justify-center text-[#2563EB] shrink-0">
           <Sparkles className="w-4 h-4" />
         </div>
         <div className="text-small text-[#1E40AF]">
@@ -388,14 +388,14 @@ export function TargetsPage() {
       </div>
 
       {/* Filter Row */}
-      <div className="bg-white p-4 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-[20px] border border-[#E2E8F0] shadow-surface flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="w-full sm:w-80">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search employee or client target..."
-            className="w-full h-[40px] px-3.5 rounded-xl text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full h-[40px] px-3.5 rounded-[14px] text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
           />
         </div>
 
@@ -403,7 +403,7 @@ export function TargetsPage() {
           <select
             value={selectedClientFilter}
             onChange={(e) => setSelectedClientFilter(e.target.value)}
-            className="w-full sm:w-56 h-[40px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full sm:w-56 h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
           >
             <option value="">All Service Clients</option>
             {clients.map((c) => (
@@ -416,7 +416,7 @@ export function TargetsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full sm:w-40 h-[40px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full sm:w-40 h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
@@ -445,7 +445,7 @@ export function TargetsPage() {
               value={formEmployeeId}
               onChange={(e) => setFormEmployeeId(e.target.value)}
               disabled={Boolean(editingTarget)}
-              className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none disabled:opacity-60"
+              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none disabled:opacity-60"
               required
             >
               {employees.map((emp) => (
@@ -464,7 +464,7 @@ export function TargetsPage() {
               value={formClientId}
               onChange={(e) => setFormClientId(e.target.value)}
               disabled={Boolean(editingTarget)}
-              className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none disabled:opacity-60"
+              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none disabled:opacity-60"
               required
             >
               {clients.map((c) => (

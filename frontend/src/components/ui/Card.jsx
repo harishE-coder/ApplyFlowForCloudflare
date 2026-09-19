@@ -13,18 +13,20 @@ export function Card({
   onClick,
   ...props
 }) {
+  const isInteractive = hoverable || Boolean(onClick);
+
   return (
     <div
       onClick={onClick}
       className={cn(
-        'bg-white rounded-2xl border border-[#E2E8F0] shadow-card transition-all duration-150',
-        hoverable && 'hover:shadow-card-hover hover:border-[#CBD5E1] cursor-pointer',
+        'bg-white rounded-[20px] border border-[#E2E8F0] shadow-card transition-all duration-200',
+        isInteractive && 'hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-elevated hover:border-[#CBD5E1] cursor-pointer',
         className
       )}
       {...props}
     >
       {(title || header || action) && (
-        <div className="px-6 pt-6 pb-4 flex items-center justify-between gap-4 border-b border-[#F1F5F9]">
+        <div className="px-5 pt-5 pb-3.5 flex items-center justify-between gap-4 border-b border-[#F1F5F9]">
           {header || (
             <div>
               {title && <h3 className="text-h3 font-semibold text-[#081226] tracking-tight">{title}</h3>}
@@ -35,10 +37,10 @@ export function Card({
         </div>
       )}
 
-      <div className={cn('p-6', (title || header) && 'pt-5')}>{children}</div>
+      <div className={cn('p-5', (title || header) && 'pt-4')}>{children}</div>
 
       {footer && (
-        <div className="px-6 py-4 bg-[#F8FAFC]/70 border-t border-[#F1F5F9] rounded-b-2xl flex items-center justify-between">
+        <div className="px-5 py-3.5 bg-[#F8FAFC]/70 border-t border-[#F1F5F9] rounded-b-[20px] flex items-center justify-between">
           {footer}
         </div>
       )}

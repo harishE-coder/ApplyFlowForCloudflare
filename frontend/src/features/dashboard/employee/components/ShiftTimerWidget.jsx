@@ -39,10 +39,10 @@ const ShiftTimerWidget = memo(function ShiftTimerWidget({
   }, []);
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 space-y-4">
+    <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 space-y-4">
       <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-[#EFF6FF] text-[#0D6EFD] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-[10px] bg-[#EFF6FF] text-[#0D6EFD] flex items-center justify-center">
             <Clock className="w-4 h-4" />
           </div>
           <h4 className="text-small font-bold uppercase tracking-wider text-[#64748B]">
@@ -70,7 +70,7 @@ const ShiftTimerWidget = memo(function ShiftTimerWidget({
 
       {/* Live Timer Display */}
       {attendance?.is_active ? (
-        <div className="p-4 rounded-xl bg-[#081226] text-white text-center space-y-1">
+        <div className="p-4 rounded-[14px] bg-[#081226] text-white text-center space-y-1">
           <p className="text-caption font-bold uppercase tracking-widest text-[#94A3B8]">
             Active Shift Duration
           </p>
@@ -82,7 +82,7 @@ const ShiftTimerWidget = memo(function ShiftTimerWidget({
           </p>
         </div>
       ) : (
-        <div className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-center text-[#64748B] text-small">
+        <div className="p-4 rounded-[14px] bg-[#F8FAFC] border border-[#E2E8F0] text-center text-[#64748B] text-small">
           {attendance?.check_out ? (
             <p>
               Completed shift today. Logged{' '}

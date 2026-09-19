@@ -28,10 +28,10 @@ export function SearchBar({
         autoFocus={autoFocus}
         placeholder={placeholder}
         className={cn(
-          'w-full h-[44px] pl-10 pr-16 rounded-xl text-small bg-white text-[#081226] placeholder-[#94A3B8]',
+          'w-full h-[44px] pl-10 pr-16 rounded-[14px] text-small bg-white text-[#081226] placeholder-[#94A3B8]',
           'border border-[#E2E8F0] shadow-xs transition-all duration-150',
           'hover:border-[#CBD5E1]',
-          'focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10',
+          'focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 focus:shadow-sm',
           className
         )}
       />

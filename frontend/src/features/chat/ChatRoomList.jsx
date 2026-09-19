@@ -208,10 +208,10 @@ export function ChatRoomList({
               <div
                 key={room.id}
                 onClick={() => onSelectRoom(room.id)}
-                className={`p-3 rounded-2xl cursor-pointer transition-all duration-150 relative group ${
+                className={`p-3 rounded-[16px] cursor-pointer transition-all duration-150 relative group ${
                   isActive
-                    ? 'bg-[#2563EB] text-white shadow-md'
-                    : 'hover:bg-[#101F3D]/80 text-[#CBD5E1]'
+                    ? 'bg-[#2563EB] text-white shadow-[0_4px_20px_rgba(37,99,235,0.35)] ring-1 ring-white/20'
+                    : 'hover:bg-[#101F3D] text-[#CBD5E1]'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -219,7 +219,7 @@ export function ChatRoomList({
                     {/* Room Avatar */}
                     <div className="relative shrink-0">
                       <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-[13px] ${
+                        className={`w-10 h-10 rounded-[12px] flex items-center justify-center font-bold text-[13px] transition-transform duration-150 group-hover:scale-105 ${
                           isActive
                             ? 'bg-white/20 text-white'
                             : 'bg-[#101F3D] text-[#93C5FD] border border-[#1E2E4E]'
@@ -255,7 +255,7 @@ export function ChatRoomList({
                   </div>
 
                   {/* Timestamp & Unread Badge */}
-                  <div className="flex flex-col items-end shrink-0 gap-1">
+                  <div className="flex flex-col items-end shrink-0 gap-1.5">
                     {room.last_message_at && (
                       <span
                         className={`text-[10px] font-medium ${
@@ -267,8 +267,9 @@ export function ChatRoomList({
                     )}
 
                     {hasUnread && (
-                      <span className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-[#F97316] text-white text-[10px] font-extrabold flex items-center justify-center shadow-xs animate-bounce" style={{ animationDuration: '2s' }}>
-                        {room.unread_count}
+                      <span className="relative flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#F97316] text-white text-[10px] font-extrabold shadow-sm">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F97316] opacity-60" />
+                        <span className="relative z-10">{room.unread_count}</span>
                       </span>
                     )}
                   </div>
@@ -278,10 +279,10 @@ export function ChatRoomList({
                 {isTypingInThisRoom ? (
                   <div className="mt-2 pl-13 pr-1">
                     <p className={`text-caption italic font-medium flex items-center gap-1.5 ${isActive ? 'text-white' : 'text-[#60A5FA]'}`}>
-                      <span className="flex gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="flex gap-1 items-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-typing-dot-1" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-typing-dot-2" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-typing-dot-3" />
                       </span>
                       <span>typing...</span>
                     </p>
@@ -289,12 +290,12 @@ export function ChatRoomList({
                 ) : room.last_message ? (
                   <div className="mt-2 pl-13 pr-1">
                     <p
-                      className={`text-caption truncate ${
+                      className={`text-caption truncate transition-opacity ${
                         isActive
                           ? 'text-white/90 font-medium'
                           : hasUnread
                           ? 'text-[#F8FAFC] font-semibold'
-                          : 'text-[#94A3B8]'
+                          : 'text-[#94A3B8] opacity-80 group-hover:opacity-100'
                       }`}
                     >
                       {room.last_message_sender ? `${room.last_message_sender}: ` : ''}

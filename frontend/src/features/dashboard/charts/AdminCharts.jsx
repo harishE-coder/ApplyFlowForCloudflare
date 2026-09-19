@@ -33,7 +33,7 @@ export const AdminCharts = React.memo(function AdminCharts({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       {/* Chart 1: Daily Target vs Applications (Bar Chart) (Col span 6) */}
-      <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="lg:col-span-6 bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-h3 font-bold text-[#081226]">
@@ -65,18 +65,20 @@ export const AdminCharts = React.memo(function AdminCharts({
                   backgroundColor: '#081226',
                   borderRadius: '12px',
                   border: '1px solid #1E2E4E',
+                  boxShadow: '0 8px 24px rgba(8,18,38,0.25)',
                   color: '#FFF',
+                  padding: '8px 12px',
                 }}
               />
-              <Bar dataKey="target" name="Daily Recruiter Target" fill="#CBD5E1" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="submitted" name="Applications Submitted" fill="#0D6EFD" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="target" name="Daily Recruiter Target" fill="#CBD5E1" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="submitted" name="Applications Submitted" fill="#0D6EFD" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* Chart 2: Target Completion Trend (7-Day Line Chart) (Col span 6) */}
-      <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="lg:col-span-6 bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-h3 font-bold text-[#081226]">
@@ -104,7 +106,9 @@ export const AdminCharts = React.memo(function AdminCharts({
                   backgroundColor: '#081226',
                   borderRadius: '12px',
                   border: '1px solid #1E2E4E',
+                  boxShadow: '0 8px 24px rgba(8,18,38,0.25)',
                   color: '#FFF',
+                  padding: '8px 12px',
                 }}
               />
               <Line
@@ -122,7 +126,7 @@ export const AdminCharts = React.memo(function AdminCharts({
 
       {/* Chart 3: Client Performance Comparison (Col span 6) */}
       {!selectedClientId ? (
-        <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4 flex flex-col justify-between h-full">
+        <div className="lg:col-span-6 bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow space-y-4 flex flex-col justify-between h-full">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-h3 font-bold text-[#081226]">
@@ -150,7 +154,9 @@ export const AdminCharts = React.memo(function AdminCharts({
                       backgroundColor: '#081226',
                       borderRadius: '12px',
                       border: '1px solid #1E2E4E',
+                      boxShadow: '0 8px 24px rgba(8,18,38,0.25)',
                       color: '#FFF',
+                      padding: '8px 12px',
                     }}
                   />
                   <Bar dataKey="completion" fill="#16A34A" radius={[0, 6, 6, 0]} />
@@ -161,7 +167,7 @@ export const AdminCharts = React.memo(function AdminCharts({
         </div>
       ) : (
         /* Client Detail Highlight when specific client is selected */
-        <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4 flex flex-col justify-between h-full">
+        <div className="lg:col-span-6 bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow space-y-4 flex flex-col justify-between h-full">
           <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
             <div className="flex items-center gap-3">
               <Avatar name={currentClient?.company_name || 'Client'} size="md" variant="blue" />
@@ -176,11 +182,11 @@ export const AdminCharts = React.memo(function AdminCharts({
           </div>
 
           <div className="grid grid-cols-2 gap-3 py-2">
-            <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-center">
+            <div className="p-3.5 rounded-[14px] bg-[#F8FAFC] border border-[#E2E8F0] text-center">
               <p className="text-caption font-bold uppercase text-[#64748B]">Recruiter Target Quota</p>
               <p className="text-h2 font-extrabold text-[#081226] mt-0.5">{totalDailyTarget}</p>
             </div>
-            <div className="p-3.5 rounded-xl bg-[#EFF6FF]/60 border border-[#BFDBFE] text-center">
+            <div className="p-3.5 rounded-[14px] bg-[#EFF6FF]/60 border border-[#BFDBFE] text-center">
               <p className="text-caption font-bold uppercase text-[#0D6EFD]">Submitted</p>
               <p className="text-h2 font-extrabold text-[#0D6EFD] mt-0.5">{applicationsSubmitted}</p>
             </div>
@@ -196,7 +202,7 @@ export const AdminCharts = React.memo(function AdminCharts({
       )}
 
       {/* Chart 4: Application Status Distribution (Donut / Pie) (Col span 6) */}
-      <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4 flex flex-col justify-between h-full">
+      <div className="lg:col-span-6 bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow space-y-4 flex flex-col justify-between h-full">
         <div>
           <h3 className="text-h3 font-bold text-[#081226]">
             4. Application Pipeline Distribution
@@ -230,7 +236,9 @@ export const AdminCharts = React.memo(function AdminCharts({
                     backgroundColor: '#081226',
                     borderRadius: '12px',
                     border: '1px solid #1E2E4E',
+                    boxShadow: '0 8px 24px rgba(8,18,38,0.25)',
                     color: '#FFF',
+                    padding: '8px 12px',
                   }}
                 />
               </PieChart>
@@ -251,7 +259,7 @@ export const AdminCharts = React.memo(function AdminCharts({
       </div>
 
       {/* Chart 5: Daily Application Events (Col span 12) */}
-      <div className="lg:col-span-12 bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="lg:col-span-12 bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#F1F5F9]">
           <div>
             <div className="flex items-center gap-2">
@@ -307,7 +315,9 @@ export const AdminCharts = React.memo(function AdminCharts({
                   backgroundColor: '#081226',
                   borderRadius: '12px',
                   border: '1px solid #1E2E4E',
+                  boxShadow: '0 8px 24px rgba(8,18,38,0.25)',
                   color: '#FFF',
+                  padding: '8px 12px',
                 }}
               />
               <Bar dataKey="new" name="New Applications" fill="#2563EB" radius={[6, 6, 0, 0]} />

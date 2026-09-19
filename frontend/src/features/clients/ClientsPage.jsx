@@ -46,10 +46,10 @@ const ClientCard = React.memo(function ClientCard({
 
   return (
     <motion.div
-      whileHover={{ y: -3 }}
-      transition={{ duration: 0.12 }}
+      whileHover={{ y: -2, scale: 1.01 }}
+      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        'bg-white rounded-3xl border shadow-card hover:shadow-card-hover transition-all duration-150 p-6 flex flex-col justify-between space-y-6 relative',
+        'bg-white rounded-[20px] border shadow-surface hover:shadow-elevated transition-all duration-150 p-5 flex flex-col justify-between space-y-5 relative',
         client.status === 'inactive' ? 'border-[#CBD5E1] bg-[#F8FAFC]/70' :
         client.status === 'archived' ? 'border-[#E2E8F0] bg-[#FDF4FF]/30' :
         'border-[#E2E8F0]'
@@ -96,7 +96,7 @@ const ClientCard = React.memo(function ClientCard({
         </div>
 
         {/* Contact strip */}
-        <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#F1F5F9] space-y-1 text-caption text-[#64748B]">
+        <div className="p-3 rounded-[14px] bg-[#F8FAFC] border border-[#F1F5F9] space-y-1 text-caption text-[#64748B]">
           {client.email && (
             <div className="flex items-center gap-2 truncate">
               <Mail className="w-3.5 h-3.5 text-[#94A3B8]" />
@@ -114,12 +114,12 @@ const ClientCard = React.memo(function ClientCard({
 
       {/* Metrics & Deliveries */}
       <div className="grid grid-cols-2 gap-3 py-2 border-y border-[#F1F5F9]">
-        <div className="p-3 rounded-xl bg-[#EFF6FF]/50 border border-[#BFDBFE]/40 text-center">
+        <div className="p-3 rounded-[14px] bg-[#EFF6FF]/50 border border-[#BFDBFE]/40 text-center">
           <p className="text-caption font-bold uppercase text-[#2563EB]">Total Resumes</p>
           <p className="text-h2 font-extrabold text-[#081226] mt-0.5">{totalResumes}</p>
         </div>
 
-        <div className="p-3 rounded-xl bg-[#FFF7ED]/60 border border-[#FFEDD5] text-center">
+        <div className="p-3 rounded-[14px] bg-[#FFF7ED]/60 border border-[#FFEDD5] text-center">
           <p className="text-caption font-bold uppercase text-[#F97316]">Applications Submitted</p>
           <p className="text-h2 font-extrabold text-[#081226] mt-0.5">{totalApps}</p>
         </div>
@@ -135,7 +135,7 @@ const ClientCard = React.memo(function ClientCard({
         </div>
 
         {assignedEmps.length === 0 ? (
-          <div className="p-3 rounded-xl bg-[#F8FAFC] border border-dashed border-[#CBD5E1] text-center text-caption text-[#94A3B8]">
+          <div className="p-3 rounded-[14px] bg-[#F8FAFC] border border-dashed border-[#CBD5E1] text-center text-caption text-[#94A3B8]">
             No recruiters assigned yet.
           </div>
         ) : (
@@ -144,7 +144,7 @@ const ClientCard = React.memo(function ClientCard({
               <div
                 key={emp.id || emp.employee_id}
                 className={cn(
-                  'px-2.5 py-1 rounded-lg text-caption font-semibold flex items-center gap-1.5 border',
+                  'px-2.5 py-1 rounded-full text-caption font-semibold flex items-center gap-1.5 border',
                   emp.is_primary
                     ? 'bg-[#EFF6FF] text-[#0D6EFD] border-[#BFDBFE]'
                     : 'bg-[#F8FAFC] text-[#475569] border-[#E2E8F0]'
@@ -496,7 +496,7 @@ export function ClientsPage() {
             key={tab.key}
             onClick={() => setStatusFilter(tab.key)}
             className={cn(
-              'px-4 py-2 text-small font-bold rounded-xl transition-all',
+              'px-4 py-2 text-small font-bold rounded-[12px] transition-all',
               statusFilter === tab.key
                 ? 'bg-[#081226] text-white shadow-sm'
                 : 'text-[#64748B] hover:text-[#081226] hover:bg-[#F1F5F9]'
@@ -508,8 +508,8 @@ export function ClientsPage() {
       </div>
 
       {clients.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-12 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#E0F2FE] border border-[#BAE6FD] flex items-center justify-center mx-auto mb-4">
+        <div className="rounded-[20px] border border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-10 text-center">
+          <div className="w-16 h-16 rounded-[16px] bg-[#E0F2FE] border border-[#BAE6FD] flex items-center justify-center mx-auto mb-4">
             <Building2 className="w-7 h-7 text-[#0284C7]" />
           </div>
           <h3 className="text-h3 font-extrabold text-[#081226]">No Service Client account yet</h3>

@@ -61,35 +61,37 @@ const CandidateRow = React.memo(function CandidateRow({
     <div
       onClick={() => onSelect(candidate)}
       className={cn(
-        'px-5 py-3.5 flex items-center justify-between gap-4 cursor-pointer transition-all duration-100 group relative',
-        isSelected ? 'bg-[#EFF6FF] border-l-4 border-[#2563EB]' : 'hover:bg-[#F8FAFC]'
+        'px-5 py-3.5 flex items-center justify-between gap-4 cursor-pointer transition-all duration-150 group relative',
+        isSelected ? 'bg-[#EFF6FF] border-l-4 border-[#2563EB] shadow-xs' : 'hover:bg-[#F8FAFC]'
       )}
     >
       <div className="flex items-center gap-3 min-w-0">
-        <Avatar name={candidate.candidate_name} size="sm" variant={isSelected ? 'blue' : 'navy'} />
+        <div className="shrink-0 transition-transform duration-180 group-hover:scale-105">
+          <Avatar name={candidate.candidate_name} size="sm" variant={isSelected ? 'blue' : 'navy'} />
+        </div>
 
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span
               className={cn(
-                'text-small font-bold truncate',
+                'text-small font-bold truncate transition-colors',
                 isSelected ? 'text-[#2563EB]' : 'text-[#081226]'
               )}
             >
               {candidate.candidate_name}
             </span>
 
-            <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-white text-[#475569] border border-[#E2E8F0] shrink-0">
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white text-[#475569] border border-[#E2E8F0] shrink-0">
               {candidate.resume_id_tag || `RES${candidate.display_seq || 1000}`}
             </span>
 
             {showAudit && Boolean(candidate.is_backfilled && candidate.delay_days > 0) && (
               <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shrink-0 cursor-help"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shrink-0 cursor-help shadow-2xs"
                 title={`Uploaded on ${formatDate(candidate.created_at)} for work completed on ${formatDate(candidate.work_date || candidate.resume_date)} (${candidate.delay_days} day delay)`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                🟡 Backfilled ({candidate.delay_days}d)
+                Backfilled ({candidate.delay_days}d)
               </span>
             )}
           </div>
@@ -118,7 +120,7 @@ const CandidateRow = React.memo(function CandidateRow({
           </div>
         )}
 
-        <span className="hidden md:inline-block text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] max-w-[110px] truncate">
+        <span className="hidden md:inline-block text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0] max-w-[120px] truncate">
           {candidate.client_name || 'Service Client'}
         </span>
 
@@ -347,7 +349,7 @@ export function ResumesPage() {
   return (
     <div className="space-y-6">
       {/* Top Header Card */}
-      <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-card space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -410,7 +412,7 @@ export function ResumesPage() {
                     setSelectedClient(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full h-[44px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
+                  className="w-full h-[44px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 transition-all"
                 >
                   <option value="">All Service Clients</option>
                   {clients.map((c) => (
@@ -429,7 +431,7 @@ export function ResumesPage() {
                   setSelectedCompany(e.target.value);
                   setPage(1);
                 }}
-                className="w-full h-[44px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB]"
+                className="w-full h-[44px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 transition-all"
               >
                 <option value="">All Hiring Organizations</option>
                 {companies.map((comp) => (
@@ -481,7 +483,7 @@ export function ResumesPage() {
       {/* 60% Left / 40% Right Split Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* LEFT 60%: Dense Candidate Rows */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-[#E2E8F0] shadow-card overflow-hidden flex flex-col">
+        <div className="lg:col-span-7 bg-white rounded-[20px] border border-[#E2E8F0] shadow-card overflow-hidden flex flex-col">
           <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between text-caption font-semibold text-[#64748B] uppercase tracking-wider select-none">
             <div className="flex items-center gap-3">
               <span>Candidate & Hiring Organization</span>
@@ -582,7 +584,7 @@ export function ResumesPage() {
         </div>
 
         {/* RIGHT 40%: Real-Time Candidate Detail Slide-Over (Auto Synced, No Manual Pipeline Submission Button) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-[#E2E8F0] shadow-card overflow-hidden sticky top-6">
+        <div className="lg:col-span-5 bg-white rounded-[20px] border border-[#E2E8F0] shadow-card overflow-hidden sticky top-6">
           {selectedResume ? (
             <div className="flex flex-col h-full max-h-[calc(100vh-140px)]">
               {/* Header */}

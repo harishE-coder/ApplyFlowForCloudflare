@@ -417,16 +417,17 @@ export function RequirementsPage() {
         </div>
       </div>
 
-      {/* Main Table Content */}
-      <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card overflow-hidden">
+      {/* Main Content: Desktop Table + Mobile Cards */}
+      <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-card overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-[#64748B]">
-            <div className="w-8 h-8 border-3 border-[#0D6EFD] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-small font-semibold">Loading job openings...</p>
+          <div className="p-6 space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-16 skeleton-shimmer rounded-[14px] w-full" />
+            ))}
           </div>
         ) : requirements.length === 0 ? (
           <div className="p-16 text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-[#0D6EFD] flex items-center justify-center mx-auto">
+            <div className="w-14 h-14 rounded-[20px] bg-blue-50 text-[#0D6EFD] flex items-center justify-center mx-auto shadow-sm">
               <Briefcase className="w-7 h-7" />
             </div>
             <h3 className="text-h4 font-bold text-[#081226]">
@@ -438,192 +439,320 @@ export function RequirementsPage() {
             </h3>
             <p className="text-small text-[#64748B] max-w-md mx-auto">
               {activeTab === 'active'
-                ? canCreate
+                ? (canCreate
                   ? 'Create your first Job Opening to assign recruitment tasks to team members.'
-                  : 'All assigned recruitment tasks are currently completed.'
-                : 'Openings marked as Fulfilled will appear in this history list.'}
+                  : 'No active job openings currently assigned.')
+                : 'Openings marked as Fulfilled or Archived will appear in this list.'}
             </p>
             {activeTab === 'active' && canCreate && (
-              <Button variant="primary" size="md" onClick={handleOpenCreate} className="mt-2">
+              <Button variant="primary" size="md" onClick={handleOpenCreate} className="mt-2 shadow-sm">
                 <Plus className="w-4 h-4 mr-1.5" />
                 Create Job Opening
               </Button>
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-caption font-bold uppercase tracking-wider text-[#64748B]">
-                  <th className="py-4 px-5">Hiring Organization</th>
-                  <th className="py-4 px-5">Job Title</th>
-                  <th className="py-4 px-5">Job Link</th>
-                  <th className="py-4 px-5">Service Client</th>
-                  <th className="py-4 px-5">Priority</th>
-                  {activeTab === 'done' ? (
-                    <th className="py-4 px-5">Fulfilled By</th>
-                  ) : (
-                    <th className="py-4 px-5">Status</th>
-                  )}
-                  <th className="py-4 px-5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E2E8F0] text-small text-[#081226]">
-                {requirements.map((req) => {
-                  const menuItems = [];
+          <>
+            {/* 1. Mobile & Tablet Card Layout (< md) */}
+            <div className="md:hidden divide-y divide-[#E2E8F0] p-3 space-y-3">
+              {requirements.map((req) => {
+                const menuItems = [];
+                if (canEdit) {
+                  menuItems.push({
+                    icon: Edit2,
+                    label: 'Edit Job Opening',
+                    onClick: () => handleOpenEdit(req),
+                  });
+                }
+                if (activeTab === 'active' && (isAdmin || isSubAdmin)) {
+                  menuItems.push({
+                    icon: Archive,
+                    label: 'Archive Job Opening',
+                    onClick: () => handleArchive(req),
+                  });
+                } else if ((activeTab === 'done' || activeTab === 'archived')) {
+                  menuItems.push({
+                    icon: RotateCcw,
+                    label: 'Reopen Job Opening',
+                    onClick: () => handleReopen(req),
+                  });
+                }
+                if (isAdmin) {
+                  menuItems.push({ divider: true });
+                  menuItems.push({
+                    icon: Trash2,
+                    label: 'Delete Job Opening',
+                    danger: true,
+                    onClick: () => setDeleteConfirmReq(req),
+                  });
+                }
 
-                  if (canEdit) {
-                    menuItems.push({
-                      icon: Edit2,
-                      label: 'Edit Job Opening',
-                      onClick: () => handleOpenEdit(req),
-                    });
-                  }
-
-                  if (activeTab === 'active') {
-                    if (isAdmin || isSubAdmin) {
-                      menuItems.push({
-                        icon: Archive,
-                        label: 'Archive Job Opening',
-                        onClick: () => handleArchive(req),
-                      });
-                    }
-                  } else if (activeTab === 'done' || activeTab === 'archived') {
-                    menuItems.push({
-                      icon: RotateCcw,
-                      label: 'Reopen Job Opening',
-                      onClick: () => handleReopen(req),
-                    });
-                  }
-
-                  if (isAdmin) {
-                    menuItems.push({ divider: true });
-                    menuItems.push({
-                      icon: Trash2,
-                      label: 'Delete Job Opening',
-                      danger: true,
-                      onClick: () => setDeleteConfirmReq(req),
-                    });
-                  }
-
-                  return (
-                    <tr key={req.id} className="hover:bg-[#F8FAFC]/80 transition-colors">
-                      {/* 1. Hiring Company */}
-                      <td className="py-4 px-5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-xs text-[#081226]">
-                            {req.company.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="font-bold text-[#081226] block">{req.company}</span>
-                            {req.notes && (
-                              <span className="text-caption text-[#64748B] block truncate max-w-xs" title={req.notes}>
-                                📝 {req.notes}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* 2. Job Title */}
-                      <td className="py-4 px-5">
-                        <span className="font-semibold text-[#081226] block">
+                return (
+                  <div
+                    key={req.id}
+                    className="p-5 rounded-[20px] bg-white border border-[#E2E8F0] shadow-card hover:-translate-y-0.5 hover:shadow-elevated transition-all space-y-3"
+                  >
+                    {/* Hierarchy 1: Job Title */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="text-body font-bold text-[#081226] leading-snug">
                           {req.job_title || req.role}
-                        </span>
-                        <span className="text-[11px] font-medium text-[#64748B] flex items-center gap-1 mt-0.5">
+                        </h4>
+                        <span className="text-[11px] font-medium text-[#64748B] flex items-center gap-1 mt-1">
                           {req.client_name === 'Global for All' || !req.client_id ? (
-                            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-[#0D6EFD] font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#0D6EFD] font-bold">
                               🌐 All Employees
                             </span>
                           ) : (
-                            <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-bold">
+                            <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-bold">
                               👤 {req.assigned_employee_names?.join(', ') || req.assigned_employee_name || 'No assigned employees'}
                             </span>
                           )}
                         </span>
-                      </td>
+                      </div>
 
-                      {/* 3. Job Link */}
-                      <td className="py-4 px-5">
-                        {req.job_url ? (
-                          <a
-                            href={req.job_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-[#0D6EFD] hover:bg-blue-100 font-semibold text-caption transition-colors group"
+                      {/* Hierarchy 5: Priority */}
+                      {getPriorityBadge(req.priority)}
+                    </div>
+
+                    {/* Hierarchy 2: Hiring Organization */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-[#F1F5F9]">
+                      <div className="w-7 h-7 rounded-[8px] bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-[11px] text-[#081226]">
+                        {req.company.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="font-bold text-[#081226] text-small">{req.company}</span>
+                    </div>
+
+                    {/* Hierarchy 3 & 4: Service Client + Location / Link */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-caption">
+                      <div className="flex items-center gap-1.5 text-[#334155] font-medium">
+                        <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
+                        <span>{req.client_name || 'Client'}</span>
+                      </div>
+
+                      {req.job_url && (
+                        <a
+                          href={req.job_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-[10px] bg-blue-50 text-[#0D6EFD] hover:bg-blue-100 font-semibold text-caption transition-colors"
+                        >
+                          <span>Open Job</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Actions & Status row */}
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#F1F5F9]">
+                      <StatusBadge status={req.status === 'archived' ? 'archived' : 'active'} />
+
+                      <div className="flex items-center gap-2">
+                        {activeTab === 'active' && isEmployee && (
+                          <button
+                            type="button"
+                            onClick={() => setDoneConfirmReq(req)}
+                            className="px-3.5 py-1.5 rounded-[12px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-caption shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                           >
-                            <span>Open Job</span>
-                            <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                          </a>
-                        ) : (
-                          <span className="text-caption font-medium text-[#94A3B8]">No Job Link</span>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Mark Fulfilled</span>
+                          </button>
                         )}
-                      </td>
+                        {menuItems.length > 0 && (
+                          <Dropdown
+                            trigger={
+                              <button
+                                type="button"
+                                className="p-2 rounded-[10px] text-[#64748B] hover:text-[#081226] hover:bg-[#F1F5F9] transition-colors cursor-pointer"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+                            }
+                            items={menuItems}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-                      {/* 4. Service Client */}
-                      <td className="py-4 px-5">
-                        <div className="flex items-center gap-1.5 text-small font-medium text-[#334155]">
-                          <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
-                          <span>{req.client_name || 'Client'}</span>
-                        </div>
-                      </td>
+            {/* 2. Desktop Table Layout (>= md) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="sticky top-0 z-10 bg-[#F8FAFC]/95 backdrop-blur-md border-b border-[#E2E8F0] text-caption font-bold uppercase tracking-wider text-[#64748B] shadow-[0_1px_2px_rgba(8,18,38,0.03)]">
+                    <th className="py-4 px-5">Job Title</th>
+                    <th className="py-4 px-5">Hiring Organization</th>
+                    <th className="py-4 px-5">Service Client</th>
+                    <th className="py-4 px-5">Job Link / Location</th>
+                    <th className="py-4 px-5">Priority</th>
+                    {activeTab === 'done' ? (
+                      <th className="py-4 px-5">Fulfilled By</th>
+                    ) : (
+                      <th className="py-4 px-5">Status</th>
+                    )}
+                    <th className="py-4 px-5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0] text-small text-[#081226]">
+                  {requirements.map((req) => {
+                    const menuItems = [];
 
-                      {/* 5. Priority */}
-                      <td className="py-4 px-5">{getPriorityBadge(req.priority)}</td>
+                    if (canEdit) {
+                      menuItems.push({
+                        icon: Edit2,
+                        label: 'Edit Job Opening',
+                        onClick: () => handleOpenEdit(req),
+                      });
+                    }
 
-                      {/* 6. Status / Completed By */}
-                      {activeTab === 'done' ? (
+                    if (activeTab === 'active') {
+                      if (isAdmin || isSubAdmin) {
+                        menuItems.push({
+                          icon: Archive,
+                          label: 'Archive Job Opening',
+                          onClick: () => handleArchive(req),
+                        });
+                      }
+                    } else if (activeTab === 'done' || activeTab === 'archived') {
+                      menuItems.push({
+                        icon: RotateCcw,
+                        label: 'Reopen Job Opening',
+                        onClick: () => handleReopen(req),
+                      });
+                    }
+
+                    if (isAdmin) {
+                      menuItems.push({ divider: true });
+                      menuItems.push({
+                        icon: Trash2,
+                        label: 'Delete Job Opening',
+                        danger: true,
+                        onClick: () => setDeleteConfirmReq(req),
+                      });
+                    }
+
+                    return (
+                      <tr key={req.id} className="hover:bg-[#F8FAFC]/80 transition-colors">
+                        {/* 1. Job Title */}
                         <td className="py-4 px-5">
-                          <div>
-                            <span className="font-semibold text-emerald-700 block text-caption">
-                              ✓ {req.completer_name || 'Completed'}
-                            </span>
-                            <span className="text-caption text-[#64748B] block">
-                              {req.completed_at ? formatDate(req.completed_at) : 'Completed'}
-                            </span>
+                          <span className="font-bold text-[#081226] block">
+                            {req.job_title || req.role}
+                          </span>
+                          <span className="text-[11px] font-medium text-[#64748B] flex items-center gap-1 mt-0.5">
+                            {req.client_name === 'Global for All' || !req.client_id ? (
+                              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[#0D6EFD] font-bold">
+                                🌐 All Employees
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-bold">
+                                👤 {req.assigned_employee_names?.join(', ') || req.assigned_employee_name || 'No assigned employees'}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+
+                        {/* 2. Hiring Company */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-[8px] bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-xs text-[#081226]">
+                              {req.company.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <span className="font-semibold text-[#081226] block">{req.company}</span>
+                              {req.notes && (
+                                <span className="text-caption text-[#64748B] block truncate max-w-xs" title={req.notes}>
+                                  📝 {req.notes}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
-                      ) : (
+
+                        {/* 3. Service Client */}
                         <td className="py-4 px-5">
-                          <StatusBadge status={req.status === 'archived' ? 'archived' : 'active'} />
+                          <div className="flex items-center gap-1.5 text-small font-medium text-[#334155]">
+                            <Building2 className="w-3.5 h-3.5 text-[#64748B]" />
+                            <span>{req.client_name || 'Client'}</span>
+                          </div>
                         </td>
-                      )}
 
-                      {/* 7. Actions */}
-                      <td className="py-4 px-5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {activeTab === 'active' && isEmployee && (
-                            <button
-                              type="button"
-                              onClick={() => setDoneConfirmReq(req)}
-                              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-caption shadow-sm flex items-center gap-1.5 transition-all transform active:scale-95 cursor-pointer"
+                        {/* 4. Job Link / Location */}
+                        <td className="py-4 px-5">
+                          {req.job_url ? (
+                            <a
+                              href={req.job_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-[10px] bg-blue-50 text-[#0D6EFD] hover:bg-blue-100 font-semibold text-caption transition-colors group"
                             >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Mark as Fulfilled</span>
-                            </button>
+                              <span>Open Job</span>
+                              <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </a>
+                          ) : (
+                            <span className="text-caption font-medium text-[#94A3B8]">No Job Link</span>
                           )}
+                        </td>
 
-                          {menuItems.length > 0 && (
-                            <Dropdown
-                              trigger={
-                                <button
-                                  type="button"
-                                  className="p-1.5 rounded-lg text-[#64748B] hover:text-[#081226] hover:bg-[#E2E8F0]/50 transition-colors cursor-pointer"
-                                >
-                                  <MoreVertical className="w-4 h-4" />
-                                </button>
-                              }
-                              items={menuItems}
-                            />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        {/* 5. Priority */}
+                        <td className="py-4 px-5">{getPriorityBadge(req.priority)}</td>
+
+                        {/* 6. Status / Completed By */}
+                        {activeTab === 'done' ? (
+                          <td className="py-4 px-5">
+                            <div>
+                              <span className="font-semibold text-emerald-700 block text-caption">
+                                ✓ {req.completer_name || 'Completed'}
+                              </span>
+                              <span className="text-caption text-[#64748B] block">
+                                {req.completed_at ? formatDate(req.completed_at) : 'Completed'}
+                              </span>
+                            </div>
+                          </td>
+                        ) : (
+                          <td className="py-4 px-5">
+                            <StatusBadge status={req.status === 'archived' ? 'archived' : 'active'} />
+                          </td>
+                        )}
+
+                        {/* 7. Actions */}
+                        <td className="py-4 px-5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {activeTab === 'active' && isEmployee && (
+                              <button
+                                type="button"
+                                onClick={() => setDoneConfirmReq(req)}
+                                className="px-3.5 py-1.5 rounded-[12px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-caption shadow-sm flex items-center gap-1.5 transition-all transform active:scale-95 cursor-pointer"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Mark as Fulfilled</span>
+                              </button>
+                            )}
+
+                            {menuItems.length > 0 && (
+                              <Dropdown
+                                trigger={
+                                  <button
+                                    type="button"
+                                    className="p-1.5 rounded-[10px] text-[#64748B] hover:text-[#081226] hover:bg-[#E2E8F0]/50 transition-colors cursor-pointer"
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </button>
+                                }
+                                items={menuItems}
+                              />
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -644,7 +773,7 @@ export function RequirementsPage() {
                 required
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white cursor-pointer"
+                className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[14px] text-small text-[#081226] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 focus:bg-white transition-all cursor-pointer"
               >
                 <option value="global">Global for All</option>
                 {clients
@@ -689,7 +818,7 @@ export function RequirementsPage() {
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[14px] text-small text-[#081226] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 focus:bg-white transition-all cursor-pointer"
             >
               <option value="High">High Priority</option>
               <option value="Medium">Medium Priority</option>
@@ -706,7 +835,7 @@ export function RequirementsPage() {
               placeholder="e.g. Apply with 3+ years experience in React and Node.js..."
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#0D6EFD] focus:bg-white resize-none"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[14px] text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 focus:bg-white transition-all resize-none"
             />
           </div>
 
@@ -757,7 +886,7 @@ export function RequirementsPage() {
             <select
               value={editPriority}
               onChange={(e) => setEditPriority(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] focus:outline-none focus:border-[#0D6EFD] focus:bg-white"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[14px] text-small text-[#081226] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 focus:bg-white transition-all cursor-pointer"
             >
               <option value="High">High Priority</option>
               <option value="Medium">Medium Priority</option>
@@ -773,7 +902,7 @@ export function RequirementsPage() {
               rows={3}
               value={editNotes}
               onChange={(e) => setEditNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#0D6EFD] focus:bg-white resize-none"
+              className="w-full px-3.5 py-2.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[14px] text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/15 focus:bg-white transition-all resize-none"
             />
           </div>
 

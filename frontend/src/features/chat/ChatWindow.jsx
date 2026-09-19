@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2,
   Users,
@@ -119,6 +120,18 @@ export function ChatWindow({
   const [isExporting, setIsExporting] = useState(false);
   const [deleteConfirmMessage, setDeleteConfirmMessage] = useState(null);
   const [deletingMessage, setDeletingMessage] = useState(false);
+
+  // Close image lightbox on ESC
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && previewImageModal) {
+        setPreviewImageModal(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewImageModal]);
+
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const prevMessagesLengthRef = useRef(messages.length);
@@ -561,8 +574,11 @@ export function ChatWindow({
             );
 
             return (
-              <div
+              <motion.div
                 key={msg.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
                 className={`flex items-start gap-3 group ${
                   isOwn ? 'flex-row-reverse' : 'flex-row'
                 }`}
@@ -753,9 +769,20 @@ export function ChatWindow({
                           )}
                         </div>
                       ) : (
-                        <div className="p-3 rounded-2xl bg-[#F1F5F9] text-[#94A3B8] italic text-small border border-[#E2E8F0] flex items-center gap-2 select-none">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#CBD5E1]" />
-                          <span>[Message deleted]</span>
+                        <div className="p-3 rounded-[16px] bg-[#F8FAFC] border border-[#E2E8F0] space-y-1 select-none max-w-sm">
+                          <div className="flex items-center gap-1.5 text-[11px] text-[#94A3B8]">
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]">
+                              Deleted
+                            </span>
+                            {msg.deleted_at && <span>{formatMessageTime(msg.deleted_at)}</span>}
+                          </div>
+                          {msg.message ? (
+                            <p className="text-small line-through text-[#94A3B8] italic leading-relaxed break-words font-medium">
+                              {msg.message}
+                            </p>
+                          ) : (
+                            <p className="text-caption italic text-[#94A3B8]">This message was deleted</p>
+                          )}
                         </div>
                       )
                     ) : isResume ? (
@@ -1042,28 +1069,28 @@ export function ChatWindow({
                     )}
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           })
         )}
 
         {/* Live in-stream typing bubble */}
         {typingUserNames.length > 0 && (
-          <div className="flex items-center gap-3 animate-fadeIn my-2">
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="flex items-center gap-2.5 my-2"
+          >
             <div className="shrink-0">
               <Avatar name={typingUserNames[0]} size="xs" variant="teal" />
             </div>
-            <div className="px-3.5 py-2 rounded-2xl rounded-tl-xs bg-white border border-[#CBD5E1] shadow-xs flex items-center gap-2.5">
-              <span className="text-caption font-semibold text-[#081226]">
-                {typingText}
-              </span>
-              <span className="flex gap-1 items-center py-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-bounce" style={{ animationDelay: '300ms' }} />
-              </span>
+            <div className="px-4 py-2.5 rounded-[16px] rounded-tl-xs bg-white border border-[#E2E8F0] shadow-xs flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-typing-dot-1" />
+              <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-typing-dot-2" />
+              <span className="w-2 h-2 rounded-full bg-[#2563EB] animate-typing-dot-3" />
             </div>
-          </div>
+          </motion.div>
         )}
 
         <div ref={messagesEndRef} />
@@ -1181,65 +1208,76 @@ export function ChatWindow({
       )}
 
       {/* Lightbox Modal for Image Preview */}
-      {previewImageModal && (
-        <div
-          onClick={() => setPreviewImageModal(null)}
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative max-w-4xl max-h-[90vh] bg-[#081226] rounded-2xl overflow-hidden border border-white/10 shadow-2xl flex flex-col"
+      <AnimatePresence>
+        {previewImageModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={() => setPreviewImageModal(null)}
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
           >
-            <div className="flex items-center justify-between p-4 border-b border-white/10 text-white">
-              <span className="text-small font-semibold truncate max-w-md">
-                {previewImageModal.name || 'Image Attachment'}
-              </span>
-              <div className="flex items-center gap-2">
-                {(previewImageModal.driveUrl || previewImageModal.url) && (
-                  <a
-                    href={previewImageModal.driveUrl || previewImageModal.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-caption font-medium transition-colors cursor-pointer"
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-4xl max-h-[90vh] bg-[#081226] rounded-[24px] overflow-hidden border border-white/15 shadow-2xl flex flex-col"
+            >
+              <div className="flex items-center justify-between p-4 border-b border-white/10 text-white">
+                <span className="text-small font-semibold truncate max-w-md">
+                  {previewImageModal.name || 'Image Attachment'}
+                </span>
+                <div className="flex items-center gap-2">
+                  {(previewImageModal.driveUrl || previewImageModal.url) && (
+                    <a
+                      href={previewImageModal.driveUrl || previewImageModal.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[12px] bg-white/10 hover:bg-white/20 text-white text-caption font-medium transition-colors cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> Open in Drive
+                    </a>
+                  )}
+                  {previewImageModal.downloadUrl && (
+                    <a
+                      href={previewImageModal.downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[12px] bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-semibold transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImageModal(null)}
+                    className="p-1.5 text-white/70 hover:text-white rounded-[12px] transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
+                    aria-label="Close preview"
                   >
-                    <ExternalLink className="w-3.5 h-3.5" /> Open in Drive
-                  </a>
-                )}
-                {previewImageModal.downloadUrl && (
-                  <a
-                    href={previewImageModal.downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-caption font-semibold transition-colors cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5" /> Download
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setPreviewImageModal(null)}
-                  className="p-1.5 text-white/70 hover:text-white rounded-lg transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="p-4 flex items-center justify-center bg-black/50 overflow-auto max-h-[calc(90vh-80px)]">
-              <img
-                src={previewImageModal.url}
-                alt={previewImageModal.name || 'Attachment'}
-                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-md"
-                onError={(e) => {
-                  if (previewImageModal.thumbnailUrl && e.target.src !== previewImageModal.thumbnailUrl) {
-                    e.target.src = previewImageModal.thumbnailUrl;
-                  }
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="p-4 flex items-center justify-center bg-black/50 overflow-auto max-h-[calc(90vh-80px)]">
+                <img
+                  src={previewImageModal.url}
+                  alt={previewImageModal.name || 'Attachment'}
+                  className="max-w-full max-h-[75vh] object-contain rounded-[14px] shadow-md"
+                  onError={(e) => {
+                    if (previewImageModal.thumbnailUrl && e.target.src !== previewImageModal.thumbnailUrl) {
+                      e.target.src = previewImageModal.thumbnailUrl;
+                    }
+                  }}
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

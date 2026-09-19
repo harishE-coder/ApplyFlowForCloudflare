@@ -40,7 +40,7 @@ export function ToastProvider({ children }) {
     const formattedTitle = formatToastMessage(title);
     const formattedMessage = formatToastMessage(message);
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, title: formattedTitle, message: formattedMessage, type }]);
+    setToasts((prev) => [...prev, { id, title: formattedTitle, message: formattedMessage, type, duration }]);
 
     if (duration > 0) {
       setTimeout(() => {
@@ -50,10 +50,10 @@ export function ToastProvider({ children }) {
     return id;
   }, [removeToast]);
 
-  const success = useCallback((title, message) => addToast({ title, message, type: 'success' }), [addToast]);
-  const error = useCallback((title, message) => addToast({ title, message, type: 'error' }), [addToast]);
-  const warning = useCallback((title, message) => addToast({ title, message, type: 'warning' }), [addToast]);
-  const info = useCallback((title, message) => addToast({ title, message, type: 'info' }), [addToast]);
+  const success = useCallback((title, message, duration = 4000) => addToast({ title, message, type: 'success', duration }), [addToast]);
+  const error = useCallback((title, message, duration = 5000) => addToast({ title, message, type: 'error', duration }), [addToast]);
+  const warning = useCallback((title, message, duration = 4000) => addToast({ title, message, type: 'warning', duration }), [addToast]);
+  const info = useCallback((title, message, duration = 4000) => addToast({ title, message, type: 'info', duration }), [addToast]);
 
   const value = useMemo(
     () => ({ addToast, removeToast, success, error, warning, info }),
@@ -63,7 +63,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">
+      <div className="fixed top-5 right-5 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">
         <AnimatePresence>
           {toasts.map((toast) => (
             <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
@@ -84,44 +84,63 @@ export function useToast() {
 
 function ToastItem({ toast, onClose }) {
   const icons = {
-    success: <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0" />,
-    error: <AlertCircle className="w-5 h-5 text-[#EF4444] shrink-0" />,
-    warning: <AlertTriangle className="w-5 h-5 text-[#F59E0B] shrink-0" />,
-    info: <Info className="w-5 h-5 text-[#2563EB] shrink-0" />,
+    success: <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0 mt-0.5" />,
+    error: <AlertCircle className="w-5 h-5 text-[#EF4444] shrink-0 mt-0.5" />,
+    warning: <AlertTriangle className="w-5 h-5 text-[#F59E0B] shrink-0 mt-0.5" />,
+    info: <Info className="w-5 h-5 text-[#2563EB] shrink-0 mt-0.5" />,
   };
 
-  const borderColors = {
-    success: 'border-l-4 border-l-[#16A34A]',
-    error: 'border-l-4 border-l-[#EF4444]',
-    warning: 'border-l-4 border-l-[#F59E0B]',
-    info: 'border-l-4 border-l-[#2563EB]',
+  const tintStyles = {
+    success: 'bg-[#F0FDF4] border-[#BBF7D0] text-[#14532D] shadow-[0_8px_24px_rgba(22,163,74,0.12)]',
+    error: 'bg-[#FEF2F2] border-[#FECACA] text-[#7F1D1D] shadow-[0_8px_24px_rgba(239,68,68,0.12)]',
+    warning: 'bg-[#FFFBEB] border-[#FDE68A] text-[#78350F] shadow-[0_8px_24px_rgba(245,158,11,0.12)]',
+    info: 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1E3A8A] shadow-[0_8px_24px_rgba(37,99,235,0.12)]',
+  };
+
+  const progressColors = {
+    success: 'bg-[#16A34A]',
+    error: 'bg-[#EF4444]',
+    warning: 'bg-[#F59E0B]',
+    info: 'bg-[#2563EB]',
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+      initial={{ opacity: 0, x: 40, y: -4, scale: 0.96 }}
+      animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 30, scale: 0.94, transition: { duration: 0.16 } }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        'pointer-events-auto bg-white rounded-xl shadow-2xl border border-[#E2E8F0] p-4 flex items-start justify-between gap-3 overflow-hidden',
-        borderColors[toast.type]
+        'pointer-events-auto relative rounded-[14px] border p-4 flex items-start justify-between gap-3 overflow-hidden backdrop-blur-md',
+        tintStyles[toast.type]
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3 min-w-0 flex-1">
         {icons[toast.type]}
-        <div>
-          {toast.title && <h5 className="text-small font-semibold text-[#081226] leading-tight">{toast.title}</h5>}
-          {toast.message && <p className="text-caption text-[#64748B] mt-0.5 leading-relaxed">{toast.message}</p>}
+        <div className="min-w-0 flex-1">
+          {toast.title && <h5 className="text-small font-bold leading-tight truncate">{toast.title}</h5>}
+          {toast.message && <p className="text-caption mt-0.5 leading-relaxed opacity-90 break-words">{toast.message}</p>}
         </div>
       </div>
 
       <button
         type="button"
         onClick={onClose}
-        className="p-1 text-[#94A3B8] hover:text-[#081226] rounded-md transition-colors"
+        className="p-1 min-h-[28px] min-w-[28px] flex items-center justify-center opacity-60 hover:opacity-100 hover:bg-black/5 rounded-lg transition-colors cursor-pointer shrink-0"
+        aria-label="Dismiss toast"
       >
         <X className="w-4 h-4" />
       </button>
+
+      {/* Auto-dismiss progress bar */}
+      {toast.duration > 0 && (
+        <motion.div
+          initial={{ width: '100%' }}
+          animate={{ width: '0%' }}
+          transition={{ duration: toast.duration / 1000, ease: 'linear' }}
+          className={cn('absolute bottom-0 left-0 h-[3px]', progressColors[toast.type])}
+        />
+      )}
     </motion.div>
   );
 }

@@ -185,7 +185,7 @@ export function EmployeeDashboard() {
   return (
     <div className="space-y-8">
       {/* Top Bar (Assigned Client filter & Date pills) */}
-      <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -233,7 +233,7 @@ export function EmployeeDashboard() {
             <select
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
-              className="w-full h-[44px] px-3.5 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
             >
               <option value="">All Service Clients ({assignedClients.length})</option>
               {assignedClients.map((c) => (
@@ -299,7 +299,7 @@ export function EmployeeDashboard() {
         {/* LEFT COLUMN: 70% (Col span 8) */}
         <div className="lg:col-span-8 space-y-8">
           {/* 1. Upload Hero (Biggest Component) */}
-          <div className="bg-white rounded-3xl border border-[#E2E8F0] shadow-card p-6 sm:p-8">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 sm:p-6">
             <div className="flex items-center justify-between gap-4 mb-6">
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-[#0D6EFD] px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE]">
@@ -333,7 +333,7 @@ export function EmployeeDashboard() {
           </Suspense>
 
           {/* 3. Active Job Requirements Matrix */}
-          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#F1F5F9]">
               <div>
                 <h3 className="text-h3 font-bold text-[#081226]">Active Job Openings</h3>
@@ -384,7 +384,7 @@ export function EmployeeDashboard() {
           </div>
 
           {/* 3.5. Uploaded Resumes (Google Drive Synchronized) */}
-          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 space-y-4">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9] flex-wrap gap-2">
               <div>
                 <div className="flex items-center gap-2">
@@ -487,7 +487,7 @@ export function EmployeeDashboard() {
           </div>
 
           {/* 4. AI Email Intake & Candidate Interview Rounds */}
-          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 space-y-4">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
               <div>
                 <div className="flex items-center gap-2">
@@ -544,7 +544,7 @@ export function EmployeeDashboard() {
         {/* RIGHT COLUMN: 30% (Col span 4) */}
         <div className="lg:col-span-4 space-y-6">
           {/* 1. Target Progress Ring Card (Locked Rule: Applications Submitted vs Target) */}
-          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 text-center">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 text-center">
             <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#F1F5F9]">
               <h4 className="text-small font-bold uppercase tracking-wider text-[#64748B]">
                 Daily Recruiter Target
@@ -595,7 +595,7 @@ export function EmployeeDashboard() {
           />
 
           {/* 3. Recent Activity Feed */}
-          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#F1F5F9]">
               <h4 className="text-small font-bold uppercase tracking-wider text-[#64748B]">
                 Recent Activity

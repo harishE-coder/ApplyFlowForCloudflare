@@ -439,7 +439,7 @@ export function AdminDashboard() {
   return (
     <div className="space-y-8">
       {/* 1. STICKY TOP FILTER BAR (4 Reactive Filters: Service Client, Cascading Recruiter, Single Date Picker, Quick Buttons) */}
-      <div className="sticky top-6 z-30 bg-white/95 backdrop-blur-md p-5 rounded-2xl border border-[#E2E8F0] shadow-topbar space-y-4">
+      <div className="sticky top-6 z-30 bg-white/95 backdrop-blur-md p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
@@ -487,7 +487,7 @@ export function AdminDashboard() {
             <select
               value={selectedClientId}
               onChange={(e) => handleClientChange(e.target.value)}
-              className="w-full h-[44px] px-3.5 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
             >
               <option value="">All Service Clients ({clients.length})</option>
               {clients.map((c) => (
@@ -506,7 +506,7 @@ export function AdminDashboard() {
             <select
               value={selectedEmployeeId}
               onChange={(e) => handleEmployeeChange(e.target.value)}
-              className="w-full h-[44px] px-3.5 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
             >
               <option value="">All Recruiters ({availableEmployees.length})</option>
               {availableEmployees.map((emp) => (
@@ -687,7 +687,7 @@ export function AdminDashboard() {
       </div>
 
       {/* 3. RECRUITER PERFORMANCE TABLE (Target, Submitted, Remaining, Completion % with 0-50% Red, 51-99% Orange, 100%+ Green) */}
-      <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card p-6 space-y-4">
+      <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#F1F5F9]">
           <div>
             <h3 className="text-h3 font-bold text-[#081226]">
@@ -705,7 +705,7 @@ export function AdminDashboard() {
               <select
                 value={sortOption}
                 onChange={(e) => setSortOption(e.target.value)}
-                className="h-[36px] px-3 rounded-lg text-caption font-semibold bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#0D6EFD]"
+                className="h-[36px] px-3 rounded-[12px] text-caption font-semibold bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#0D6EFD]"
               >
                 <option value="highest">Highest Completion %</option>
                 <option value="lowest">Lowest Completion %</option>

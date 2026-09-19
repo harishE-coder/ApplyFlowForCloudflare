@@ -19,7 +19,7 @@ export const ClientCharts = React.memo(function ClientCharts({
   joinedCount = 2,
 }) {
   return (
-    <div className="bg-white p-6 sm:p-7 rounded-3xl border border-[#E2E8F0] shadow-card space-y-6">
+    <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#F1F5F9]">
         <div>
           <div className="flex items-center gap-2">
@@ -63,7 +63,9 @@ export const ClientCharts = React.memo(function ClientCharts({
                 backgroundColor: '#081226',
                 borderRadius: '12px',
                 border: '1px solid #1E2E4E',
+                boxShadow: '0 8px 24px rgba(8,18,38,0.25)',
                 color: '#FFF',
+                padding: '8px 12px',
               }}
             />
             <Bar dataKey="count" radius={[8, 8, 0, 0]}>

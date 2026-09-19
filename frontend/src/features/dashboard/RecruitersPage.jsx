@@ -510,7 +510,7 @@ export function RecruitersPage() {
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="bg-white p-6 rounded-3xl border border-[#E2E8F0] shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-h2 font-extrabold text-[#081226] tracking-tight">
@@ -561,7 +561,7 @@ export function RecruitersPage() {
             key={tab.key}
             onClick={() => setStatusFilter(tab.key)}
             className={cn(
-              'px-4 py-2 text-small font-bold rounded-xl transition-all',
+              'px-4 py-2 text-small font-bold rounded-[12px] transition-all',
               statusFilter === tab.key
                 ? 'bg-[#081226] text-white shadow-sm'
                 : 'text-[#64748B] hover:text-[#081226] hover:bg-[#F1F5F9]'
@@ -573,14 +573,14 @@ export function RecruitersPage() {
       </div>
 
       {/* Filter Row */}
-      <div className="bg-white p-4 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-[20px] border border-[#E2E8F0] shadow-surface flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="w-full sm:w-80">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search recruiter by name or email..."
-            className="w-full h-[40px] px-3.5 rounded-xl text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full h-[40px] px-3.5 rounded-[14px] text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
           />
         </div>
 
@@ -588,7 +588,7 @@ export function RecruitersPage() {
           <select
             value={selectedClientFilter}
             onChange={(e) => setSelectedClientFilter(e.target.value)}
-            className="w-full h-[40px] px-3 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
           >
             <option value="">All Service Clients</option>
             {clients.map((c) => (
@@ -649,7 +649,7 @@ export function RecruitersPage() {
             <label className="text-small font-semibold text-[#081226] block mb-1.5">
               Assigned Service Clients (Multi-Select)
             </label>
-            <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+            <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-3 bg-[#F8FAFC] rounded-[14px] border border-[#E2E8F0]">
               {clients.map((c) => (
                 <label
                   key={c.id}
@@ -737,7 +737,7 @@ export function RecruitersPage() {
             <label className="text-small font-semibold text-[#081226] block mb-1.5">
               Assigned Service Clients
             </label>
-            <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-3 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
+            <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-3 bg-[#F8FAFC] rounded-[14px] border border-[#E2E8F0]">
               {clients.map((c) => (
                 <label
                   key={c.id}
@@ -815,7 +815,7 @@ export function RecruitersPage() {
             <select
               value={targetClientId}
               onChange={(e) => setTargetClientId(e.target.value)}
-              className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none"
+              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none"
               required
             >
               {clients.map((c) => (

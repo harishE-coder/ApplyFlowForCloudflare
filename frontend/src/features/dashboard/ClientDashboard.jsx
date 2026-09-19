@@ -168,7 +168,7 @@ export function ClientDashboard() {
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12 select-none">
       {/* 1. Header with Global Date Filter */}
-      <div className="bg-white p-6 rounded-3xl border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
@@ -292,7 +292,7 @@ export function ClientDashboard() {
       {/* 4. Application Timeline & Hiring Company Filter */}
       <div className="space-y-4">
         {/* Filters Header: Hiring Company Filter + Candidate Search */}
-        <div className="bg-white p-5 rounded-3xl border border-[#E2E8F0] shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-h3 font-bold text-[#081226]">Application Timeline</h3>
             <p className="text-caption text-[#64748B] mt-0.5">
@@ -309,7 +309,7 @@ export function ClientDashboard() {
                 placeholder="Search candidate, role..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 h-[40px] rounded-xl text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                className="w-full pl-9 pr-3 h-[40px] rounded-[14px] text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
               />
             </div>
 
@@ -318,7 +318,7 @@ export function ClientDashboard() {
               <select
                 value={selectedHiringCompany}
                 onChange={(e) => setSelectedHiringCompany(e.target.value)}
-                className="w-full sm:w-auto h-[40px] px-3.5 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                className="w-full sm:w-auto h-[40px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
               >
                 <option value="all">All Hiring Organizations</option>
                 {(data?.hiring_companies || ['TCS', 'Infosys', 'Amazon', 'Deloitte', 'Google']).map((hc) => (
@@ -334,7 +334,7 @@ export function ClientDashboard() {
         {/* Timeline Cards Feed */}
         <div className="space-y-4">
           {filteredTimeline.length === 0 ? (
-            <div className="p-12 text-center bg-white rounded-3xl border border-[#E2E8F0] space-y-3">
+            <div className="p-10 text-center bg-white rounded-[20px] border border-[#E2E8F0] space-y-3">
               <Users className="w-10 h-10 text-[#2563EB] mx-auto" />
               <h4 className="text-h3 font-bold text-[#081226]">No candidates match this filter</h4>
               <p className="text-small text-[#64748B]">Try selecting "All Hiring Organizations" or adjusting your search.</p>
@@ -347,7 +347,7 @@ export function ClientDashboard() {
                 <motion.div
                   key={item.id}
                   layout
-                  className="bg-white rounded-3xl border border-[#E2E8F0] hover:border-[#CBD5E1] shadow-card transition-all overflow-hidden"
+                  className="bg-white rounded-[20px] border border-[#E2E8F0] hover:border-[#CBD5E1] shadow-surface hover:shadow-elevated transition-all overflow-hidden"
                 >
                   {/* Card Header */}
                   <div
@@ -361,7 +361,7 @@ export function ClientDashboard() {
                           <h3 className="text-h3 font-extrabold text-[#081226] truncate">
                             {item.candidate_name}
                           </h3>
-                          <span className={cn('px-2.5 py-0.5 rounded-lg border text-caption font-extrabold truncate', getRoundBadgeColor(item.round))}>
+                          <span className={cn('px-2.5 py-0.5 rounded-full border text-caption font-extrabold truncate', getRoundBadgeColor(item.round))}>
                             {item.round}
                           </span>
                         </div>

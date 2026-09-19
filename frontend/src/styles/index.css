@@ -41,12 +41,15 @@
   --color-text-muted: #94A3B8;
   --color-text-dim: #CBD5E1;
 
+  --shadow-surface: 0 1px 3px rgba(8, 18, 38, 0.04), 0 1px 2px rgba(8, 18, 38, 0.02);
   --shadow-card: 0 1px 3px rgba(8, 18, 38, 0.04), 0 4px 12px rgba(8, 18, 38, 0.03);
-  --shadow-card-hover: 0 4px 14px rgba(8, 18, 38, 0.08), 0 1px 3px rgba(8, 18, 38, 0.04);
+  --shadow-card-hover: 0 6px 20px -2px rgba(8, 18, 38, 0.08), 0 2px 6px -1px rgba(8, 18, 38, 0.04);
+  --shadow-elevated: 0 6px 20px -2px rgba(8, 18, 38, 0.07), 0 2px 6px -1px rgba(8, 18, 38, 0.04);
+  --shadow-floating: 0 16px 40px -4px rgba(8, 18, 38, 0.12), 0 6px 16px -2px rgba(8, 18, 38, 0.06);
   --shadow-sidebar: 0 20px 40px -12px rgba(8, 18, 38, 0.28), 0 4px 16px rgba(8, 18, 38, 0.12);
   --shadow-topbar: 0 4px 20px -4px rgba(8, 18, 38, 0.05);
-  --shadow-dropdown: 0 10px 30px -4px rgba(8, 18, 38, 0.15), 0 2px 6px rgba(8, 18, 38, 0.05);
-  --shadow-drawer: -8px 0 32px rgba(8, 18, 38, 0.12);
+  --shadow-dropdown: 0 12px 32px -4px rgba(8, 18, 38, 0.12), 0 4px 10px rgba(8, 18, 38, 0.04);
+  --shadow-drawer: -8px 0 36px rgba(8, 18, 38, 0.14);
 }
 
 @layer base {
@@ -82,38 +85,101 @@
 
 /* ATS Typography Hierarchy */
 .text-display {
-  font-size: 40px;
-  line-height: 48px;
+  font-size: 36px;
+  line-height: 44px;
   font-weight: 800;
   letter-spacing: -0.025em;
 }
 .text-h1 {
-  font-size: 32px;
-  line-height: 40px;
+  font-size: 30px;
+  line-height: 38px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 .text-h2 {
-  font-size: 24px;
-  line-height: 32px;
+  font-size: 22px;
+  line-height: 30px;
   font-weight: 600;
   letter-spacing: -0.015em;
 }
 .text-h3 {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: 18px;
+  line-height: 26px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 .text-body {
-  font-size: 16px;
-  line-height: 24px;
+  font-size: 15px;
+  line-height: 22px;
 }
 .text-small {
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 20px;
 }
 .text-caption {
   font-size: 12px;
   line-height: 16px;
+}
+
+/* Enterprise Micro-Animations */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #F1F5F9 0%,
+    #E2E8F0 40%,
+    #F8FAFC 60%,
+    #F1F5F9 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes input-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.animate-input-shake {
+  animation: input-shake 0.35s ease-in-out;
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.animate-typing-dot-1 {
+  animation: typing-dot 1.4s infinite ease-in-out;
+}
+.animate-typing-dot-2 {
+  animation: typing-dot 1.4s infinite ease-in-out 0.2s;
+}
+.animate-typing-dot-3 {
+  animation: typing-dot 1.4s infinite ease-in-out 0.4s;
+}
+
+/* Respect user's reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

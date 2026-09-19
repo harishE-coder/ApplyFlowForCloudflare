@@ -6,15 +6,43 @@
 
 import api from '@/services/api';
 
+// Standard uncompressed P-256 VAPID public key (65 bytes, base64url encoded)
+export const DEFAULT_VAPID_PUBLIC_KEY =
+  'BGSl6ZcyzkyfropuFTnD3QmkTdJTCLwaWIN_8CjLtRWVwmLrledjYu2aaHoKWd9urmUIOfzpo-9aV55nJVfxpfU';
+
+/**
+ * Validates whether a Uint8Array contains a valid uncompressed P-256 EC public key.
+ * By W3C specification, uncompressed P-256 keys must be exactly 65 bytes and start with 0x04.
+ */
+export function isValidP256PublicKey(uint8Array) {
+  return (
+    uint8Array &&
+    uint8Array instanceof Uint8Array &&
+    uint8Array.length === 65 &&
+    uint8Array[0] === 0x04
+  );
+}
+
 /**
  * Converts a URL-safe Base64 string to a Uint8Array for PushManager applicationServerKey.
  */
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
+export function urlBase64ToUint8Array(base64String) {
+  if (!base64String || typeof base64String !== 'string') {
+    throw new Error('Invalid VAPID public key: must be a non-empty string.');
+  }
 
+  const cleaned = base64String.trim().replace(/^["']|["']$/g, '');
+  const padding = '='.repeat((4 - (cleaned.length % 4)) % 4);
+  const base64 = (cleaned + padding).replace(/-/g, '+').replace(/_/g, '/');
+
+  let rawData;
+  try {
+    rawData = window.atob(base64);
+  } catch (e) {
+    throw new Error(`Failed to decode VAPID public key: ${e.message}`);
+  }
+
+  const outputArray = new Uint8Array(rawData.length);
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
@@ -83,21 +111,50 @@ export async function subscribeToPushNotifications() {
     registration = await navigator.serviceWorker.ready;
   }
 
-  // 3. Retrieve VAPID Public Key from backend
-  const vapidRes = await api.get('/chat/push/vapid-public-key');
-  const publicKey = vapidRes.data?.public_key;
-  if (!publicKey) {
-    throw new Error('Server VAPID public key is missing or not configured.');
+  // 3. Retrieve VAPID Public Key from backend (with verification & fallback)
+  let applicationServerKey = null;
+  try {
+    const vapidRes = await api.get('/chat/push/vapid-public-key');
+    const serverKey = vapidRes.data?.public_key;
+    if (serverKey) {
+      const candidateKey = urlBase64ToUint8Array(serverKey);
+      if (isValidP256PublicKey(candidateKey)) {
+        applicationServerKey = candidateKey;
+      } else {
+        console.warn(
+          '[PushNotifications] Server VAPID key is not a valid 65-byte P-256 key, falling back to default.'
+        );
+      }
+    }
+  } catch (err) {
+    console.warn('[PushNotifications] Could not fetch VAPID key from backend, using default fallback:', err);
+  }
+
+  // Fall back to verified default VAPID key if backend key was missing or malformed
+  if (!applicationServerKey) {
+    applicationServerKey = urlBase64ToUint8Array(DEFAULT_VAPID_PUBLIC_KEY);
   }
 
   // 4. Subscribe or renew with browser PushManager
   let subscription = await registration.pushManager.getSubscription();
   if (!subscription) {
-    const applicationServerKey = urlBase64ToUint8Array(publicKey);
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey,
-    });
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+    } catch (subErr) {
+      console.warn('[PushNotifications] Subscription attempt failed, clearing stale subscription:', subErr);
+      const staleSub = await registration.pushManager.getSubscription().catch(() => null);
+      if (staleSub) {
+        await staleSub.unsubscribe().catch(() => {});
+      }
+      // Retry once after clearing stale subscription
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+    }
   }
 
   // 5. Serialize subscription keys

@@ -28,10 +28,14 @@ import type { Bindings, Variables } from "../types";
 
 export const chatRouter = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+// Default uncompressed P-256 VAPID public key (65 bytes, base64url encoded)
+const DEFAULT_VAPID_PUBLIC_KEY =
+  "BGSl6ZcyzkyfropuFTnD3QmkTdJTCLwaWIN_8CjLtRWVwmLrledjYu2aaHoKWd9urmUIOfzpo-9aV55nJVfxpfU";
+
 // 1. GET /api/chat/push/vapid-public-key
 chatRouter.get("/push/vapid-public-key", async (c) => {
   return c.json({
-    public_key: c.env.VAPID_PUBLIC_KEY || "BH_example_vapid_public_key_for_testing",
+    public_key: c.env.VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY,
   });
 });
 

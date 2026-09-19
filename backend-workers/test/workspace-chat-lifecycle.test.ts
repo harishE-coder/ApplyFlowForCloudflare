@@ -465,5 +465,32 @@ describe("Workspace Chat Lifecycle & Dynamic Employee Reassignment (ASRC)", () =
       expect(health.orphan_rooms).toBe(0);
       expect(health.duplicate_rooms).toBe(0);
     });
+
+    it("Global workspace broadcast channel ('global') is accessible to active users and resolves members", async () => {
+      const mockSql = vi.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+        const query = strings.join("");
+        if (query.includes("FROM users WHERE id =")) return [{ id: recruiterAId, is_active: true, role: "employee" }];
+        if (query.includes("FROM users WHERE is_active = true")) {
+          return [
+            { id: adminUserId, name: "Admin", role: "admin", email: "admin@example.com" },
+            { id: recruiterAId, name: "Recruiter", role: "employee", email: "recruiter@example.com" },
+          ];
+        }
+        return [];
+      });
+
+      // 1. Validate room access for 'global' room
+      const access = await validateRoomAccess(mockSql, "global", { id: recruiterAId, role: "employee" });
+      expect(access.authorized).toBe(true);
+      expect(access.room?.id).toBe("global");
+
+      // 2. Resolve members for 'global' room
+      const membersResult = await resolveRoomMembers(mockSql, "global");
+      expect(membersResult.room?.id).toBe("global");
+      expect(membersResult.authorizedUserIds.has(adminUserId)).toBe(true);
+      expect(membersResult.authorizedUserIds.has(recruiterAId)).toBe(true);
+      expect(membersResult.members).toHaveLength(2);
+    });
   });
 });
+

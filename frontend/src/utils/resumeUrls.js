@@ -101,12 +101,18 @@ export function getDocumentEmbedUrl(source) {
   return typeof source === 'string' ? source : '';
 }
 
+function getApiBaseUrl() {
+  const custom = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (custom) return custom;
+  return typeof window !== 'undefined' ? window.location.origin : '';
+}
+
 /**
  * Returns the Google Drive / fallback preview URL for a resume object.
  */
 export function getResumePreviewUrl(resume) {
   if (!resume) return '#';
-  const apiBaseUrl = (typeof window !== 'undefined' ? window.location.origin : '');
+  const apiBaseUrl = getApiBaseUrl();
   const fallbackId = resume.saved_resume_id || resume.id || resume.resume_id;
   const fileId = extractDriveFileId(resume);
 
@@ -126,7 +132,7 @@ export function getResumePreviewUrl(resume) {
  */
 export function getResumeDownloadUrl(resume) {
   if (!resume) return '#';
-  const apiBaseUrl = (typeof window !== 'undefined' ? window.location.origin : '');
+  const apiBaseUrl = getApiBaseUrl();
   const fallbackId = resume.saved_resume_id || resume.id || resume.resume_id;
   const fileId = extractDriveFileId(resume);
 
@@ -158,7 +164,7 @@ export function getResumeShareUrl(resume) {
   if (resume.drive_web_view_link) {
     return resume.drive_web_view_link;
   }
-  return fallbackId ? `${window.location.origin}/api/resumes/${fallbackId}/preview` : '';
+  return fallbackId ? `${getApiBaseUrl()}/api/resumes/${fallbackId}/preview` : '';
 }
 
 /**

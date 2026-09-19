@@ -18,7 +18,7 @@ export interface RoomMember {
 }
 
 export interface ResolvedRoomMembers {
-  room: { id: string; client_id: string; status: string } | null;
+  room: { id: string; client_id: string | null; status: string } | null;
   authorizedUserIds: Set<string>;
   members: RoomMember[];
 }
@@ -27,7 +27,7 @@ export interface ValidateRoomAccessResult {
   authorized: boolean;
   room?: {
     id: string;
-    client_id: string;
+    client_id: string | null;
     status: string;
     client_name?: string;
   };
@@ -115,6 +115,24 @@ export async function resolveRoomMembers(
   sql: any,
   roomId: string
 ): Promise<ResolvedRoomMembers> {
+  // Global workspace broadcast room includes all active users
+  if (roomId === "global") {
+    const allActive = await sql`
+      SELECT id, name, role, email FROM users WHERE is_active = true ORDER BY name ASC
+    `;
+    return {
+      room: { id: "global", client_id: null, status: "active" },
+      authorizedUserIds: new Set(allActive.map((u: any) => String(u.id))),
+      members: allActive.map((u: any) => ({
+        id: String(u.id),
+        name: u.name,
+        role: u.role,
+        email: u.email,
+        membership_source: "global",
+      })),
+    };
+  }
+
   const roomRows = await sql`
     SELECT id, client_id, status FROM chat_rooms WHERE id = ${roomId} LIMIT 1
   `;
@@ -216,7 +234,20 @@ export async function validateRoomAccess(
   }
   const dbUser = userCheck[0];
 
-  // 2. Fetch room and client
+  // 2. Global broadcast channel is authorized for all active workspace users
+  if (roomId === "global") {
+    return {
+      authorized: true,
+      room: {
+        id: "global",
+        client_id: null,
+        status: "active",
+        client_name: "Global Workspace Broadcast",
+      },
+    };
+  }
+
+  // 3. Fetch room and client
   const roomRows = await sql`
     SELECT r.id, r.client_id, r.status, c.company_name as client_name
     FROM chat_rooms r

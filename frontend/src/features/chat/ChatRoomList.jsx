@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MessageSquare, Building2, Users, Shield, Clock, Plus, RefreshCw } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Search, MessageSquare, Building2, Users, Shield, Clock, Plus, RefreshCw, Sparkles, ChevronRight, X } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import api from '@/services/api';
+import { cn } from '@/utils/cn';
 
 function formatRoomTime(dateStr) {
   if (!dateStr) return '';
@@ -55,7 +57,6 @@ export function ChatRoomList({
     }
   };
 
-  // Sort rooms descending by last message timestamp (or creation timestamp)
   const sortedRooms = useMemo(() => {
     return [...(Array.isArray(rooms) ? rooms : [])].sort((a, b) => {
       const timeA = new Date(a.last_message_at || a.created_at || 0).getTime();
@@ -74,31 +75,31 @@ export function ChatRoomList({
   const canCreateClient = isAdmin || user?.role === 'sub_admin';
 
   return (
-    <div className="w-full flex flex-col h-full bg-[#081226] border-r border-[#101F3D] text-white select-none">
+    <div className="w-full flex flex-col h-full bg-[#081226] border-r border-[#1E2E4E] text-white select-none">
       {/* Header */}
-      <div className="p-4 border-b border-[#101F3D] space-y-3">
+      <div className="p-4 border-b border-[#101F3D] space-y-3 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#2563EB]/20 border border-[#2563EB]/40 flex items-center justify-center text-[#60A5FA]">
-              <MessageSquare className="w-4 h-4" />
+            <div className="w-8.5 h-8.5 rounded-xl bg-[#2563EB]/20 border border-[#2563EB]/40 flex items-center justify-center text-[#60A5FA] shadow-xs">
+              <MessageSquare className="w-4.5 h-4.5" />
             </div>
             <div>
               <h2 className="text-small font-bold text-white leading-tight">
-                {isAdmin ? 'All Service Client Chats' : isClient ? 'Client Conversation' : 'Assigned Service Clients'}
+                {isAdmin ? 'Client Channels' : isClient ? 'Client Chat' : 'Assigned Clients'}
               </h2>
               <p className="text-[11px] text-[#94A3B8]">
-                {isAdmin ? 'Admin oversight across all accounts' : 'Internal Service Client rooms'}
+                {isAdmin ? 'Live collaboration oversight' : 'Workspace conversations'}
               </p>
             </div>
           </div>
           {isAdmin && (
-            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#2563EB]/30 text-[#60A5FA] border border-[#2563EB]/40">
+            <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#2563EB]/25 text-[#60A5FA] border border-[#2563EB]/40">
               Admin
             </span>
           )}
         </div>
 
-        {/* Search bar (only if more than 1 room) */}
+        {/* Search bar */}
         {rooms.length > 1 && (
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
@@ -107,17 +108,27 @@ export function ChatRoomList({
               placeholder="Search conversations..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#101F3D] border border-[#1E2E4E] text-caption text-white placeholder-[#64748B] focus:border-[#2563EB] focus:outline-hidden transition-colors"
+              className="w-full pl-9 pr-8 py-2 rounded-xl bg-[#101F3D] border border-[#1E2E4E] text-caption text-white placeholder-[#64748B] focus:border-[#2563EB] focus:outline-none transition-colors"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* Room list scroll container */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1 divide-y divide-[#101F3D]/40">
+      <div className="flex-1 overflow-y-auto p-2.5 space-y-1 dark-scroll">
         {loading ? (
-          <div className="py-12 text-center text-caption text-[#64748B]">
-            Loading conversation channels...
+          <div className="py-16 text-center text-caption text-[#64748B]">
+            <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            Connecting to workspace channels...
           </div>
         ) : error ? (
           <div className="py-10 px-4 text-center text-caption text-[#CBD5E1]">
@@ -137,20 +148,20 @@ export function ChatRoomList({
             )}
           </div>
         ) : filteredRooms.length === 0 ? (
-          <div className="py-10 px-4 text-center text-caption text-[#CBD5E1]">
+          <div className="py-12 px-4 text-center text-caption text-[#CBD5E1]">
             <div className="w-12 h-12 rounded-2xl bg-[#101F3D] border border-[#1E2E4E] flex items-center justify-center mx-auto mb-3">
-              <Building2 className="w-5 h-5 text-[#60A5FA]" />
+              <Building2 className="w-6 h-6 text-[#60A5FA]" />
             </div>
-            <p className="font-semibold text-white mb-2">
+            <p className="font-bold text-white mb-1.5">
               {search
                 ? 'No rooms match search'
                 : isAdmin
                 ? 'No workspace chats found'
                 : 'No service client chat assigned'}
             </p>
-            <p className="text-[#94A3B8] mb-4">
+            <p className="text-[#94A3B8] mb-4 text-xs max-w-xs mx-auto leading-relaxed">
               {search
-                ? 'Try another conversation name.'
+                ? 'Try another client or channel name.'
                 : isAdmin
                 ? 'No workspace chats are currently loaded. Run sync to repair missing chats or create a new Service Client.'
                 : 'You currently have no assigned Service Client chats.'}
@@ -162,7 +173,7 @@ export function ChatRoomList({
                   variant="primary"
                   size="sm"
                   icon={RefreshCw}
-                  loading={syncing}
+                  isLoading={syncing}
                   onClick={handleSyncWorkspaces}
                   className="mx-auto"
                 >
@@ -177,132 +188,86 @@ export function ChatRoomList({
                 </button>
               </div>
             )}
-            {!search && !isAdmin && canCreateClient && (
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                icon={Plus}
-                onClick={() => navigate('/clients')}
-                className="mx-auto"
-              >
-                Create Service Client
-              </Button>
-            )}
           </div>
         ) : (
           filteredRooms.map((room) => {
             const isActive = room.id === activeRoomId;
-            const hasUnread = room.unread_count > 0;
-            const hasOnlineParticipants = room.participants?.some(
-              (p) => p.id !== user?.id && Array.isArray(onlineUsers) && onlineUsers.includes(String(p.id))
-            );
+            const hasUnread = (room.unread_count || 0) > 0;
             const isTypingInThisRoom = isActive && Object.keys(typingUsers).length > 0;
-
-            // Participants string (e.g. Harish · Ravi · John)
-            const participantNames = room.participants
-              .map((p) => (p.id === user?.id ? 'You' : p.name.split(' ')[0]))
-              .join(' · ');
 
             return (
               <div
                 key={room.id}
                 onClick={() => onSelectRoom(room.id)}
-                className={`p-3 rounded-[16px] cursor-pointer transition-all duration-150 relative group ${
+                className={cn(
+                  'p-3 rounded-[16px] cursor-pointer transition-all duration-150 relative group select-none',
                   isActive
-                    ? 'bg-[#2563EB] text-white shadow-[0_4px_20px_rgba(37,99,235,0.35)] ring-1 ring-white/20'
+                    ? 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white shadow-[0_4px_20px_rgba(37,99,235,0.4)] border border-blue-400/30'
                     : 'hover:bg-[#101F3D] text-[#CBD5E1]'
-                }`}
+                )}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3 min-w-0">
-                    {/* Room Avatar */}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {/* Room Avatar with Online Indicator */}
                     <div className="relative shrink-0">
-                      <div
-                        className={`w-10 h-10 rounded-[12px] flex items-center justify-center font-bold text-[13px] transition-transform duration-150 group-hover:scale-105 ${
-                          isActive
-                            ? 'bg-white/20 text-white'
-                            : 'bg-[#101F3D] text-[#93C5FD] border border-[#1E2E4E]'
-                        }`}
-                      >
-                        <Building2 className="w-5 h-5" />
-                      </div>
-                      {hasOnlineParticipants && (
-                        <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#081226]" title="Participant online" />
-                      )}
+                      <Avatar
+                        name={room.client_name || 'Client'}
+                        size="md"
+                        variant={isActive ? 'navy' : 'blue'}
+                      />
                     </div>
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p
-                          className={`text-small font-bold truncate leading-tight ${
-                            isActive ? 'text-white' : 'text-white'
-                          }`}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span
+                          className={cn(
+                            'text-[13.5px] font-bold truncate leading-tight',
+                            isActive ? 'text-white' : 'text-white group-hover:text-blue-300'
+                          )}
                         >
-                          {room.client_name}
-                        </p>
+                          {room.client_name || 'Client Channel'}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-[10px] font-medium shrink-0',
+                            isActive ? 'text-blue-100' : 'text-[#64748B]'
+                          )}
+                        >
+                          {formatRoomTime(room.last_message_at || room.created_at)}
+                        </span>
                       </div>
 
-                      {/* Participants snippet */}
-                      <p
-                        className={`text-[11px] truncate mt-0.5 ${
-                          isActive ? 'text-white/80' : 'text-[#64748B]'
-                        }`}
-                      >
-                        {participantNames || 'Team conversation'}
-                      </p>
+                      {/* Snippet / Typing Indicator */}
+                      {isTypingInThisRoom ? (
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#38BDF8] font-semibold animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8]" />
+                          <span>Typing...</span>
+                        </div>
+                      ) : (
+                        <p
+                          className={cn(
+                            'text-[11.5px] truncate leading-tight',
+                            isActive ? 'text-blue-100' : 'text-[#94A3B8]'
+                          )}
+                        >
+                          {room.last_message_preview || room.description || 'No messages yet'}
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  {/* Timestamp & Unread Badge */}
-                  <div className="flex flex-col items-end shrink-0 gap-1.5">
-                    {room.last_message_at && (
-                      <span
-                        className={`text-[10px] font-medium ${
-                          isActive ? 'text-white/80' : 'text-[#64748B]'
-                        }`}
-                      >
-                        {formatRoomTime(room.last_message_at)}
+                  {/* Unread badge / chevron */}
+                  <div className="flex items-center gap-1 shrink-0 self-center">
+                    {hasUnread && (
+                      <span className="min-w-[18px] h-[18px] px-1.5 rounded-full bg-[#F97316] text-white text-[10px] font-extrabold flex items-center justify-center shadow-[0_0_10px_rgba(249,115,22,0.6)] animate-pulse">
+                        {room.unread_count > 99 ? '99+' : room.unread_count}
                       </span>
                     )}
-
-                    {hasUnread && (
-                      <span className="relative flex items-center justify-center min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#F97316] text-white text-[10px] font-extrabold shadow-sm">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F97316] opacity-60" />
-                        <span className="relative z-10">{room.unread_count}</span>
-                      </span>
+                    {isActive && (
+                      <ChevronRight className="w-4 h-4 text-white/80" />
                     )}
                   </div>
                 </div>
-
-                {/* Last message / Typing preview */}
-                {isTypingInThisRoom ? (
-                  <div className="mt-2 pl-13 pr-1">
-                    <p className={`text-caption italic font-medium flex items-center gap-1.5 ${isActive ? 'text-white' : 'text-[#60A5FA]'}`}>
-                      <span className="flex gap-1 items-center">
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-typing-dot-1" />
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-typing-dot-2" />
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-typing-dot-3" />
-                      </span>
-                      <span>typing...</span>
-                    </p>
-                  </div>
-                ) : room.last_message ? (
-                  <div className="mt-2 pl-13 pr-1">
-                    <p
-                      className={`text-caption truncate transition-opacity ${
-                        isActive
-                          ? 'text-white/90 font-medium'
-                          : hasUnread
-                          ? 'text-[#F8FAFC] font-semibold'
-                          : 'text-[#94A3B8] opacity-80 group-hover:opacity-100'
-                      }`}
-                    >
-                      {room.last_message_sender ? `${room.last_message_sender}: ` : ''}
-                      {room.last_message}
-                    </p>
-                  </div>
-                ) : null}
               </div>
             );
           })

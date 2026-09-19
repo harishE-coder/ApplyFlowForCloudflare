@@ -49,7 +49,7 @@ const ClientCard = React.memo(function ClientCard({
       whileHover={{ y: -2, scale: 1.01 }}
       transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        'bg-white rounded-[20px] border shadow-surface hover:shadow-elevated transition-all duration-150 p-5 flex flex-col justify-between space-y-5 relative',
+        'bg-white rounded-[24px] border shadow-card hover:shadow-card-hover transition-all duration-200 p-5 flex flex-col justify-between space-y-5 relative card-bevel',
         client.status === 'inactive' ? 'border-[#CBD5E1] bg-[#F8FAFC]/70' :
         client.status === 'archived' ? 'border-[#E2E8F0] bg-[#FDF4FF]/30' :
         'border-[#E2E8F0]'

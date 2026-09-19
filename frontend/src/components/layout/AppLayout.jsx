@@ -39,7 +39,7 @@ export function AppLayout() {
     setIsMobileSidebarOpen(false);
   }, [location.pathname]);
 
-  // Fetch notifications & chat unread counts (Background Polling only)
+  // Fetch notifications & chat unread counts
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     try {
@@ -76,7 +76,6 @@ export function AppLayout() {
 
   useEffect(() => {
     if (!user) return;
-    // Initial fetch of unread count
     fetchChatUnread();
 
     let ws = null;
@@ -107,7 +106,7 @@ export function AppLayout() {
           }
         };
       } catch {
-        // quiet fallback to interval polling
+        // quiet fallback
       }
     }
 
@@ -148,7 +147,7 @@ export function AppLayout() {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-[#F6F8FB] text-[#081226] antialiased overflow-x-hidden">
+    <div className="flex min-h-screen bg-[#F8FAFC] text-[#081226] antialiased overflow-x-hidden selection:bg-blue-500/20 selection:text-blue-900">
       {/* Sidebar (Desktop Sticky + Mobile/Tablet Off-Canvas Drawer) */}
       <Sidebar
         unreadNotificationsCount={unreadCount}
@@ -158,7 +157,7 @@ export function AppLayout() {
       />
 
       {/* Main Workspace Frame */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen w-full lg:pr-6 pb-6">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen w-full lg:pr-5 pb-5">
         {/* Top Bar */}
         <TopBar
           onOpenCommandPalette={handleOpenCommandPalette}
@@ -168,15 +167,15 @@ export function AppLayout() {
           onToggleMobileSidebar={handleToggleMobileSidebar}
         />
 
-        {/* Page View Container (Responsive Padding) */}
-        <main className="flex-1 px-3 sm:px-5 lg:px-6 pb-8 overflow-y-auto w-full max-w-full">
+        {/* Page View Container with smooth transition */}
+        <main className="flex-1 px-3 sm:px-5 lg:px-6 pb-6 overflow-y-auto w-full max-w-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="w-full h-full"
             >
               <Outlet />

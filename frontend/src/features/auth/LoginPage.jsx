@@ -179,12 +179,12 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-[#F6F8FB]">
+    <div className="min-h-screen w-full flex bg-[#F8FAFC]">
       {/* LEFT 40%: Branding Showcase */}
-      <div className="hidden lg:flex lg:w-[42%] bg-[#081226] p-12 flex-col justify-between relative overflow-hidden border-r border-[#1E2E4E]">
+      <div className="hidden lg:flex lg:w-[42%] bg-[#081226] p-12 flex-col justify-between relative overflow-hidden border-r border-[#1E2E4E] card-bevel-dark">
         {/* Ambient background glow */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-[#2563EB]/15 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-[#F97316]/10 blur-3xl pointer-events-none" />
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-[#2563EB]/20 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-[#F97316]/15 blur-3xl pointer-events-none" />
 
         {/* Brand Header */}
         <div className="relative z-10">
@@ -242,7 +242,7 @@ export function LoginPage() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25 }}
-          className="w-full max-w-[480px] bg-white rounded-3xl border border-[#E2E8F0] shadow-card p-8 sm:p-10"
+          className="w-full max-w-[480px] bg-white rounded-[28px] border border-[#E2E8F0] shadow-floating p-8 sm:p-10 card-bevel"
         >
           {/* Mobile Logo */}
           <div className="lg:hidden mb-8">

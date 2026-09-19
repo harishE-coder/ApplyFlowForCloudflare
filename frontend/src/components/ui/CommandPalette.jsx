@@ -13,6 +13,13 @@ import {
   Settings,
   ArrowRight,
   Sparkles,
+  MessageSquare,
+  Layers,
+  ShieldCheck,
+  UserCheck,
+  Target,
+  Activity,
+  Command,
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -34,16 +41,16 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
     {
       id: 'dash',
       title: 'Go to Dashboard',
-      subtitle: 'Overview, today targets, queue',
+      subtitle: 'Overview, today targets, live metrics',
       icon: LayoutDashboard,
       section: 'Navigation',
       path: '/dashboard',
-      roles: ['admin', 'employee', 'client'],
+      roles: ['admin', 'sub_admin', 'employee', 'client'],
     },
     {
       id: 'upload',
       title: 'Upload Resumes',
-      subtitle: 'Bulk upload and parse candidate resumes',
+      subtitle: 'Batch upload and parse candidate resumes',
       icon: Upload,
       section: 'Talent',
       path: '/upload',
@@ -56,43 +63,97 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
       icon: Users,
       section: 'Talent',
       path: '/candidates',
-      roles: ['admin', 'employee', 'client'],
+      roles: ['admin', 'sub_admin', 'employee', 'client'],
     },
     {
       id: 'apps',
-      title: 'Applications Pipeline',
-      subtitle: 'Kanban & Table pipeline views',
+      title: 'Applications & AI Intake',
+      subtitle: 'Triage incoming emails and auto-parsed status',
       icon: Briefcase,
       section: 'Talent',
       path: '/applications',
-      roles: ['admin', 'employee', 'client'],
+      roles: ['admin', 'sub_admin', 'employee', 'client'],
+    },
+    {
+      id: 'chats',
+      title: 'Workspace Chat',
+      subtitle: 'Internal team rooms and client messaging channels',
+      icon: MessageSquare,
+      section: 'Talent',
+      path: '/chats',
+      roles: ['admin', 'sub_admin', 'employee', 'client'],
+    },
+    {
+      id: 'requirements',
+      title: 'Job Openings',
+      subtitle: 'Active requirements and open client positions',
+      icon: Layers,
+      section: 'Talent',
+      path: '/requirements',
+      roles: ['admin', 'sub_admin', 'employee', 'client'],
     },
     {
       id: 'clients',
       title: 'Service Clients',
-      subtitle: 'Active clients and recruiter assignments',
+      subtitle: 'Active corporate clients and recruiter assignments',
       icon: Building2,
       section: 'Management',
       path: '/clients',
-      roles: ['admin', 'employee'],
+      roles: ['admin', 'sub_admin', 'employee'],
+    },
+    {
+      id: 'subadmins',
+      title: 'Sub-Admins',
+      subtitle: 'Client and recruiter scoping permissions',
+      icon: ShieldCheck,
+      section: 'Management',
+      path: '/sub-admins',
+      roles: ['admin'],
+    },
+    {
+      id: 'recruiters',
+      title: 'Recruiters Directory',
+      subtitle: 'Manage recruiters, client assignments, passwords',
+      icon: UserCheck,
+      section: 'Management',
+      path: '/recruiters',
+      roles: ['admin', 'sub_admin'],
+    },
+    {
+      id: 'targets',
+      title: 'Recruiter Targets',
+      subtitle: 'Daily quota tracking and history logs',
+      icon: Target,
+      section: 'Management',
+      path: '/targets',
+      roles: ['admin', 'sub_admin', 'employee'],
     },
     {
       id: 'reports',
-      title: 'Reports',
-      subtitle: 'Export PDF & CSV hiring metrics',
+      title: 'Reports & Exports',
+      subtitle: 'Export Excel, PDF & CSV hiring analytics',
       icon: BarChart3,
       section: 'Insights',
       path: '/reports',
-      roles: ['admin', 'employee', 'client'],
+      roles: ['admin', 'sub_admin', 'employee', 'client'],
     },
     {
       id: 'notifs',
       title: 'Notifications',
-      subtitle: 'Recent alerts and updates',
+      subtitle: 'System alerts, candidate submissions, targets',
       icon: Bell,
       section: 'Insights',
       path: '/notifications',
-      roles: ['admin', 'employee', 'client'],
+      roles: ['admin', 'sub_admin', 'employee', 'client'],
+    },
+    {
+      id: 'perf',
+      title: 'System Performance',
+      subtitle: 'Latency telemetry, cache invalidation, edge health',
+      icon: Activity,
+      section: 'System',
+      path: '/admin/performance',
+      roles: ['admin', 'sub_admin'],
     },
   ];
 
@@ -132,26 +193,26 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] px-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.12 }}
+            transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[#081226]/50 backdrop-blur-xs"
+            className="fixed inset-0 bg-[#081226]/60 backdrop-blur-md"
           />
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: -10 }}
+            initial={{ opacity: 0, scale: 0.95, y: -12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="relative w-full max-w-xl bg-white rounded-2xl border border-[#E2E8F0] shadow-2xl overflow-hidden z-10"
+            exit={{ opacity: 0, scale: 0.95, y: -12 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 400 }}
+            className="relative w-full max-w-xl bg-white/98 backdrop-blur-xl rounded-[24px] border border-[#E2E8F0] shadow-floating overflow-hidden z-10 card-bevel"
           >
             {/* Search Input Box */}
             <div className="p-4 border-b border-[#F1F5F9] flex items-center gap-3">
-              <Search className="w-5 h-5 text-[#94A3B8] shrink-0" />
+              <Search className="w-5 h-5 text-[#2563EB] shrink-0" />
               <input
                 ref={inputRef}
                 value={query}
@@ -160,19 +221,19 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                   setSelectedIndex(0);
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="Type a command or jump to page..."
-                className="w-full text-body bg-transparent text-[#081226] placeholder-[#94A3B8] focus:outline-none"
+                placeholder="Type a command or search workspace..."
+                className="w-full text-body font-medium bg-transparent text-[#081226] placeholder-[#94A3B8] focus:outline-none"
               />
-              <span className="text-caption font-semibold px-2 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]">
+              <kbd className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0] shadow-2xs">
                 ESC
-              </span>
+              </kbd>
             </div>
 
             {/* Results List */}
-            <div className="p-2 max-h-[340px] overflow-y-auto">
+            <div className="p-2 max-h-[360px] overflow-y-auto">
               {filtered.length === 0 ? (
-                <div className="py-8 text-center text-[#64748B] text-small">
-                  No commands matching "{query}"
+                <div className="py-10 text-center text-[#64748B] text-small">
+                  No commands matching "<span className="font-semibold text-[#081226]">{query}</span>"
                 </div>
               ) : (
                 filtered.map((action, idx) => {
@@ -184,27 +245,31 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                       onMouseEnter={() => setSelectedIndex(idx)}
                       onClick={() => handleSelect(action)}
                       className={cn(
-                        'px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-colors select-none',
-                        isSelected ? 'bg-[#2563EB] text-white' : 'hover:bg-[#F8FAFC] text-[#081226]'
+                        'px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all duration-120 select-none group',
+                        isSelected
+                          ? 'bg-[#2563EB] text-white shadow-xs'
+                          : 'hover:bg-[#F8FAFC] text-[#081226]'
                       )}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
                           className={cn(
-                            'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-                            isSelected ? 'bg-white/20 text-white' : 'bg-[#EFF6FF] text-[#2563EB]'
+                            'w-8.5 h-8.5 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-150',
+                            isSelected
+                              ? 'bg-white/20 text-white scale-105'
+                              : 'bg-[#EFF6FF] text-[#2563EB] group-hover:scale-105'
                           )}
                         >
-                          <Icon className="w-4 h-4" />
+                          <Icon className="w-4.5 h-4.5" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-small font-semibold truncate leading-tight">
+                          <p className="text-small font-bold truncate leading-tight">
                             {action.title}
                           </p>
                           <p
                             className={cn(
                               'text-caption truncate mt-0.5',
-                              isSelected ? 'text-white/80' : 'text-[#64748B]'
+                              isSelected ? 'text-blue-100' : 'text-[#64748B]'
                             )}
                           >
                             {action.subtitle}
@@ -215,7 +280,7 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                       <div className="flex items-center gap-2 shrink-0">
                         <span
                           className={cn(
-                            'text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded',
+                            'text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-md transition-colors',
                             isSelected
                               ? 'bg-white/20 text-white'
                               : 'bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]'
@@ -223,7 +288,7 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                         >
                           {action.section}
                         </span>
-                        {isSelected && <ArrowRight className="w-4 h-4 text-white" />}
+                        {isSelected && <ArrowRight className="w-4 h-4 text-white shrink-0" />}
                       </div>
                     </div>
                   );
@@ -233,13 +298,13 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
 
             {/* Quick footer */}
             <div className="px-4 py-2.5 bg-[#F8FAFC] border-t border-[#F1F5F9] flex items-center justify-between text-caption text-[#64748B]">
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1.5 font-medium">
                 <Sparkles className="w-3.5 h-3.5 text-[#F97316]" />
-                ApplyFlow Quick Navigation
+                ApplyFlow Spotlight ⌘K
               </span>
-              <div className="flex items-center gap-2">
-                <span>Navigate <kbd className="font-semibold text-[#081226]">↑↓</kbd></span>
-                <span>Select <kbd className="font-semibold text-[#081226]">↵</kbd></span>
+              <div className="flex items-center gap-3">
+                <span>Navigate <kbd className="font-bold text-[#081226] bg-white px-1.5 py-0.5 rounded border border-[#E2E8F0] shadow-2xs">↑↓</kbd></span>
+                <span>Select <kbd className="font-bold text-[#081226] bg-white px-1.5 py-0.5 rounded border border-[#E2E8F0] shadow-2xs">↵</kbd></span>
               </div>
             </div>
           </motion.div>

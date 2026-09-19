@@ -510,7 +510,7 @@ export function RecruitersPage() {
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white p-5 rounded-[24px] border border-[#E2E8F0] shadow-card hover:shadow-card-hover transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 card-bevel">
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-h2 font-extrabold text-[#081226] tracking-tight">

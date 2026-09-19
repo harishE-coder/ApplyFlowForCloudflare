@@ -605,7 +605,7 @@ export function AIResponseInboxPage() {
       </div>
 
       {/* 2. NAVIGATION TABS: AI Intake | Application Timeline */}
-      <div className="flex items-center gap-2 p-1.5 bg-white rounded-2xl border border-[#E2E8F0] shadow-xs overflow-x-auto">
+      <div className="flex items-center gap-2 p-1.5 bg-white rounded-[20px] border border-[#E2E8F0] shadow-xs overflow-x-auto card-bevel">
         {!isClient && (
           <button
             type="button"
@@ -641,7 +641,7 @@ export function AIResponseInboxPage() {
       {!isClient && activeMainTab === 'intake' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* LEFT COLUMN: INTAKE STUDIO OR CONFIRMATION SCREEN */}
-          <div className="lg:col-span-6 bg-white rounded-3xl border border-[#E2E8F0] shadow-card p-5 sm:p-6 space-y-5 sticky top-6">
+          <div className="lg:col-span-6 bg-white rounded-[24px] border border-[#E2E8F0] shadow-card p-5 sm:p-6 space-y-5 sticky top-6 card-bevel">
             
             {/* IF UNRELATED EMAIL DETECTED (IGNORE FLOW) */}
             {analysisResult && !analysisResult.is_interview_mail && (

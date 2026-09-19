@@ -166,9 +166,9 @@ export function ReportsPage() {
       {/* Primary Export Center */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Excel Export Card */}
-        <div className="bg-white rounded-3xl border border-[#E2E8F0] shadow-card p-6 flex flex-col justify-between space-y-6">
+        <div className="bg-white rounded-[24px] border border-[#E2E8F0] shadow-card p-6 flex flex-col justify-between space-y-6 card-bevel">
           <div>
-            <div className="w-12 h-12 rounded-2xl bg-[#ECFDF5] text-[#059669] flex items-center justify-center mb-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#ECFDF5] text-[#059669] flex items-center justify-center mb-4 border border-emerald-100">
               <FileSpreadsheet className="w-6 h-6" />
             </div>
             <h3 className="text-h3 font-extrabold text-[#081226]">Excel Comprehensive Report</h3>
@@ -200,7 +200,7 @@ export function ReportsPage() {
               icon={Download}
               onClick={handleDownloadExcel}
               isLoading={downloadingExcel}
-              className="w-full"
+              className="w-full font-bold"
             >
               Export Excel (.xlsx)
             </Button>
@@ -208,7 +208,7 @@ export function ReportsPage() {
         </div>
 
         {/* PDF Executive Export Card */}
-        <div className="bg-white rounded-3xl border border-[#E2E8F0] shadow-card p-6 flex flex-col justify-between space-y-6">
+        <div className="bg-white rounded-[24px] border border-[#E2E8F0] shadow-card p-6 flex flex-col justify-between space-y-6 card-bevel">
           <div>
             <div className="w-12 h-12 rounded-2xl bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center mb-4">
               <FileText className="w-6 h-6" />

@@ -620,7 +620,7 @@ export function ChatPage() {
         </div>
       )}
 
-      <div className="flex-1 flex rounded-2xl sm:rounded-3xl overflow-hidden border border-[#CBD5E1] shadow-xl bg-white relative">
+      <div className="flex-1 flex rounded-[24px] overflow-hidden border border-[#E2E8F0] shadow-card bg-white relative card-bevel">
         {/* Left Panel: Service Client Rooms */}
         <div
           className={cn(

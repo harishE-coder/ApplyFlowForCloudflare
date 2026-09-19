@@ -367,7 +367,7 @@ export function SubAdminsPage() {
           {filteredSubAdmins.map((sa) => (
             <div
               key={sa.id}
-              className="bg-[#081226] rounded-[28px] border border-[#1E2E4E] p-6 shadow-xl hover:border-[#8B5CF6]/40 transition-all flex flex-col justify-between"
+              className="bg-[#081226] rounded-[28px] border border-[#1E2E4E] p-6 shadow-sidebar hover:border-[#8B5CF6]/40 transition-all flex flex-col justify-between card-bevel-dark"
             >
               <div>
                 {/* Card Top */}

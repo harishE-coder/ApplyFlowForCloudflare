@@ -287,7 +287,7 @@ export function RequirementsPage() {
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto pb-12">
       {/* Top Header Card */}
-      <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-6 rounded-[24px] border border-[#E2E8F0] shadow-card flex flex-col md:flex-row md:items-center justify-between gap-4 card-bevel">
         <div>
           <div className="flex items-center gap-2.5 mb-1.5">
             <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-50 text-[#0D6EFD] border border-blue-200 flex items-center gap-1.5">

@@ -63,7 +63,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="fixed top-5 right-5 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full">
         <AnimatePresence>
           {toasts.map((toast) => (
             <ToastItem key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
@@ -91,10 +91,10 @@ function ToastItem({ toast, onClose }) {
   };
 
   const tintStyles = {
-    success: 'bg-[#F0FDF4] border-[#BBF7D0] text-[#14532D] shadow-[0_8px_24px_rgba(22,163,74,0.12)]',
-    error: 'bg-[#FEF2F2] border-[#FECACA] text-[#7F1D1D] shadow-[0_8px_24px_rgba(239,68,68,0.12)]',
-    warning: 'bg-[#FFFBEB] border-[#FDE68A] text-[#78350F] shadow-[0_8px_24px_rgba(245,158,11,0.12)]',
-    info: 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1E3A8A] shadow-[0_8px_24px_rgba(37,99,235,0.12)]',
+    success: 'bg-white/95 border-emerald-200 text-[#081226] shadow-[0_12px_32px_rgba(22,163,74,0.15)]',
+    error: 'bg-white/95 border-rose-200 text-[#081226] shadow-[0_12px_32px_rgba(239,68,68,0.15)]',
+    warning: 'bg-white/95 border-amber-200 text-[#081226] shadow-[0_12px_32px_rgba(245,158,11,0.15)]',
+    info: 'bg-white/95 border-blue-200 text-[#081226] shadow-[0_12px_32px_rgba(37,99,235,0.15)]',
   };
 
   const progressColors = {
@@ -106,27 +106,27 @@ function ToastItem({ toast, onClose }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 40, y: -4, scale: 0.96 }}
+      initial={{ opacity: 0, x: 40, y: 8, scale: 0.94 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 30, scale: 0.94, transition: { duration: 0.16 } }}
-      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      exit={{ opacity: 0, x: 30, scale: 0.94, transition: { duration: 0.15 } }}
+      transition={{ type: 'spring', damping: 25, stiffness: 350 }}
       className={cn(
-        'pointer-events-auto relative rounded-[14px] border p-4 flex items-start justify-between gap-3 overflow-hidden backdrop-blur-md',
+        'pointer-events-auto relative rounded-[18px] border p-4 flex items-start justify-between gap-3 overflow-hidden backdrop-blur-xl card-bevel',
         tintStyles[toast.type]
       )}
     >
       <div className="flex items-start gap-3 min-w-0 flex-1">
         {icons[toast.type]}
         <div className="min-w-0 flex-1">
-          {toast.title && <h5 className="text-small font-bold leading-tight truncate">{toast.title}</h5>}
-          {toast.message && <p className="text-caption mt-0.5 leading-relaxed opacity-90 break-words">{toast.message}</p>}
+          {toast.title && <h5 className="text-[13px] font-bold text-[#081226] leading-tight truncate">{toast.title}</h5>}
+          {toast.message && <p className="text-caption text-[#64748B] mt-0.5 leading-relaxed break-words">{toast.message}</p>}
         </div>
       </div>
 
       <button
         type="button"
         onClick={onClose}
-        className="p-1 min-h-[28px] min-w-[28px] flex items-center justify-center opacity-60 hover:opacity-100 hover:bg-black/5 rounded-lg transition-colors cursor-pointer shrink-0"
+        className="p-1 min-h-[28px] min-w-[28px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
         aria-label="Dismiss toast"
       >
         <X className="w-4 h-4" />
@@ -138,7 +138,7 @@ function ToastItem({ toast, onClose }) {
           initial={{ width: '100%' }}
           animate={{ width: '0%' }}
           transition={{ duration: toast.duration / 1000, ease: 'linear' }}
-          className={cn('absolute bottom-0 left-0 h-[3px]', progressColors[toast.type])}
+          className={cn('absolute bottom-0 left-0 h-[2.5px]', progressColors[toast.type])}
         />
       )}
     </motion.div>

@@ -388,7 +388,7 @@ export function TargetsPage() {
       </div>
 
       {/* Filter Row */}
-      <div className="bg-white p-4 rounded-[20px] border border-[#E2E8F0] shadow-surface flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-[24px] border border-[#E2E8F0] shadow-card flex flex-col sm:flex-row items-center justify-between gap-4 card-bevel">
         <div className="w-full sm:w-80">
           <input
             type="text"

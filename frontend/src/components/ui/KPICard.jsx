@@ -2,12 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
-function useCountUp(value, duration = 750) {
+function useCountUp(value, duration = 650) {
   const [displayValue, setDisplayValue] = useState(value);
-  const prevValueRef = useRef(value);
 
   useEffect(() => {
-    // Check if user prefers reduced motion
     const prefersReducedMotion = typeof window !== 'undefined' && 
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -17,7 +15,6 @@ function useCountUp(value, duration = 750) {
     }
 
     const strVal = String(value).trim();
-    // Match optional prefix, number, and optional suffix (e.g. "$45", "94%", "120")
     const match = strVal.match(/^([^\d]*)(\d+(?:\.\d+)?)(.*)$/);
 
     if (!match) {
@@ -32,14 +29,13 @@ function useCountUp(value, duration = 750) {
 
     let startTime = null;
     let animFrameId = null;
-
     const startNum = 0;
 
     const step = (timestamp) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
-      // Ease out quad
-      const ease = 1 - (1 - progress) * (1 - progress);
+      // Ease out cubic
+      const ease = 1 - Math.pow(1 - progress, 3);
       const current = startNum + (targetNum - startNum) * ease;
 
       const formattedNum = isFloat ? current.toFixed(1) : Math.round(current).toString();
@@ -77,16 +73,16 @@ export function KPICard({
 
   const iconVariants = {
     default: 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]',
-    blue: 'bg-[#EFF6FF] text-[#2563EB] border-[#BFDBFE]/60 shadow-[0_0_12px_rgba(37,99,235,0.12)]',
-    orange: 'bg-[#FFF7ED] text-[#F97316] border-[#FFEDD5] shadow-[0_0_12px_rgba(249,115,22,0.12)]',
-    success: 'bg-[#F0FDF4] text-[#16A34A] border-[#BBF7D0] shadow-[0_0_12px_rgba(22,163,74,0.12)]',
+    blue: 'bg-gradient-to-br from-[#EFF6FF] to-[#DBEAFE] text-[#2563EB] border-[#BFDBFE]/80 shadow-[0_2px_10px_rgba(37,99,235,0.15)]',
+    orange: 'bg-gradient-to-br from-[#FFF7ED] to-[#FFEDD5] text-[#F97316] border-[#FFEDD5] shadow-[0_2px_10px_rgba(249,115,22,0.15)]',
+    success: 'bg-gradient-to-br from-[#F0FDF4] to-[#DCFCE7] text-[#16A34A] border-[#BBF7D0] shadow-[0_2px_10px_rgba(22,163,74,0.15)]',
   };
 
-  const highlightVariants = {
-    default: 'via-slate-300/40',
-    blue: 'via-blue-500/40',
-    orange: 'via-orange-500/40',
-    success: 'via-emerald-500/40',
+  const borderHighlight = {
+    default: 'via-slate-200/80',
+    blue: 'via-blue-500/60',
+    orange: 'via-orange-500/60',
+    success: 'via-emerald-500/60',
   };
 
   const trendPositive = trend > 0;
@@ -95,23 +91,25 @@ export function KPICard({
   return (
     <div
       className={cn(
-        'relative overflow-hidden bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-card transition-all duration-200',
-        'hover:-translate-y-0.5 hover:scale-[1.01] hover:shadow-elevated hover:border-[#CBD5E1]',
-        'before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-gradient-to-r before:from-transparent before:to-transparent',
-        highlightVariants[variant],
+        'group relative overflow-hidden bg-white p-5 rounded-[22px] border border-[#E2E8F0] shadow-card transition-all duration-200 card-bevel',
+        'hover:-translate-y-1 hover:shadow-card-hover hover:border-[#CBD5E1]',
+        'before:absolute before:inset-x-0 before:top-0 before:h-[2.5px] before:bg-gradient-to-r before:from-transparent before:to-transparent',
+        borderHighlight[variant],
         className
       )}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <p className="text-small font-medium text-[#64748B]">{title}</p>
-          <p className="text-display font-extrabold text-[#081226] tracking-tight">{animatedValue}</p>
+        <div className="space-y-1.5 min-w-0">
+          <p className="text-[12.5px] font-semibold text-[#64748B] truncate tracking-tight">{title}</p>
+          <p className="text-display font-extrabold text-[#081226] tracking-tight truncate leading-none">
+            {animatedValue}
+          </p>
         </div>
 
         {Icon && (
           <div
             className={cn(
-              'w-11 h-11 rounded-full border flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105',
+              'w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 transition-all duration-200 group-hover:scale-105 group-hover:rotate-1',
               iconVariants[variant]
             )}
           >
@@ -120,29 +118,29 @@ export function KPICard({
         )}
       </div>
 
-      <div className="mt-4 pt-3 border-t border-[#F1F5F9] flex items-center justify-between">
+      <div className="mt-4 pt-3 border-t border-[#F1F5F9] flex items-center justify-between min-h-[26px]">
         {trend !== undefined ? (
           <div className="flex items-center gap-1.5 text-small">
             <span
               className={cn(
-                'inline-flex items-center gap-0.5 font-semibold px-2 py-0.5 rounded-full text-caption',
-                trendPositive && 'bg-[#F0FDF4] text-[#16A34A]',
-                !trendPositive && !trendNeutral && 'bg-[#FEF2F2] text-[#EF4444]',
-                trendNeutral && 'bg-[#F1F5F9] text-[#64748B]'
+                'inline-flex items-center gap-0.5 font-bold px-2 py-0.5 rounded-full text-caption',
+                trendPositive && 'bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0]',
+                !trendPositive && !trendNeutral && 'bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA]',
+                trendNeutral && 'bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]'
               )}
             >
-              {trendPositive && <TrendingUp className="w-3.5 h-3.5" />}
-              {!trendPositive && !trendNeutral && <TrendingDown className="w-3.5 h-3.5" />}
-              {trendNeutral && <Minus className="w-3.5 h-3.5" />}
+              {trendPositive && <TrendingUp className="w-3 h-3 stroke-[2.5]" />}
+              {!trendPositive && !trendNeutral && <TrendingDown className="w-3 h-3 stroke-[2.5]" />}
+              {trendNeutral && <Minus className="w-3 h-3 stroke-[2.5]" />}
               {Math.abs(trend)}%
             </span>
             <span className="text-[#64748B] text-caption">{trendLabel || 'vs yesterday'}</span>
           </div>
         ) : subtitle ? (
-          <p className="text-caption font-medium text-[#64748B]">{subtitle}</p>
+          <p className="text-caption font-medium text-[#64748B] truncate">{subtitle}</p>
         ) : <div />}
 
-        {action && <div>{action}</div>}
+        {action && <div className="shrink-0">{action}</div>}
       </div>
     </div>
   );

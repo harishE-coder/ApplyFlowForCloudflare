@@ -2,11 +2,15 @@
 
 @theme {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   
   --color-navy: #081226;
   --color-navy-dark: #040A17;
+  --color-navy-deep: #030712;
   --color-navy-light: #101F3D;
   --color-navy-border: #1E2E4E;
+  --color-navy-border-subtle: #15243F;
+  --color-navy-hover: #142548;
   
   --color-blue-primary: #2563EB;
   --color-blue-hover: #1D4ED8;
@@ -18,9 +22,9 @@
   --color-orange-subtle: #FFF7ED;
   --color-orange-border: #FFEDD5;
 
-  --color-bg-main: #F6F8FB;
+  --color-bg-main: #F8FAFC;
   --color-surface-white: #FFFFFF;
-  --color-surface-muted: #F8FAFC;
+  --color-surface-muted: #F1F5F9;
   --color-surface-border: #E2E8F0;
   --color-surface-border-subtle: #F1F5F9;
 
@@ -42,14 +46,16 @@
   --color-text-dim: #CBD5E1;
 
   --shadow-surface: 0 1px 3px rgba(8, 18, 38, 0.04), 0 1px 2px rgba(8, 18, 38, 0.02);
-  --shadow-card: 0 1px 3px rgba(8, 18, 38, 0.04), 0 4px 12px rgba(8, 18, 38, 0.03);
-  --shadow-card-hover: 0 6px 20px -2px rgba(8, 18, 38, 0.08), 0 2px 6px -1px rgba(8, 18, 38, 0.04);
-  --shadow-elevated: 0 6px 20px -2px rgba(8, 18, 38, 0.07), 0 2px 6px -1px rgba(8, 18, 38, 0.04);
-  --shadow-floating: 0 16px 40px -4px rgba(8, 18, 38, 0.12), 0 6px 16px -2px rgba(8, 18, 38, 0.06);
-  --shadow-sidebar: 0 20px 40px -12px rgba(8, 18, 38, 0.28), 0 4px 16px rgba(8, 18, 38, 0.12);
+  --shadow-card: 0 1px 3px rgba(8, 18, 38, 0.04), 0 4px 16px -2px rgba(8, 18, 38, 0.03);
+  --shadow-card-hover: 0 12px 28px -4px rgba(8, 18, 38, 0.08), 0 4px 12px -2px rgba(8, 18, 38, 0.04);
+  --shadow-elevated: 0 16px 36px -6px rgba(8, 18, 38, 0.09), 0 6px 16px -2px rgba(8, 18, 38, 0.04);
+  --shadow-floating: 0 24px 48px -8px rgba(8, 18, 38, 0.14), 0 8px 20px -3px rgba(8, 18, 38, 0.06);
+  --shadow-sidebar: 0 20px 48px -12px rgba(8, 18, 38, 0.32), 0 4px 18px rgba(8, 18, 38, 0.14);
   --shadow-topbar: 0 4px 20px -4px rgba(8, 18, 38, 0.05);
-  --shadow-dropdown: 0 12px 32px -4px rgba(8, 18, 38, 0.12), 0 4px 10px rgba(8, 18, 38, 0.04);
-  --shadow-drawer: -8px 0 36px rgba(8, 18, 38, 0.14);
+  --shadow-dropdown: 0 16px 40px -4px rgba(8, 18, 38, 0.14), 0 4px 12px rgba(8, 18, 38, 0.04);
+  --shadow-drawer: -12px 0 48px rgba(8, 18, 38, 0.16);
+  --shadow-glow-blue: 0 0 24px -2px rgba(37, 99, 235, 0.28);
+  --shadow-glow-orange: 0 0 24px -2px rgba(249, 115, 22, 0.28);
 }
 
 @layer base {
@@ -59,14 +65,15 @@
   }
   
   html, body {
-    background-color: #F6F8FB;
+    background-color: #F8FAFC;
     color: #081226;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
-  /* Custom scrollbar for high-density ATS scanning */
+  /* Sleek modern scrollbar for desktop ATS scan */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -81,44 +88,77 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #94A3B8;
   }
+
+  /* Dark container scrollbar */
+  .dark-scroll::-webkit-scrollbar-thumb {
+    background: #1E2E4E;
+  }
+  .dark-scroll::-webkit-scrollbar-thumb:hover {
+    background: #2E4575;
+  }
 }
 
-/* ATS Typography Hierarchy */
+/* Linear & Stripe Typography Hierarchy */
 .text-display {
-  font-size: 36px;
-  line-height: 44px;
+  font-size: 34px;
+  line-height: 42px;
   font-weight: 800;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.03em;
 }
 .text-h1 {
-  font-size: 30px;
-  line-height: 38px;
+  font-size: 28px;
+  line-height: 36px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 .text-h2 {
-  font-size: 22px;
-  line-height: 30px;
+  font-size: 21px;
+  line-height: 28px;
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.018em;
 }
 .text-h3 {
-  font-size: 18px;
-  line-height: 26px;
+  font-size: 17px;
+  line-height: 24px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
 }
 .text-body {
-  font-size: 15px;
+  font-size: 14.5px;
   line-height: 22px;
 }
 .text-small {
-  font-size: 13.5px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 19px;
 }
 .text-caption {
-  font-size: 12px;
+  font-size: 11.5px;
   line-height: 16px;
+  letter-spacing: 0.01em;
+}
+
+/* Glassmorphic Surfaces */
+.glass-surface {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.glass-surface-dark {
+  background: rgba(8, 18, 38, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(30, 46, 78, 0.8);
+}
+
+/* Premium Card Micro-Bevel */
+.card-bevel {
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.8), 0 1px 3px rgba(8, 18, 38, 0.04), 0 4px 16px -2px rgba(8, 18, 38, 0.03);
+}
+
+.card-bevel-dark {
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.07), 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
 /* Enterprise Micro-Animations */
@@ -135,9 +175,21 @@
   background: linear-gradient(
     90deg,
     #F1F5F9 0%,
-    #E2E8F0 40%,
-    #F8FAFC 60%,
+    #E2E8F0 35%,
+    #F8FAFC 55%,
     #F1F5F9 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.8s ease-in-out infinite;
+}
+
+.skeleton-shimmer-dark {
+  background: linear-gradient(
+    90deg,
+    #0E1C38 0%,
+    #182B54 35%,
+    #122245 55%,
+    #0E1C38 100%
   );
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.8s ease-in-out infinite;
@@ -153,10 +205,29 @@
   animation: input-shake 0.35s ease-in-out;
 }
 
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2.5s ease-in-out infinite;
+}
+
 @keyframes typing-dot {
   0%, 60%, 100% {
     transform: translateY(0);
-    opacity: 0.4;
+    opacity: 0.35;
   }
   30% {
     transform: translateY(-4px);

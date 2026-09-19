@@ -61,8 +61,10 @@ const CandidateRow = React.memo(function CandidateRow({
     <div
       onClick={() => onSelect(candidate)}
       className={cn(
-        'px-5 py-3.5 flex items-center justify-between gap-4 cursor-pointer transition-all duration-150 group relative',
-        isSelected ? 'bg-[#EFF6FF] border-l-4 border-[#2563EB] shadow-xs' : 'hover:bg-[#F8FAFC]'
+        'px-5 py-3.5 flex items-center justify-between gap-4 cursor-pointer transition-all duration-150 group relative select-none',
+        isSelected
+          ? 'bg-gradient-to-r from-[#EFF6FF] to-[#F8FAFC] border-l-3.5 border-[#2563EB] shadow-xs'
+          : 'hover:bg-[#F8FAFC]/90 hover:translate-x-0.5'
       )}
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -349,7 +351,7 @@ export function ResumesPage() {
   return (
     <div className="space-y-6">
       {/* Top Header Card */}
-      <div className="bg-white p-5 rounded-[20px] border border-[#E2E8F0] shadow-card space-y-4">
+      <div className="bg-white p-5 rounded-[24px] border border-[#E2E8F0] shadow-card space-y-4 card-bevel">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -483,7 +485,7 @@ export function ResumesPage() {
       {/* 60% Left / 40% Right Split Workspace */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* LEFT 60%: Dense Candidate Rows */}
-        <div className="lg:col-span-7 bg-white rounded-[20px] border border-[#E2E8F0] shadow-card overflow-hidden flex flex-col">
+        <div className="lg:col-span-7 bg-white rounded-[24px] border border-[#E2E8F0] shadow-card overflow-hidden flex flex-col card-bevel">
           <div className="px-5 py-3.5 bg-[#F8FAFC] border-b border-[#E2E8F0] flex items-center justify-between text-caption font-semibold text-[#64748B] uppercase tracking-wider select-none">
             <div className="flex items-center gap-3">
               <span>Candidate & Hiring Organization</span>
@@ -584,7 +586,7 @@ export function ResumesPage() {
         </div>
 
         {/* RIGHT 40%: Real-Time Candidate Detail Slide-Over (Auto Synced, No Manual Pipeline Submission Button) */}
-        <div className="lg:col-span-5 bg-white rounded-[20px] border border-[#E2E8F0] shadow-card overflow-hidden sticky top-6">
+        <div className="lg:col-span-5 bg-white rounded-[24px] border border-[#E2E8F0] shadow-card overflow-hidden sticky top-6 card-bevel">
           {selectedResume ? (
             <div className="flex flex-col h-full max-h-[calc(100vh-140px)]">
               {/* Header */}

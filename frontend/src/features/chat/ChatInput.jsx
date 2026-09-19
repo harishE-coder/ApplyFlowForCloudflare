@@ -27,7 +27,6 @@ export function ChatInput({
   const textareaRef = useRef(null);
   const typingTimerRef = useRef(null);
   const isTypingRef = useRef(false);
-
   const lastTypingSentRef = useRef(0);
 
   // Auto-resize textarea
@@ -120,10 +119,10 @@ export function ChatInput({
   };
 
   return (
-    <div className="relative border-t border-[#E2E8F0] bg-white p-2.5 sm:p-4 shrink-0">
+    <div className="relative border-t border-[#E2E8F0] bg-white p-3 sm:p-4 shrink-0">
       {/* Active typing indicator row */}
       {typingText && (
-        <div className="absolute -top-7 left-3 sm:left-5 flex items-center gap-2 text-[11px] font-medium text-[#2563EB] bg-white/95 backdrop-blur-md px-3 py-1 rounded-t-[10px] border-t border-x border-[#E2E8F0] shadow-xs">
+        <div className="absolute -top-7 left-4 sm:left-6 flex items-center gap-2 text-[11px] font-bold text-[#2563EB] bg-white/95 backdrop-blur-md px-3 py-1 rounded-t-[12px] border-t border-x border-[#E2E8F0] shadow-xs">
           <span className="flex gap-1 items-center">
             <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-typing-dot-1" />
             <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] animate-typing-dot-2" />
@@ -135,13 +134,13 @@ export function ChatInput({
 
       {/* Emoji Picker Popover */}
       {showEmojiPicker && (
-        <div className="absolute bottom-16 sm:bottom-20 left-2 sm:left-4 p-3 bg-white rounded-[20px] border border-[#CBD5E1] shadow-xl z-30 animate-in fade-in zoom-in-95 duration-100 max-w-[90vw]">
+        <div className="absolute bottom-16 sm:bottom-20 left-3 sm:left-5 p-3 bg-white/98 backdrop-blur-xl rounded-[22px] border border-[#E2E8F0] shadow-floating z-30 animate-in fade-in zoom-in-95 duration-120 max-w-[90vw] card-bevel">
           <div className="flex items-center justify-between pb-2 border-b border-[#F1F5F9] mb-2">
             <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">Quick Reactions</span>
             <button
               type="button"
               onClick={() => setShowEmojiPicker(false)}
-              className="p-1 min-h-[32px] min-w-[32px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] rounded-md"
+              className="p-1 min-h-[28px] min-w-[28px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] rounded-md cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -152,7 +151,7 @@ export function ChatInput({
                 key={emoji}
                 type="button"
                 onClick={() => handleAddEmoji(emoji)}
-                className="w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center text-lg hover:bg-[#F1F5F9] rounded-lg transition-transform hover:scale-120 cursor-pointer"
+                className="w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center text-lg hover:bg-[#F1F5F9] rounded-lg transition-transform hover:scale-125 active:scale-95 cursor-pointer"
               >
                 {emoji}
               </button>
@@ -162,7 +161,7 @@ export function ChatInput({
       )}
 
       {/* Input container bar */}
-      <div className="flex items-end gap-1.5 sm:gap-2 bg-[#F8FAFC] border border-[#CBD5E1] rounded-[20px] p-2 focus-within:border-[#2563EB] focus-within:ring-2 focus-within:ring-[#2563EB]/15 focus-within:bg-white transition-all duration-150">
+      <div className="flex items-end gap-1.5 sm:gap-2 bg-[#F8FAFC] border border-[#E2E8F0] rounded-[22px] p-2 focus-within:border-[#2563EB] focus-within:ring-4 focus-within:ring-[#2563EB]/12 focus-within:bg-white transition-all duration-150 shadow-xs">
         {/* Hidden file input */}
         <input
           ref={fileInputRef}
@@ -180,32 +179,32 @@ export function ChatInput({
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading || disabled}
             title="Attach Document or Image"
-            className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#64748B] hover:text-[#2563EB] hover:bg-[#E2E8F0]/60 rounded-[12px] transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF6FF] rounded-xl transition-all duration-120 hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
           >
             {uploading ? <Loader2 className="w-4 h-4 animate-spin text-[#2563EB]" /> : <Paperclip className="w-4 h-4" />}
           </button>
 
-          {/* Share Candidate Resume Button (Available for all roles including Client) */}
+          {/* Share Candidate Resume Button */}
           {onOpenResumeModal && (
             <button
               type="button"
               onClick={onOpenResumeModal}
               disabled={disabled}
               title="Share Candidate Resume from Candidate Bank"
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#64748B] hover:text-[#F97316] hover:bg-[#F97316]/10 rounded-[12px] transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#64748B] hover:text-[#F97316] hover:bg-[#FFF7ED] rounded-xl transition-all duration-120 hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
             >
               <FileText className="w-4 h-4" />
             </button>
           )}
 
-          {/* Share Job Opening Button (Available for all roles) */}
+          {/* Share Job Opening Button */}
           {onOpenJobModal && (
             <button
               type="button"
               onClick={onOpenJobModal}
               disabled={disabled}
               title="Share Job Opening"
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#64748B] hover:text-[#0D9488] hover:bg-[#0D9488]/10 rounded-[12px] transition-all hover:scale-105 active:scale-95 cursor-pointer"
+              className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#64748B] hover:text-[#0D9488] hover:bg-[#F0FDFA] rounded-xl transition-all duration-120 hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
             >
               <Briefcase className="w-4 h-4" />
             </button>
@@ -216,8 +215,8 @@ export function ChatInput({
             type="button"
             onClick={() => setShowEmojiPicker((prev) => !prev)}
             title="Insert Emoji"
-            className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[12px] transition-all hover:scale-105 active:scale-95 cursor-pointer ${
-              showEmojiPicker ? 'text-[#2563EB] bg-[#EFF6FF]' : 'text-[#64748B] hover:text-[#081226] hover:bg-[#E2E8F0]/60'
+            className={`p-2 min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl transition-all duration-120 hover:scale-105 active:scale-95 cursor-pointer ${
+              showEmojiPicker ? 'text-[#2563EB] bg-[#EFF6FF]' : 'text-[#64748B] hover:text-[#081226] hover:bg-[#F1F5F9]'
             }`}
           >
             <Smile className="w-4 h-4" />
@@ -231,9 +230,9 @@ export function ChatInput({
           value={text}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message…"
+          placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
           disabled={disabled}
-          className="flex-1 max-h-[140px] resize-none bg-transparent py-2.5 px-2 text-small text-[#081226] placeholder-[#94A3B8] focus:outline-hidden font-medium leading-relaxed transition-[height] duration-150"
+          className="flex-1 max-h-[140px] resize-none bg-transparent py-2.5 px-2 text-small text-[#081226] placeholder-[#94A3B8] focus:outline-none font-medium leading-relaxed transition-[height] duration-150"
         />
 
         {/* Send Button */}
@@ -242,13 +241,13 @@ export function ChatInput({
             type="button"
             onClick={handleSend}
             disabled={!text.trim() || disabled}
-            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-[12px] flex items-center justify-center transition-all duration-180 ${
+            className={`w-10 h-10 rounded-[14px] flex items-center justify-center transition-all duration-150 ${
               text.trim() && !disabled
-                ? 'bg-[#2563EB] text-white hover:bg-[#1D4ED8] shadow-md hover:scale-105 active:scale-95 cursor-pointer'
-                : 'bg-[#E2E8F0] text-[#94A3B8] cursor-not-allowed opacity-75'
+                ? 'bg-gradient-to-b from-[#3B82F6] to-[#2563EB] text-white shadow-[0_2px_10px_rgba(37,99,235,0.4)] hover:scale-105 active:scale-95 cursor-pointer'
+                : 'bg-[#E2E8F0] text-[#94A3B8] cursor-not-allowed opacity-60'
             }`}
           >
-            <Send className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.5]" />
+            <Send className="w-4 h-4 stroke-[2.5]" />
           </button>
         </div>
       </div>

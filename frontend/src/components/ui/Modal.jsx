@@ -32,17 +32,17 @@ export function Modal({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[#081226]/60 backdrop-blur-md"
+            className="fixed inset-0 bg-[#081226]/65 backdrop-blur-md"
           />
 
           {/* Modal Card */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 6 }}
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 6 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 350 }}
             className={cn(
-              'relative w-full bg-white rounded-[24px] border border-[#E2E8F0] shadow-2xl overflow-hidden z-10 max-h-[92vh] flex flex-col',
+              'relative w-full bg-white rounded-[26px] border border-[#E2E8F0] shadow-floating overflow-hidden z-10 max-h-[92vh] flex flex-col card-bevel',
               maxWidth,
               className
             )}
@@ -57,7 +57,7 @@ export function Modal({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] hover:bg-[#F1F5F9] rounded-[12px] transition-colors shrink-0 cursor-pointer"
+                className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] hover:bg-[#F1F5F9] rounded-[12px] transition-all duration-150 shrink-0 cursor-pointer active:scale-95"
                 aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
@@ -69,7 +69,7 @@ export function Modal({
 
             {/* Footer */}
             {footer && (
-              <div className="px-5 sm:px-6 py-3.5 sm:py-4 bg-[#F8FAFC] border-t border-[#F1F5F9] flex items-center justify-end gap-2.5 sm:gap-3 rounded-b-[24px] shrink-0">
+              <div className="px-5 sm:px-6 py-3.5 sm:py-4 bg-[#F8FAFC] border-t border-[#F1F5F9] flex items-center justify-end gap-2.5 sm:gap-3 rounded-b-[26px] shrink-0">
                 {footer}
               </div>
             )}
@@ -109,7 +109,7 @@ export function Drawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[#081226]/50 backdrop-blur-xs"
+            className="fixed inset-0 bg-[#081226]/60 backdrop-blur-xs"
           />
 
           {/* Drawer Content */}
@@ -117,9 +117,9 @@ export function Drawer({
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ type: 'spring', damping: 32, stiffness: 350 }}
             className={cn(
-              'relative w-full h-full bg-white shadow-drawer border-l border-[#E2E8F0] z-10 flex flex-col max-w-[90vw] sm:max-w-md',
+              'relative w-full h-full bg-white shadow-drawer border-l border-[#E2E8F0] z-10 flex flex-col max-w-[92vw] sm:max-w-md',
               width,
               className
             )}
@@ -134,7 +134,7 @@ export function Drawer({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] hover:bg-[#F1F5F9] rounded-xl transition-colors cursor-pointer"
+                className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] hover:bg-[#F1F5F9] rounded-xl transition-all duration-150 cursor-pointer active:scale-95"
                 aria-label="Close drawer"
               >
                 <X className="w-5 h-5" />

@@ -439,7 +439,7 @@ export function AdminDashboard() {
   return (
     <div className="space-y-8">
       {/* 1. STICKY TOP FILTER BAR (4 Reactive Filters: Service Client, Cascading Recruiter, Single Date Picker, Quick Buttons) */}
-      <div className="sticky top-6 z-30 bg-white/95 backdrop-blur-md p-5 rounded-[20px] border border-[#E2E8F0] shadow-surface space-y-4">
+      <div className="sticky top-4 z-30 bg-white/95 backdrop-blur-xl p-5 rounded-[24px] border border-[#E2E8F0] shadow-card space-y-4 card-bevel">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">

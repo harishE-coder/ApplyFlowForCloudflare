@@ -70,7 +70,7 @@ export function NotificationsPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white p-5 rounded-[24px] border border-[#E2E8F0] shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4 card-bevel">
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-h2 font-extrabold text-[#081226] tracking-tight">

@@ -426,7 +426,7 @@ export async function getSevenDayTrend(sql: any, targetSum: number = 0): Promise
     return {
       date: dStr,
       uploads: Number(r.uploads),
-      applications: Number(r.applications),
+      applications: Math.max(Number(r.applications), Number(r.uploads)),
       target: Math.round(targetSum / 7) || 0,
     };
   });

@@ -423,7 +423,7 @@ dashboardRouter.get("/admin/home", async (c) => {
     // 6. Client Cards
     const clientRows = clientsList;
     const clientIds = clientRows.map((c: any) => String(c.id));
-    const [cReqs, cApps, cRecs] = await Promise.all([
+    const [cReqs, cApps, cRecs, cResumes] = await Promise.all([
       clientIds.length > 0
         ? sql`SELECT client_id, count(*)::int as count FROM requirements WHERE client_id = ANY(${clientIds}) AND status = 'active' GROUP BY client_id`
         : [],
@@ -442,6 +442,9 @@ dashboardRouter.get("/admin/home", async (c) => {
             GROUP BY ec.client_id
           `
         : [],
+      clientIds.length > 0
+        ? sql`SELECT client_id, count(*)::int as count FROM resumes WHERE client_id = ANY(${clientIds}) GROUP BY client_id`
+        : [],
     ]);
 
     const cReqMap: Record<string, number> = {};
@@ -453,6 +456,9 @@ dashboardRouter.get("/admin/home", async (c) => {
     const cRecMap: Record<string, number> = {};
     for (const r of cRecs) cRecMap[String(r.client_id)] = Number(r.count);
 
+    const cResMap: Record<string, number> = {};
+    for (const r of cResumes) cResMap[String(r.client_id)] = Number(r.count);
+
     const clientCards = clientRows.map((cl: any) => {
       const cid = String(cl.id);
       return {
@@ -460,7 +466,7 @@ dashboardRouter.get("/admin/home", async (c) => {
         company_name: cl.company_name,
         contact_person: cl.contact_person || null,
         active_requirements_count: cReqMap[cid] || 0,
-        applications_received_count: cAppMap[cid] || 0,
+        applications_received_count: Math.max(cAppMap[cid] || 0, cResMap[cid] || 0),
         active_recruiters_count: cRecMap[cid] || 0,
         completion_rate: 100.0,
         chart_data: dailyUploadsTrend,
@@ -697,14 +703,14 @@ dashboardRouter.get("/client/home", async (c) => {
       clientId
         ? sql`
             SELECT
-              a.id,
-              a.resume_id,
+              COALESCE(a.id, r.id) as id,
+              r.id as resume_id,
               COALESCE(r.candidate_name, a.candidate_name, 'Candidate') as candidate_name,
-              a.company as hiring_company,
-              a.role,
-              a.current_round as round,
-              a.status,
-              a.applied_date,
+              COALESCE(a.company, r.company, 'Enterprise') as hiring_company,
+              COALESCE(a.role, r.role, 'Role') as role,
+              COALESCE(a.current_round, 'Applied') as round,
+              COALESCE(a.status, 'Applied') as status,
+              COALESCE(a.applied_date, r.work_date, r.resume_date, (r.created_at AT TIME ZONE 'Asia/Kolkata')::date) as applied_date,
               r.drive_file_id,
               r.drive_view_url,
               r.drive_download_url,
@@ -713,10 +719,10 @@ dashboardRouter.get("/client/home", async (c) => {
               r.file_name,
               r.original_filename,
               r.mime_type
-            FROM applications a
-            LEFT JOIN resumes r ON a.resume_id = r.id
-            WHERE a.client_id = ${clientId}
-            ORDER BY a.applied_date DESC
+            FROM resumes r
+            LEFT JOIN applications a ON a.resume_id = r.id
+            WHERE r.client_id = ${clientId}
+            ORDER BY COALESCE(a.applied_date, r.work_date, r.resume_date, (r.created_at AT TIME ZONE 'Asia/Kolkata')::date) DESC
             LIMIT 15
           `
         : [],

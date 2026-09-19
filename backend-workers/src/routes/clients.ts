@@ -166,7 +166,7 @@ async function fetchClientDetails(sql: any, clients: any[]): Promise<any[]> {
       total_requirements: reqTotalMap[cid] || 0,
       active_requirements: reqActiveMap[cid] || 0,
       total_resumes: resumesMap[cid] || 0,
-      total_applications: appsMap[cid] || 0,
+      total_applications: Math.max(appsMap[cid] || 0, resumesMap[cid] || 0),
     };
   });
 }

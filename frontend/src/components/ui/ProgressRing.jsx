@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { cn } from '@/utils/cn';
 
 export function ProgressRing({
@@ -11,6 +11,8 @@ export function ProgressRing({
   valueText,
   className,
 }) {
+  const uid = useId().replace(/:/g, '');
+  const gradientId = `ringGradient-${uid}`;
   const visualProgress = Math.min(Math.max(progress, 0), 100);
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
@@ -21,7 +23,7 @@ export function ProgressRing({
     <div className={cn('relative inline-flex items-center justify-center', className)} style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90">
         <defs>
-          <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={isOver100 ? '#10B981' : color} />
             <stop offset="100%" stopColor={isOver100 ? '#059669' : '#EA580C'} />
           </linearGradient>
@@ -41,19 +43,19 @@ export function ProgressRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="url(#ringGradient)"
+          stroke={`url(#${gradientId})`}
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
           strokeLinecap="round"
           fill="none"
-          className="transition-all duration-700 ease-out"
+          className="transition-all duration-700 ease-out drop-shadow-xs"
         />
       </svg>
 
       {/* Center Label */}
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none">
-        <span className={cn('text-[20px] font-extrabold tracking-tight leading-none', isOver100 ? 'text-[#10B981]' : 'text-[#081226]')}>
+        <span className={cn('font-display text-[20px] font-extrabold tracking-tight leading-none', isOver100 ? 'text-[#10B981]' : 'text-[#081226]')}>
           {valueText || `${Math.round(Math.max(progress, 0))}%`}
         </span>
         {label && (

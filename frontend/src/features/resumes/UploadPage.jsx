@@ -53,7 +53,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
       {/* 1. File Name */}
       <td className="px-4 py-3 max-w-[170px]">
         <div className="flex items-center gap-2 min-w-0">
-          <FileText className="w-4 h-4 text-[#0D6EFD] shrink-0" />
+          <FileText className="w-4 h-4 text-[#2563EB] shrink-0" />
           <span className="font-mono text-caption text-[#081226] truncate" title={row.filename}>
             {row.filename}
           </span>
@@ -70,7 +70,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
             'w-full h-[34px] px-2 rounded-lg text-caption font-semibold bg-white border focus:outline-none',
             row.clientMatch === false
               ? 'border-rose-300 text-rose-700 bg-rose-50/50'
-              : 'border-[#E2E8F0] text-[#081226] focus:border-[#0D6EFD]'
+              : 'border-[#E2E8F0] text-[#081226] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/20'
           )}
           placeholder="Service Client"
         />
@@ -82,7 +82,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
           type="text"
           value={row.company}
           onChange={(e) => onUpdateRow(row.id, 'company', e.target.value)}
-          className="w-full h-[34px] px-2 rounded-lg text-caption font-bold bg-white text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+          className="w-full h-[34px] px-2 rounded-lg text-caption font-bold bg-white text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/20 focus:outline-none"
           placeholder="e.g. TCS"
         />
       </td>
@@ -93,7 +93,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
           type="text"
           value={row.role}
           onChange={(e) => onUpdateRow(row.id, 'role', e.target.value)}
-          className="w-full h-[34px] px-2 rounded-lg text-caption bg-white text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+          className="w-full h-[34px] px-2 rounded-lg text-caption bg-white text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/20 focus:outline-none"
           placeholder="e.g. Java Developer"
         />
       </td>
@@ -105,7 +105,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
           value={row.resume_identifier}
           placeholder="e.g. RES101"
           onChange={(e) => onUpdateRow(row.id, 'resume_identifier', e.target.value)}
-          className="w-full h-[34px] px-2 rounded-lg text-caption font-mono bg-white text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+          className="w-full h-[34px] px-2 rounded-lg text-caption font-mono bg-white text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/20 focus:outline-none"
         />
       </td>
 
@@ -585,7 +585,7 @@ export function UploadPage() {
             particleCount: 80,
             spread: 70,
             origin: { y: 0.6 },
-            colors: ['#0D6EFD', '#FF8A00', '#16A34A'],
+            colors: ['#2563EB', '#F97316', '#16A34A'],
           });
         }
       } catch (e) {
@@ -622,10 +622,10 @@ export function UploadPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-h1 font-extrabold text-[#081226] tracking-tight">
+            <h1 className="text-h1 font-display font-extrabold text-[#081226] tracking-tight">
               Upload Candidate Resumes
             </h1>
-            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#FF8A00] border border-[#FFEDD5]">
+            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-orange-50 text-[#F97316] border border-orange-200">
               Recruiter Ingestion Only
             </span>
           </div>
@@ -644,9 +644,9 @@ export function UploadPage() {
       </div>
 
       {/* Upload Configuration Form (1. Assigned Client, 2. Resume Date) */}
-      <div className="bg-white p-6 rounded-3xl border border-[#E2E8F0] shadow-card space-y-5">
+      <div className="bg-white p-6 rounded-3xl border border-[#E2E8F0] card-bevel shadow-card space-y-5">
         <h3 className="text-small font-bold uppercase tracking-wider text-[#64748B] flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-[#0D6EFD]" />
+          <Building2 className="w-4 h-4 text-[#2563EB]" />
           Batch Ingestion Settings
         </h3>
 
@@ -659,7 +659,7 @@ export function UploadPage() {
             <select
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
-              className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+              className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10"
               required
             >
               <option value="">Select Assigned Service Client...</option>
@@ -686,7 +686,7 @@ export function UploadPage() {
                 max={todayIST}
                 value={workDate}
                 onChange={(e) => setWorkDate(e.target.value)}
-                className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+                className="w-full h-[48px] px-4 rounded-xl text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10"
               />
             </div>
             <p className="text-caption text-[#64748B] mt-1">
@@ -706,7 +706,7 @@ export function UploadPage() {
       </div>
 
       {/* Drag & Drop Ingestion Zone with Standard Help Text & Live Examples */}
-      <div className="bg-white rounded-3xl border border-[#E2E8F0] shadow-card p-6 sm:p-8 space-y-6">
+      <div className="bg-white rounded-3xl border border-[#E2E8F0] card-bevel shadow-card p-6 sm:p-8 space-y-6">
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -724,7 +724,7 @@ export function UploadPage() {
           className={cn(
             'border-2 border-dashed rounded-2xl p-8 sm:p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group',
             isDragOver
-              ? 'border-[#0D6EFD] bg-[#EFF6FF]'
+              ? 'border-[#2563EB] bg-blue-50/50 shadow-[0_0_32px_rgba(37,99,235,0.15)]'
               : 'border-[#CBD5E1] bg-[#F8FAFC] hover:bg-[#F1F5F9] hover:border-[#94A3B8]'
           )}
         >
@@ -741,22 +741,22 @@ export function UploadPage() {
             className="hidden"
           />
 
-          <div className="w-16 h-16 rounded-2xl bg-[#EFF6FF] text-[#0D6EFD] flex items-center justify-center mb-4 border border-[#BFDBFE]">
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center mb-4 border border-blue-200">
             <UploadCloud className="w-8 h-8" />
           </div>
 
           <h4 className="text-h3 font-bold text-[#081226]">
-            Drag & drop PDF resumes, or <span className="text-[#0D6EFD] underline underline-offset-4">browse</span>
+            Drag & drop PDF resumes, or <span className="text-[#2563EB] underline underline-offset-4">browse</span>
           </h4>
 
           <p className="text-small text-[#081226] font-semibold max-w-lg mt-2 mb-2">
-            Use the format <code className="font-mono text-caption text-[#0D6EFD] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">ServiceClient_HiringOrg_RoleOrRoleID_CandidateIdentifier.pdf</code>
+            Use the format <code className="font-mono text-caption text-[#2563EB] bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">ServiceClient_HiringOrg_RoleOrRoleID_CandidateIdentifier.pdf</code>
           </p>
 
           {/* Direct Standard Examples */}
           <div className="w-full max-w-xl bg-white p-3.5 rounded-xl border border-[#E2E8F0] shadow-xs text-left my-3 space-y-1.5">
             <div className="flex items-center gap-1.5 text-caption font-bold text-[#64748B] uppercase tracking-wider">
-              <Info className="w-3.5 h-3.5 text-[#0D6EFD]" />
+              <Info className="w-3.5 h-3.5 text-[#2563EB]" />
               <span>Standard Filename Examples</span>
             </div>
             <div className="grid grid-cols-1 gap-1 font-mono text-[11px] text-[#334155]">
@@ -765,20 +765,17 @@ export function UploadPage() {
                 <span className="text-[10px] text-[#64748B] font-sans">Client: ABC Staffing | TCS | Java Developer</span>
               </div>
               <div className="flex items-center justify-between p-1.5 rounded-lg bg-[#F8FAFC]">
-                <span>TalentHub_Amazon_SDEII_RES205.pdf</span>
-                <span className="text-[10px] text-[#64748B] font-sans">Client: Talent Hub | Amazon | SDE II</span>
-              </div>
-              <div className="flex items-center justify-between p-1.5 rounded-lg bg-[#F8FAFC]">
-                <span>NextHire_Infosys_INF-PY-02_RahulKumar.pdf</span>
-                <span className="text-[10px] text-[#64748B] font-sans">Client: NextHire | Infosys | INF-PY-02</span>
+                <span>TalentHub_Infosys_REQ-901_JohnDoe.pdf</span>
+                <span className="text-[10px] text-[#64748B] font-sans">Client: Talent Hub | Infosys | REQ-901</span>
               </div>
             </div>
           </div>
 
           <Button
+            type="button"
             variant="primary"
             size="md"
-            icon={FileText}
+            icon={UploadCloud}
             onClick={(e) => {
               e.stopPropagation();
               fileInputRef.current?.click();
@@ -789,7 +786,7 @@ export function UploadPage() {
           </Button>
 
           {queue.length > 0 && (
-            <p className="text-caption font-bold text-[#0D6EFD] mt-4">
+            <p className="text-caption font-bold text-[#2563EB] mt-4">
               {queue.length} files currently in staging queue
             </p>
           )}
@@ -863,14 +860,14 @@ export function UploadPage() {
             <div className="p-6 bg-[#081226] text-white space-y-3">
               <div className="flex items-center justify-between text-small font-semibold">
                 <span className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 text-[#0D6EFD] animate-spin" />
+                  <RefreshCw className="w-4 h-4 text-[#2563EB] animate-spin" />
                   Uploading batch to Google Drive & database repository...
                 </span>
                 <span>{uploadProgress}%</span>
               </div>
               <div className="w-full h-3 rounded-full bg-[#101F3D] overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-[#0D6EFD] to-[#16A34A] rounded-full transition-all duration-300"
+                  className="h-full bg-gradient-to-r from-[#2563EB] to-[#16A34A] rounded-full transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>

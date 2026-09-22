@@ -355,10 +355,10 @@ export function ResumesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-h2 font-extrabold text-[#081226] tracking-tight">
+              <h1 className="text-h2 font-display font-extrabold text-[#081226] tracking-tight">
                 Candidate Bank
               </h1>
-              <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]">
+              <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-[#2563EB] border border-blue-200">
                 {totalResumes} Resumes Ingested
               </span>
             </div>
@@ -449,7 +449,7 @@ export function ResumesPage() {
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-[#F8FAFC]">
             <div className="flex items-center gap-2">
               <span className="text-caption font-bold text-[#64748B] uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-[#0D6EFD]" />
+                <Calendar className="w-3.5 h-3.5 text-[#2563EB]" />
                 Upload Date:
               </span>
               <DateFilter
@@ -642,7 +642,7 @@ export function ResumesPage() {
 
                   <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
                     <div className="flex items-center gap-1.5 text-caption font-medium text-[#64748B]">
-                      <Briefcase className="w-3.5 h-3.5 text-[#FF8A00]" />
+                      <Briefcase className="w-3.5 h-3.5 text-[#F97316]" />
                       <span>Hiring Organization</span>
                     </div>
                     <p className="text-small font-bold text-[#081226] mt-1 truncate">

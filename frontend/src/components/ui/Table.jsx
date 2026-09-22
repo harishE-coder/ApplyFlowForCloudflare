@@ -14,10 +14,10 @@ export function Table({
   pagination, // { page, pageSize, total, onPageChange }
 }) {
   return (
-    <div className={cn('w-full flex flex-col bg-white rounded-[22px] border border-[#E2E8F0] shadow-card overflow-hidden card-bevel', className)}>
+    <div className={cn('w-full flex flex-col bg-white rounded-[24px] border border-[#E2E8F0] shadow-card overflow-hidden card-bevel', className)}>
       <div className="w-full overflow-x-auto max-h-[70vh]">
         <table className="w-full text-left border-collapse text-small">
-          <thead className="sticky top-0 z-10 bg-[#F8FAFC]/95 backdrop-blur-md border-b border-[#E2E8F0] shadow-[0_1px_2px_rgba(8,18,38,0.02)]">
+          <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl border-b border-[#E2E8F0] shadow-[0_1px_3px_rgba(8,18,38,0.03)]">
             <tr>
               {columns.map((col, idx) => (
                 <th
@@ -45,7 +45,7 @@ export function Table({
                 <tr key={i} className="animate-pulse">
                   {columns.map((_, j) => (
                     <td key={j} className="px-5 py-4">
-                      <div className="h-4 skeleton-shimmer rounded-[6px] w-3/4" />
+                      <div className="h-4 skeleton-shimmer rounded-[8px] w-3/4" />
                     </td>
                   ))}
                 </tr>
@@ -53,8 +53,8 @@ export function Table({
             ) : data.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-5 py-16 text-center text-[#64748B]">
-                  <p className="text-small font-semibold text-[#475569]">{emptyMessage}</p>
-                  <p className="text-caption text-[#94A3B8] mt-1">Try adjusting your active filters or search terms</p>
+                  <p className="font-display text-small font-bold text-[#475569]">{emptyMessage}</p>
+                  <p className="text-caption text-[#94A3B8] mt-1 font-medium">Try adjusting your active filters or search terms</p>
                 </td>
               </tr>
             ) : (
@@ -65,10 +65,10 @@ export function Table({
                     key={row[idKey] || rowIdx}
                     onClick={() => onRowClick?.(row)}
                     className={cn(
-                      'transition-colors duration-120 group',
+                      'transition-colors duration-150 group',
                       rowIdx % 2 === 1 ? 'bg-[#FAFCFE]/60' : 'bg-white',
-                      onRowClick ? 'cursor-pointer hover:bg-[#F1F5F9]/90' : 'hover:bg-[#F8FAFC]',
-                      isSelected ? 'bg-[#EFF6FF] hover:bg-[#DBEAFE]/80 border-l-3 border-[#2563EB]' : ''
+                      onRowClick ? 'cursor-pointer hover:bg-[#F8FAFC]' : 'hover:bg-[#F8FAFC]/70',
+                      isSelected ? 'bg-gradient-to-r from-[#EFF6FF] to-white hover:bg-[#DBEAFE]/70 border-l-[3.5px] border-[#2563EB] shadow-2xs font-semibold' : ''
                     )}
                   >
                     {columns.map((col, colIdx) => (
@@ -93,7 +93,7 @@ export function Table({
       </div>
 
       {pagination && pagination.total > 0 && (
-        <div className="px-5 py-3 bg-[#F8FAFC] border-t border-[#E2E8F0] flex items-center justify-between gap-4 text-caption text-[#64748B] shrink-0">
+        <div className="px-5 py-3 bg-[#F8FAFC] border-t border-[#E2E8F0] flex items-center justify-between gap-4 text-caption text-[#64748B] shrink-0 font-medium">
           <div>
             Showing <span className="font-bold text-[#081226]">{Math.min((pagination.page - 1) * pagination.pageSize + 1, pagination.total)}</span> to{' '}
             <span className="font-bold text-[#081226]">{Math.min(pagination.page * pagination.pageSize, pagination.total)}</span> of{' '}

@@ -119,14 +119,14 @@ export function NotificationItem({
         if (onClick) onClick(notification);
       }}
       className={cn(
-        'group p-3.5 rounded-xl transition-all duration-150 flex items-start gap-3 cursor-pointer select-none hover:shadow-xs relative border border-transparent hover:border-[#E2E8F0]',
-        isUnread ? 'bg-[#EFF6FF]/60 hover:bg-[#EFF6FF]' : 'hover:bg-[#F8FAFC]',
+        'group p-3.5 rounded-2xl transition-all duration-150 flex items-start gap-3.5 cursor-pointer select-none hover:shadow-xs relative border border-transparent hover:border-[#E2E8F0]',
+        isUnread ? 'bg-[#EFF6FF]/70 hover:bg-[#EFF6FF] border-[#BFDBFE]/60' : 'hover:bg-[#F8FAFC]',
         className
       )}
     >
       <div
         className={cn(
-          'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 transition-transform group-hover:scale-105',
+          'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-transform duration-200 group-hover:scale-108 border border-transparent group-hover:border-black/5',
           bg
         )}
       >
@@ -143,20 +143,20 @@ export function NotificationItem({
           >
             {notification.title}
           </p>
-          <span className="text-[11px] text-[#94A3B8] shrink-0">
+          <span className="text-[11px] text-[#94A3B8] font-medium shrink-0">
             {formatRelativeTime(notification.created_at)}
           </span>
         </div>
 
-        <p className="text-caption text-[#64748B] mt-0.5 line-clamp-2 leading-relaxed">
+        <p className="text-caption text-[#64748B] mt-0.5 line-clamp-2 leading-relaxed font-medium">
           {notification.message}
         </p>
       </div>
 
       {isUnread && (
         <span
-          className="w-2 h-2 rounded-full bg-[#2563EB] shrink-0 self-center"
-          title="Unread"
+          className="w-2.5 h-2.5 rounded-full bg-[#2563EB] shadow-[0_0_8px_rgba(37,99,235,0.7)] animate-pulse shrink-0 self-center"
+          title="Unread notification"
         />
       )}
 
@@ -167,14 +167,14 @@ export function NotificationItem({
             e.stopPropagation();
             onDelete(notification.id);
           }}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[#94A3B8] hover:text-[#EF4444] hover:bg-rose-50 transition-all self-center shrink-0"
+          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[#94A3B8] hover:text-[#EF4444] hover:bg-rose-50 transition-all self-center shrink-0 cursor-pointer active:scale-95"
           title="Delete notification"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       )}
 
-      <ChevronRight className="w-4 h-4 text-[#CBD5E1] group-hover:text-[#2563EB] group-hover:translate-x-0.5 transition-all self-center shrink-0" />
+      <ChevronRight className="w-4 h-4 text-[#CBD5E1] group-hover:text-[#2563EB] group-hover:translate-x-1 transition-all self-center shrink-0" />
     </div>
   );
 }

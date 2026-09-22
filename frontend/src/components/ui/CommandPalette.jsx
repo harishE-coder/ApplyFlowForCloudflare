@@ -204,15 +204,17 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
           />
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -12 }}
+            initial={{ opacity: 0, scale: 0.94, y: -16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -12 }}
-            transition={{ type: 'spring', damping: 28, stiffness: 400 }}
-            className="relative w-full max-w-xl bg-white/98 backdrop-blur-xl rounded-[24px] border border-[#E2E8F0] shadow-floating overflow-hidden z-10 card-bevel"
+            exit={{ opacity: 0, scale: 0.94, y: -16 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 420 }}
+            className="relative w-full max-w-xl bg-white/98 backdrop-blur-2xl rounded-[26px] border border-[#E2E8F0] shadow-floating overflow-hidden z-10 card-bevel"
           >
             {/* Search Input Box */}
-            <div className="p-4 border-b border-[#F1F5F9] flex items-center gap-3">
-              <Search className="w-5 h-5 text-[#2563EB] shrink-0" />
+            <div className="p-4.5 border-b border-[#F1F5F9] flex items-center gap-3.5 bg-gradient-to-r from-[#F8FAFC] to-white">
+              <div className="w-8 h-8 rounded-xl bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center shrink-0 border border-[#BFDBFE]/60">
+                <Search className="w-4 h-4" />
+              </div>
               <input
                 ref={inputRef}
                 value={query}
@@ -221,19 +223,19 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                   setSelectedIndex(0);
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="Type a command or search workspace..."
-                className="w-full text-body font-medium bg-transparent text-[#081226] placeholder-[#94A3B8] focus:outline-none"
+                placeholder="Type a command or jump to feature..."
+                className="w-full text-body font-semibold bg-transparent text-[#081226] placeholder-[#94A3B8] focus:outline-none"
               />
-              <kbd className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0] shadow-2xs">
+              <kbd className="text-[10px] font-extrabold px-2 py-1 rounded-lg bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0] shadow-2xs">
                 ESC
               </kbd>
             </div>
 
             {/* Results List */}
-            <div className="p-2 max-h-[360px] overflow-y-auto">
+            <div className="p-2.5 max-h-[380px] overflow-y-auto space-y-1">
               {filtered.length === 0 ? (
-                <div className="py-10 text-center text-[#64748B] text-small">
-                  No commands matching "<span className="font-semibold text-[#081226]">{query}</span>"
+                <div className="py-12 text-center text-[#64748B] text-small">
+                  No commands matching "<span className="font-bold text-[#081226]">{query}</span>"
                 </div>
               ) : (
                 filtered.map((action, idx) => {
@@ -245,19 +247,19 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                       onMouseEnter={() => setSelectedIndex(idx)}
                       onClick={() => handleSelect(action)}
                       className={cn(
-                        'px-3.5 py-2.5 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all duration-120 select-none group',
+                        'px-3.5 py-2.5 rounded-[14px] flex items-center justify-between gap-3 cursor-pointer transition-all duration-120 select-none group',
                         isSelected
-                          ? 'bg-[#2563EB] text-white shadow-xs'
+                          ? 'bg-[#2563EB] text-white shadow-[0_4px_16px_rgba(37,99,235,0.3)]'
                           : 'hover:bg-[#F8FAFC] text-[#081226]'
                       )}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
                           className={cn(
-                            'w-8.5 h-8.5 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-150',
+                            'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-150',
                             isSelected
                               ? 'bg-white/20 text-white scale-105'
-                              : 'bg-[#EFF6FF] text-[#2563EB] group-hover:scale-105'
+                              : 'bg-[#EFF6FF] text-[#2563EB] group-hover:scale-105 border border-[#BFDBFE]/60'
                           )}
                         >
                           <Icon className="w-4.5 h-4.5" />
@@ -268,7 +270,7 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                           </p>
                           <p
                             className={cn(
-                              'text-caption truncate mt-0.5',
+                              'text-caption truncate mt-0.5 font-medium',
                               isSelected ? 'text-blue-100' : 'text-[#64748B]'
                             )}
                           >
@@ -280,7 +282,7 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                       <div className="flex items-center gap-2 shrink-0">
                         <span
                           className={cn(
-                            'text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-md transition-colors',
+                            'text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-lg transition-colors',
                             isSelected
                               ? 'bg-white/20 text-white'
                               : 'bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]'
@@ -288,7 +290,7 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
                         >
                           {action.section}
                         </span>
-                        {isSelected && <ArrowRight className="w-4 h-4 text-white shrink-0" />}
+                        {isSelected && <ArrowRight className="w-4 h-4 text-white shrink-0 animate-pulse" />}
                       </div>
                     </div>
                   );
@@ -297,14 +299,14 @@ export function CommandPalette({ isOpen, onClose, userRole = 'employee' }) {
             </div>
 
             {/* Quick footer */}
-            <div className="px-4 py-2.5 bg-[#F8FAFC] border-t border-[#F1F5F9] flex items-center justify-between text-caption text-[#64748B]">
-              <span className="flex items-center gap-1.5 font-medium">
-                <Sparkles className="w-3.5 h-3.5 text-[#F97316]" />
-                ApplyFlow Spotlight ⌘K
+            <div className="px-5 py-3 bg-[#F8FAFC] border-t border-[#F1F5F9] flex items-center justify-between text-caption text-[#64748B]">
+              <span className="flex items-center gap-1.5 font-bold text-[#081226]">
+                <Sparkles className="w-3.5 h-3.5 text-[#F97316] animate-pulse" />
+                ApplyFlow Spotlight
               </span>
-              <div className="flex items-center gap-3">
-                <span>Navigate <kbd className="font-bold text-[#081226] bg-white px-1.5 py-0.5 rounded border border-[#E2E8F0] shadow-2xs">↑↓</kbd></span>
-                <span>Select <kbd className="font-bold text-[#081226] bg-white px-1.5 py-0.5 rounded border border-[#E2E8F0] shadow-2xs">↵</kbd></span>
+              <div className="flex items-center gap-3 font-semibold">
+                <span className="flex items-center gap-1">Navigate <kbd className="font-bold text-[#081226] bg-white px-1.5 py-0.5 rounded-md border border-[#E2E8F0] shadow-2xs">↑↓</kbd></span>
+                <span className="flex items-center gap-1">Select <kbd className="font-bold text-[#081226] bg-white px-1.5 py-0.5 rounded-md border border-[#E2E8F0] shadow-2xs">↵</kbd></span>
               </div>
             </div>
           </motion.div>

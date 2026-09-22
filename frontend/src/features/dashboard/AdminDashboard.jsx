@@ -405,17 +405,17 @@ export function AdminDashboard() {
   // 4. Application Status Distribution (Donut / Pie)
   const STATUS_CONFIGS = [
     { key: 'draft', name: 'Draft', color: '#64748B' },
-    { key: 'submitted', name: 'Submitted', color: '#0D6EFD' },
+    { key: 'submitted', name: 'Submitted', color: '#2563EB' },
     { key: 'shortlisted', name: 'Shortlisted', color: '#16A34A' },
     { key: 'rejected', name: 'Rejected', color: '#EF4444' },
-    { key: 'hold', name: 'Hold', color: '#FF8A00' },
+    { key: 'hold', name: 'Hold', color: '#F97316' },
     { key: 'closed', name: 'Closed', color: '#9333EA' },
   ];
 
   const statusDistributionData = useMemo(() => {
     const rawDist = overview?.application_status_distribution;
     if (Array.isArray(rawDist) && rawDist.length > 0) {
-      const colors = ['#0D6EFD', '#16A34A', '#FF8A00', '#EF4444', '#9333EA', '#64748B'];
+      const colors = ['#2563EB', '#16A34A', '#F97316', '#EF4444', '#9333EA', '#64748B'];
       return rawDist.map((item, idx) => ({
         name: item.name || 'Submitted',
         value: item.value || 0,
@@ -430,20 +430,20 @@ export function AdminDashboard() {
       })).filter((it) => it.value > 0);
     }
     return [];
-  }, [overview?.application_status_distribution]);
+  }, [overview]);
 
   if (loading && !overview) {
     return <BrandedLoader size="lg" label="Loading Executive Operations & Target Analytics..." />;
   }
 
   return (
-    <div className="space-y-8">
-      {/* 1. STICKY TOP FILTER BAR (4 Reactive Filters: Service Client, Cascading Recruiter, Single Date Picker, Quick Buttons) */}
-      <div className="sticky top-4 z-30 bg-white/95 backdrop-blur-xl p-5 rounded-[24px] border border-[#E2E8F0] shadow-card space-y-4 card-bevel">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* 1. TOP HEADER & INTERACTIVE FILTER BAR */}
+      <div className="bg-white rounded-[24px] border border-[#E2E8F0] card-bevel shadow-surface p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-h1 font-extrabold text-[#081226] tracking-tight">
+              <h1 className="text-h1 font-display font-extrabold text-[#081226] tracking-tight">
                 {isSubAdmin ? 'Scoped Operations & Target Analytics' : 'Admin Target & Operations Analytics'}
               </h1>
               {isSubAdmin ? (
@@ -452,7 +452,7 @@ export function AdminDashboard() {
                   Sub-Admin Scope
                 </span>
               ) : (
-                <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#0D6EFD] border border-[#BFDBFE] flex items-center gap-1">
+                <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-[#2563EB] border border-blue-200 flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5" />
                   Live Application Pipeline
                 </span>
@@ -487,7 +487,7 @@ export function AdminDashboard() {
             <select
               value={selectedClientId}
               onChange={(e) => handleClientChange(e.target.value)}
-              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10"
             >
               <option value="">All Service Clients ({clients.length})</option>
               {clients.map((c) => (
@@ -506,7 +506,7 @@ export function AdminDashboard() {
             <select
               value={selectedEmployeeId}
               onChange={(e) => handleEmployeeChange(e.target.value)}
-              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10"
             >
               <option value="">All Recruiters ({availableEmployees.length})</option>
               {availableEmployees.map((emp) => (
@@ -705,7 +705,7 @@ export function AdminDashboard() {
               <select
                 value={sortOption}
                 onChange={(e) => setSortOption(e.target.value)}
-                className="h-[36px] px-3 rounded-[12px] text-caption font-semibold bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#0D6EFD]"
+                className="h-[36px] px-3 rounded-[12px] text-caption font-semibold bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10"
               >
                 <option value="highest">Highest Completion %</option>
                 <option value="lowest">Lowest Completion %</option>
@@ -743,9 +743,9 @@ export function AdminDashboard() {
                 textColor = 'text-[#16A34A]';
                 bgTag = 'bg-[#F0FDF4] border-[#BBF7D0]';
               } else if (pct > 50) {
-                barColor = 'bg-[#FF8A00]'; // 51-99% Orange
-                textColor = 'text-[#FF8A00]';
-                bgTag = 'bg-[#FFF7ED] border-[#FFEDD5]';
+                barColor = 'bg-[#F97316]'; // 51-99% Orange
+                textColor = 'text-[#F97316]';
+                bgTag = 'bg-orange-50 border-orange-200';
               }
 
               return (
@@ -773,7 +773,7 @@ export function AdminDashboard() {
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Today</p>
-                      <p className="text-sm font-extrabold text-[#0D6EFD]">{r.today_uploads}</p>
+                      <p className="text-sm font-extrabold text-[#2563EB]">{r.today_uploads}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Backfilled</p>
@@ -840,9 +840,9 @@ export function AdminDashboard() {
                     textColor = 'text-[#16A34A]';
                     bgTag = 'bg-[#F0FDF4] border-[#BBF7D0]';
                   } else if (pct > 50) {
-                    barColor = 'bg-[#FF8A00]'; // 51-99% Orange
-                    textColor = 'text-[#FF8A00]';
-                    bgTag = 'bg-[#FFF7ED] border-[#FFEDD5]';
+                    barColor = 'bg-[#F97316]'; // 51-99% Orange
+                    textColor = 'text-[#F97316]';
+                    bgTag = 'bg-orange-50 border-orange-200';
                   }
 
                   return (
@@ -857,7 +857,7 @@ export function AdminDashboard() {
                         </div>
                       </td>
                       <td className="px-4 py-3.5 text-center font-bold text-[#081226]">{r.target}</td>
-                      <td className="px-4 py-3.5 text-center font-extrabold text-[#0D6EFD]">{r.today_uploads}</td>
+                      <td className="px-4 py-3.5 text-center font-extrabold text-[#2563EB]">{r.today_uploads}</td>
                       <td className="px-4 py-3.5 text-center">
                         {r.backfilled_today > 0 ? (
                           <button
@@ -947,7 +947,7 @@ export function AdminDashboard() {
 
           {drilldownLoading ? (
             <div className="py-12 text-center text-caption text-[#64748B] flex flex-col items-center gap-2">
-              <RefreshCw className="w-5 h-5 animate-spin text-[#0D6EFD]" />
+              <RefreshCw className="w-5 h-5 animate-spin text-[#2563EB]" />
               <span>Loading backfilled audit details...</span>
             </div>
           ) : drilldownItems.length === 0 ? (

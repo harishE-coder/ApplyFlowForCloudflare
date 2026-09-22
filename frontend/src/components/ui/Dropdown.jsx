@@ -42,12 +42,12 @@ export function Dropdown({
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+            initial={{ opacity: 0, scale: 0.94, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -4 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 400 }}
+            exit={{ opacity: 0, scale: 0.94, y: -6 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 450 }}
             className={cn(
-              'absolute z-50 mt-2 min-w-[200px] bg-white/95 backdrop-blur-xl rounded-[16px] border border-[#E2E8F0] shadow-dropdown p-1.5 focus:outline-none overflow-hidden card-bevel',
+              'absolute z-50 mt-2 min-w-[210px] bg-white/98 backdrop-blur-2xl rounded-[18px] border border-[#E2E8F0] shadow-dropdown p-1.5 focus:outline-none overflow-hidden card-bevel',
               align === 'right' ? 'right-0 origin-top-right' : 'left-0 origin-top-left',
               className
             )}
@@ -69,10 +69,10 @@ export function Dropdown({
                         setIsOpen(false);
                       }}
                       className={cn(
-                        'w-full px-3 py-2 text-small rounded-[11px] text-left flex items-center justify-between gap-2.5 transition-all duration-120 group cursor-pointer active:scale-[0.98]',
+                        'w-full px-3 py-2 text-small rounded-[12px] text-left flex items-center justify-between gap-2.5 transition-all duration-120 group cursor-pointer active:scale-[0.98]',
                         item.danger
                           ? 'text-[#EF4444] hover:bg-[#FEF2F2] hover:text-[#DC2626]'
-                          : 'text-[#081226] hover:bg-[#F1F5F9] hover:text-[#2563EB]',
+                          : 'text-[#081226] hover:bg-[#F8FAFC] hover:text-[#2563EB]',
                         item.disabled && 'opacity-40 cursor-not-allowed pointer-events-none'
                       )}
                     >
@@ -80,7 +80,7 @@ export function Dropdown({
                         {Icon && (
                           <Icon
                             className={cn(
-                              'w-4 h-4 shrink-0 transition-colors',
+                              'w-4 h-4 shrink-0 transition-transform duration-150 group-hover:scale-105',
                               item.danger ? 'text-[#EF4444]' : 'text-[#64748B] group-hover:text-[#2563EB]'
                             )}
                           />
@@ -88,7 +88,7 @@ export function Dropdown({
                         <span className="font-semibold text-[13px] truncate">{item.label}</span>
                       </div>
                       {item.badge && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200/60">
                           {item.badge}
                         </span>
                       )}

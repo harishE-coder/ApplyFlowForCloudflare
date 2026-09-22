@@ -199,7 +199,7 @@ export function LoginPage() {
               Enterprise Recruitment ATS
             </span>
 
-            <h1 className="text-display font-extrabold text-white tracking-tight leading-tight">
+            <h1 className="text-display font-display font-extrabold text-white tracking-tight leading-tight">
               Recruitment operations at scale.
             </h1>
 
@@ -250,7 +250,7 @@ export function LoginPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-h1 font-extrabold text-[#081226] tracking-tight">
+            <h2 className="text-h1 font-display font-extrabold text-[#081226] tracking-tight">
               Sign in to workspace
             </h2>
             <p className="text-small text-[#64748B] mt-1.5">

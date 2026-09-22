@@ -257,7 +257,7 @@ export function TargetsPage() {
       key: 'client_name',
       render: (val) => (
         <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-[#0D6EFD]" />
+          <Building2 className="w-4 h-4 text-[#2563EB]" />
           <span className="font-bold text-[#081226] text-small">{val}</span>
         </div>
       ),
@@ -267,7 +267,7 @@ export function TargetsPage() {
       key: 'daily_target',
       render: (val) => (
         <div className="flex items-center gap-2">
-          <span className="text-h3 font-extrabold text-[#FF8A00]">{val}</span>
+          <span className="text-h3 font-display font-extrabold text-[#F97316]">{val}</span>
           <span className="text-caption text-[#64748B]">apps / day</span>
         </div>
       ),
@@ -338,10 +338,10 @@ export function TargetsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-h1 font-extrabold text-[#081226] tracking-tight">
+            <h1 className="text-h1 font-display font-extrabold text-[#081226] tracking-tight">
               Recruiter Targets
             </h1>
-            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#FF8A00] border border-[#FFEDD5]">
+            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-orange-50 text-[#F97316] border border-orange-200">
               {targets.length} Active Targets
             </span>
           </div>
@@ -395,7 +395,7 @@ export function TargetsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search employee or client target..."
-            className="w-full h-[40px] px-3.5 rounded-[14px] text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full h-[40px] px-3.5 rounded-[14px] text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none"
           />
         </div>
 
@@ -403,7 +403,7 @@ export function TargetsPage() {
           <select
             value={selectedClientFilter}
             onChange={(e) => setSelectedClientFilter(e.target.value)}
-            className="w-full sm:w-56 h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full sm:w-56 h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none"
           >
             <option value="">All Service Clients</option>
             {clients.map((c) => (
@@ -416,7 +416,7 @@ export function TargetsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full sm:w-40 h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full sm:w-40 h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
@@ -445,7 +445,7 @@ export function TargetsPage() {
               value={formEmployeeId}
               onChange={(e) => setFormEmployeeId(e.target.value)}
               disabled={Boolean(editingTarget)}
-              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none disabled:opacity-60"
+              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none disabled:opacity-60"
               required
             >
               {employees.map((emp) => (
@@ -464,7 +464,7 @@ export function TargetsPage() {
               value={formClientId}
               onChange={(e) => setFormClientId(e.target.value)}
               disabled={Boolean(editingTarget)}
-              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none disabled:opacity-60"
+              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none disabled:opacity-60"
               required
             >
               {clients.map((c) => (

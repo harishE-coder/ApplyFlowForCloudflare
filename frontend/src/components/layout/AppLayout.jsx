@@ -147,7 +147,11 @@ export function AppLayout() {
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC] text-[#081226] antialiased overflow-x-hidden selection:bg-blue-500/20 selection:text-blue-900">
+    <div className="relative flex min-h-screen bg-[#F8FAFC] text-[#081226] antialiased overflow-x-hidden selection:bg-blue-500/20 selection:text-blue-900">
+      {/* Workspace ambient illumination */}
+      <div className="fixed top-0 right-0 w-[600px] h-[500px] bg-gradient-to-b from-[#2563EB]/4 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
+      <div className="fixed bottom-0 left-1/3 w-[500px] h-[400px] bg-gradient-to-t from-[#F97316]/3 to-transparent rounded-full blur-3xl pointer-events-none z-0" />
+
       {/* Sidebar (Desktop Sticky + Mobile/Tablet Off-Canvas Drawer) */}
       <Sidebar
         unreadNotificationsCount={unreadCount}

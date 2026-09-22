@@ -84,21 +84,28 @@ export function useToast() {
 
 function ToastItem({ toast, onClose }) {
   const icons = {
-    success: <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0 mt-0.5" />,
+    success: <CheckCircle2 className="w-5 h-5 text-[#10B981] shrink-0 mt-0.5" />,
     error: <AlertCircle className="w-5 h-5 text-[#EF4444] shrink-0 mt-0.5" />,
     warning: <AlertTriangle className="w-5 h-5 text-[#F59E0B] shrink-0 mt-0.5" />,
     info: <Info className="w-5 h-5 text-[#2563EB] shrink-0 mt-0.5" />,
   };
 
   const tintStyles = {
-    success: 'bg-white/95 border-emerald-200 text-[#081226] shadow-[0_12px_32px_rgba(22,163,74,0.15)]',
-    error: 'bg-white/95 border-rose-200 text-[#081226] shadow-[0_12px_32px_rgba(239,68,68,0.15)]',
-    warning: 'bg-white/95 border-amber-200 text-[#081226] shadow-[0_12px_32px_rgba(245,158,11,0.15)]',
-    info: 'bg-white/95 border-blue-200 text-[#081226] shadow-[0_12px_32px_rgba(37,99,235,0.15)]',
+    success: 'bg-white/95 border-emerald-300/80 shadow-[0_12px_36px_rgba(16,185,129,0.18)]',
+    error: 'bg-white/95 border-rose-300/80 shadow-[0_12px_36px_rgba(239,68,68,0.18)]',
+    warning: 'bg-white/95 border-amber-300/80 shadow-[0_12px_36px_rgba(245,158,11,0.18)]',
+    info: 'bg-white/95 border-blue-300/80 shadow-[0_12px_36px_rgba(37,99,235,0.18)]',
+  };
+
+  const ambientGlow = {
+    success: 'bg-[#10B981]/10',
+    error: 'bg-[#EF4444]/10',
+    warning: 'bg-[#F59E0B]/10',
+    info: 'bg-[#2563EB]/10',
   };
 
   const progressColors = {
-    success: 'bg-[#16A34A]',
+    success: 'bg-[#10B981]',
     error: 'bg-[#EF4444]',
     warning: 'bg-[#F59E0B]',
     info: 'bg-[#2563EB]',
@@ -106,27 +113,30 @@ function ToastItem({ toast, onClose }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 40, y: 8, scale: 0.94 }}
+      initial={{ opacity: 0, x: 50, y: 12, scale: 0.92 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 30, scale: 0.94, transition: { duration: 0.15 } }}
-      transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+      exit={{ opacity: 0, x: 40, scale: 0.92, transition: { duration: 0.15 } }}
+      transition={{ type: 'spring', damping: 26, stiffness: 380 }}
       className={cn(
-        'pointer-events-auto relative rounded-[18px] border p-4 flex items-start justify-between gap-3 overflow-hidden backdrop-blur-xl card-bevel',
+        'pointer-events-auto relative rounded-[20px] border p-4 flex items-start justify-between gap-3 overflow-hidden backdrop-blur-2xl card-bevel shadow-elevated',
         tintStyles[toast.type]
       )}
     >
-      <div className="flex items-start gap-3 min-w-0 flex-1">
+      {/* Ambient background glow */}
+      <div className={cn('absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl pointer-events-none', ambientGlow[toast.type])} />
+
+      <div className="relative z-10 flex items-start gap-3 min-w-0 flex-1">
         {icons[toast.type]}
         <div className="min-w-0 flex-1">
-          {toast.title && <h5 className="text-[13px] font-bold text-[#081226] leading-tight truncate">{toast.title}</h5>}
-          {toast.message && <p className="text-caption text-[#64748B] mt-0.5 leading-relaxed break-words">{toast.message}</p>}
+          {toast.title && <h5 className="font-display text-[13.5px] font-bold text-[#081226] leading-tight truncate">{toast.title}</h5>}
+          {toast.message && <p className="text-caption text-[#64748B] mt-0.5 leading-relaxed break-words font-medium">{toast.message}</p>}
         </div>
       </div>
 
       <button
         type="button"
         onClick={onClose}
-        className="p-1 min-h-[28px] min-w-[28px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
+        className="relative z-10 p-1 min-h-[28px] min-w-[28px] flex items-center justify-center text-[#94A3B8] hover:text-[#081226] hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
         aria-label="Dismiss toast"
       >
         <X className="w-4 h-4" />

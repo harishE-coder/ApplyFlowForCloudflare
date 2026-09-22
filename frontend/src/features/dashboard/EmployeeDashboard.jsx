@@ -189,10 +189,10 @@ export function EmployeeDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-h2 font-extrabold text-[#081226] tracking-tight">
+              <h1 className="text-h2 font-display font-extrabold text-[#081226] tracking-tight">
                 Recruiter Workspace
               </h1>
-              <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#FF8A00] border border-[#FFEDD5] flex items-center gap-1">
+              <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-orange-50 text-[#F97316] border border-orange-200 flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" />
                 Active Recruiter
               </span>
@@ -233,7 +233,7 @@ export function EmployeeDashboard() {
             <select
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
-              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#0D6EFD]"
+              className="w-full h-[44px] px-3.5 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs hover:border-[#CBD5E1] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10"
             >
               <option value="">All Service Clients ({assignedClients.length})</option>
               {assignedClients.map((c) => (
@@ -299,13 +299,13 @@ export function EmployeeDashboard() {
         {/* LEFT COLUMN: 70% (Col span 8) */}
         <div className="lg:col-span-8 space-y-8">
           {/* 1. Upload Hero (Biggest Component) */}
-          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 sm:p-6">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] card-bevel shadow-surface hover:shadow-elevated transition-shadow p-5 sm:p-6">
             <div className="flex items-center justify-between gap-4 mb-6">
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#0D6EFD] px-2.5 py-0.5 rounded-full bg-[#EFF6FF] border border-[#BFDBFE]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#2563EB] px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200">
                   Fast Ingestion Engine
                 </span>
-                <h3 className="text-h2 font-extrabold text-[#081226] tracking-tight mt-1.5">
+                <h3 className="text-h2 font-display font-extrabold text-[#081226] tracking-tight mt-1.5">
                   Batch Resume Upload & Auto-Parse
                 </h3>
                 <p className="text-small text-[#64748B] mt-0.5">
@@ -333,10 +333,10 @@ export function EmployeeDashboard() {
           </Suspense>
 
           {/* 3. Active Job Requirements Matrix */}
-          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] card-bevel shadow-surface hover:shadow-elevated transition-shadow p-5">
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#F1F5F9]">
               <div>
-                <h3 className="text-h3 font-bold text-[#081226]">Active Job Openings</h3>
+                <h3 className="text-h3 font-display font-bold text-[#081226]">Active Job Openings</h3>
                 <p className="text-caption text-[#64748B] mt-0.5">
                   High-priority openings with open candidate slots
                 </p>
@@ -361,10 +361,10 @@ export function EmployeeDashboard() {
                   <div
                     key={req.id || idx}
                     onClick={() => navigate(`/candidates?requirement_id=${req.id}`)}
-                    className="p-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 hover:bg-[#EFF6FF]/40 hover:border-[#0D6EFD]/40 transition-all duration-120 cursor-pointer flex items-center justify-between group"
+                    className="p-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 hover:bg-blue-50/40 hover:border-[#2563EB]/40 transition-all duration-120 cursor-pointer flex items-center justify-between group"
                   >
                     <div className="min-w-0">
-                      <p className="text-small font-bold text-[#081226] group-hover:text-[#0D6EFD] truncate">
+                      <p className="text-small font-bold text-[#081226] group-hover:text-[#2563EB] truncate">
                         {req.company} — {req.role}
                       </p>
                       <div className="flex items-center gap-2 mt-1 text-caption text-[#64748B]">
@@ -376,7 +376,7 @@ export function EmployeeDashboard() {
                       </div>
                     </div>
 
-                    <ChevronRight className="w-4 h-4 text-[#94A3B8] group-hover:text-[#0D6EFD] shrink-0 ml-2" />
+                    <ChevronRight className="w-4 h-4 text-[#94A3B8] group-hover:text-[#2563EB] shrink-0 ml-2" />
                   </div>
                 ))
               )}
@@ -567,7 +567,7 @@ export function EmployeeDashboard() {
 
             <div className="mt-3 space-y-1">
               <p className="text-small font-bold text-[#081226]">
-                Target: <span className="text-[#081226]">{summary.target}</span> • Submitted: <span className="text-[#0D6EFD]">{summary.submitted}</span>
+                Target: <span className="text-[#081226]">{summary.target}</span> • Submitted: <span className="text-[#2563EB]">{summary.submitted}</span>
               </p>
               <p className="text-caption text-[#64748B]">
                 Remaining: <span className="font-bold" style={{ color: targetColor.hex }}>{summary.remaining}</span> • Completion: <span className="font-bold" style={{ color: targetColor.hex }}>{summary.completion}%</span>
@@ -595,7 +595,7 @@ export function EmployeeDashboard() {
           />
 
           {/* 3. Recent Activity Feed */}
-          <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5">
+          <div className="bg-white rounded-[20px] border border-[#E2E8F0] card-bevel shadow-surface hover:shadow-elevated transition-shadow p-5">
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#F1F5F9]">
               <h4 className="text-small font-bold uppercase tracking-wider text-[#64748B]">
                 Recent Activity
@@ -611,7 +611,7 @@ export function EmployeeDashboard() {
               ) : (
                 (data?.recent_activity || []).map((act, idx) => (
                   <div key={act.id || idx} className="p-3 rounded-xl bg-[#F8FAFC] border border-[#F1F5F9] flex items-start gap-2.5">
-                    <div className="w-2 h-2 rounded-full bg-[#0D6EFD] mt-1.5 shrink-0" />
+                    <div className="w-2 h-2 rounded-full bg-[#2563EB] mt-1.5 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-small font-bold text-[#081226] leading-tight">{act.action}</p>
                       <p className="text-caption text-[#64748B] mt-0.5">{act.description}</p>

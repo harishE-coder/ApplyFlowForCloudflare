@@ -129,7 +129,7 @@ const ClientCard = React.memo(function ClientCard({
       <div className="space-y-2">
         <div className="flex items-center justify-between text-caption font-bold uppercase tracking-wider text-[#64748B]">
           <span className="flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5 text-[#0D6EFD]" />
+            <Users className="w-3.5 h-3.5 text-[#2563EB]" />
             Assigned Recruiters ({assignedEmps.length})
           </span>
         </div>
@@ -146,13 +146,13 @@ const ClientCard = React.memo(function ClientCard({
                 className={cn(
                   'px-2.5 py-1 rounded-full text-caption font-semibold flex items-center gap-1.5 border',
                   emp.is_primary
-                    ? 'bg-[#EFF6FF] text-[#0D6EFD] border-[#BFDBFE]'
+                    ? 'bg-blue-50 text-[#2563EB] border-blue-200'
                     : 'bg-[#F8FAFC] text-[#475569] border-[#E2E8F0]'
                 )}
               >
                 <Avatar name={emp.name || 'Recruiter'} size="xs" variant={emp.is_primary ? 'blue' : 'navy'} />
                 <span>{emp.name}</span>
-                {emp.is_primary && <span className="text-[10px] uppercase font-bold text-[#0D6EFD]">• Lead</span>}
+                {emp.is_primary && <span className="text-[10px] uppercase font-bold text-[#2563EB]">• Lead</span>}
               </div>
             ))}
           </div>
@@ -448,10 +448,10 @@ export function ClientsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-h1 font-extrabold text-[#081226] tracking-tight">
+            <h1 className="text-h1 font-display font-extrabold text-[#081226] tracking-tight">
               Service Clients
             </h1>
-            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE]">
+            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-[#2563EB] border border-blue-200">
               {clients.length} Accounts
             </span>
           </div>
@@ -661,7 +661,7 @@ export function ClientsPage() {
                         className={cn(
                           'w-full flex items-center justify-between px-3 py-2 rounded-lg text-small transition-all text-left cursor-pointer',
                           isSelected
-                            ? 'bg-blue-50/90 border border-blue-200 text-[#0D6EFD] font-semibold'
+                            ? 'bg-blue-50/90 border border-blue-200 text-[#2563EB] font-semibold'
                             : 'hover:bg-white text-[#334155] border border-transparent'
                         )}
                       >
@@ -680,7 +680,7 @@ export function ClientsPage() {
                           className={cn(
                             'w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0',
                             isSelected
-                              ? 'bg-[#0D6EFD] border-[#0D6EFD] text-white'
+                              ? 'bg-[#2563EB] border-[#2563EB] text-white'
                               : 'border-[#CBD5E1] bg-white'
                           )}
                         >

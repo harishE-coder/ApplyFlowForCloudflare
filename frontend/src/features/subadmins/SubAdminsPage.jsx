@@ -22,10 +22,12 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import api from '@/services/api';
+import { useToast } from '@/components/ui/Toast';
 import { Avatar } from '@/components/ui/Avatar';
 import { cn } from '@/utils/cn';
 
 export function SubAdminsPage() {
+  const { success, error: toastError } = useToast();
   const [subAdmins, setSubAdmins] = useState([]);
   const [clients, setClients] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -59,11 +61,13 @@ export function SubAdminsPage() {
   });
   const [safeDeleteModalSA, setSafeDeleteModalSA] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
 
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
+  const showToast = (msg, isError = false) => {
+    if (isError || /failed|error/i.test(String(msg))) {
+      toastError('Sub-Admin Error', msg);
+    } else {
+      success('Sub-Admin Updated', msg);
+    }
   };
 
   const fetchData = useCallback(async () => {
@@ -238,21 +242,6 @@ export function SubAdminsPage() {
 
   return (
     <div className="space-y-8 max-w-[1400px] mx-auto pb-12">
-      {/* Toast */}
-      <AnimatePresence>
-        {toastMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl bg-[#081226] text-white border border-[#2563EB]/40 shadow-2xl flex items-center gap-3 text-sm font-semibold"
-          >
-            <Sparkles className="w-4 h-4 text-[#60A5FA]" />
-            <span>{toastMessage}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-[#081226] via-[#0F2042] to-[#081226] p-8 rounded-[28px] border border-[#1E2E4E] shadow-xl relative overflow-hidden">
         <div className="relative z-10">

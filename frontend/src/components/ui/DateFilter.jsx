@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Calendar as CalendarIcon, ChevronDown, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Calendar as CalendarIcon, Check } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
 export const DATE_PRESETS = [
@@ -26,7 +27,6 @@ export function DateFilter({
   onFilterChange,
   className,
 }) {
-  const [isOpen, setIsOpen] = useState(false);
   const [internalDate, setInternalDate] = useState(customDate || new Date().toISOString().split('T')[0]);
 
   React.useEffect(() => {
@@ -49,7 +49,6 @@ export function DateFilter({
     } else {
       onFilterChange?.({ preset: presetId, customDate: null });
     }
-    setIsOpen(false);
   };
 
   const handleDateChange = (e) => {
@@ -59,7 +58,7 @@ export function DateFilter({
   };
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-[#F1F5F9] border border-[#E2E8F0] shadow-xs', className)}>
+    <div className={cn('relative inline-flex flex-wrap items-center gap-1 p-1 rounded-2xl bg-[#F1F5F9] border border-[#E2E8F0] shadow-xs select-none', className)}>
       {DATE_PRESETS.map((preset) => {
         const isActive = selectedPreset === preset.id;
         return (
@@ -68,28 +67,37 @@ export function DateFilter({
             type="button"
             onClick={() => handleSelectPreset(preset.id)}
             className={cn(
-              'px-3 py-1.5 rounded-xl text-caption font-bold transition-all select-none cursor-pointer flex items-center gap-1.5',
+              'relative px-3 py-1.5 rounded-xl text-caption font-bold transition-colors select-none cursor-pointer flex items-center gap-1.5 z-10',
               isActive
-                ? 'bg-white text-[#0D6EFD] shadow-xs border border-[#BFDBFE]'
-                : 'text-[#64748B] hover:text-[#081226] hover:bg-white/60'
+                ? 'text-[#2563EB]'
+                : 'text-[#64748B] hover:text-[#081226]'
             )}
           >
-            {preset.id === 'custom' && <CalendarIcon className="w-3.5 h-3.5 shrink-0 text-[#0D6EFD]" />}
-            <span>{preset.label}</span>
+            {isActive && (
+              <motion.div
+                layoutId="active-date-preset-pill"
+                className="absolute inset-0 bg-white rounded-xl shadow-xs border border-[#BFDBFE]/80"
+                transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10 flex items-center gap-1.5">
+              {preset.id === 'custom' && <CalendarIcon className="w-3.5 h-3.5 shrink-0 text-[#2563EB]" />}
+              <span>{preset.label}</span>
+            </span>
           </button>
         );
       })}
 
       {/* When Custom Date is active, render interactive inline date picker */}
       {selectedPreset === 'custom' && (
-        <div className="flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 border-l border-[#CBD5E1]">
+        <div className="flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 border-l border-[#CBD5E1] z-10">
           <input
             type="date"
             value={internalDate}
             onChange={handleDateChange}
-            className="h-[30px] px-2 rounded-lg text-caption font-bold bg-white text-[#081226] border border-[#BFDBFE] shadow-xs focus:outline-none focus:border-[#0D6EFD] cursor-pointer"
+            className="h-[30px] px-2 rounded-lg text-caption font-bold bg-white text-[#081226] border border-[#BFDBFE] shadow-xs focus:outline-none focus:border-[#2563EB] cursor-pointer"
           />
-          <span className="text-[11px] font-bold text-[#0D6EFD] hidden sm:inline">
+          <span className="text-[11px] font-bold text-[#2563EB] hidden sm:inline">
             {formatDateDisplay(internalDate)}
           </span>
         </div>

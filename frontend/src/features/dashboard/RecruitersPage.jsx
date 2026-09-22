@@ -395,7 +395,7 @@ export function RecruitersPage() {
                 className={cn(
                   'px-2.5 py-0.5 rounded-md text-[11px] font-bold border',
                   c.is_primary
-                    ? 'bg-[#FFF7ED] text-[#FF8A00] border-[#FFEDD5]'
+                    ? 'bg-orange-50 text-[#F97316] border-orange-200'
                     : 'bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]'
                 )}
               >
@@ -418,7 +418,7 @@ export function RecruitersPage() {
         if (isInactive) {
           return (
             <div className="flex items-center gap-2">
-              <span className="text-h3 font-extrabold text-[#94A3B8]">{displayVal}</span>
+              <span className="text-h3 font-display font-extrabold text-[#94A3B8]">{displayVal}</span>
               <span className="text-caption font-semibold px-2 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] border border-[#E2E8F0]">
                 Paused (Inactive)
               </span>
@@ -428,7 +428,7 @@ export function RecruitersPage() {
 
         return (
           <div className="flex items-center gap-2">
-            <span className="text-h3 font-extrabold text-[#FF8A00]">{val ?? 0}</span>
+            <span className="text-h3 font-display font-extrabold text-[#F97316]">{val ?? 0}</span>
             <span className="text-caption text-[#64748B]">apps / day</span>
           </div>
         );
@@ -439,8 +439,8 @@ export function RecruitersPage() {
       key: 'total_applications',
       render: (val, row) => (
         <div className="flex items-center gap-2">
-          <span className="font-bold text-[#0D6EFD]">{row.today_applications ?? val ?? 0}</span>
-          <span className="text-caption font-bold px-2 py-0.5 rounded-full bg-[#EFF6FF] text-[#0D6EFD] border border-[#BFDBFE]">
+          <span className="font-bold text-[#2563EB]">{row.today_applications ?? val ?? 0}</span>
+          <span className="text-caption font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#2563EB] border border-blue-200">
             {row.completion_percentage || 0}%
           </span>
         </div>
@@ -513,10 +513,10 @@ export function RecruitersPage() {
       <div className="bg-white p-5 rounded-[24px] border border-[#E2E8F0] shadow-card hover:shadow-card-hover transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 card-bevel">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-h2 font-extrabold text-[#081226] tracking-tight">
+            <h1 className="text-h2 font-display font-extrabold text-[#081226] tracking-tight">
               Recruiters Management
             </h1>
-            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#0D6EFD] border border-[#BFDBFE]">
+            <span className="text-caption font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-[#2563EB] border border-blue-200">
               {employees.length} Recruiters
             </span>
           </div>
@@ -573,14 +573,14 @@ export function RecruitersPage() {
       </div>
 
       {/* Filter Row */}
-      <div className="bg-white p-4 rounded-[20px] border border-[#E2E8F0] shadow-surface flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-[20px] border border-[#E2E8F0] shadow-surface flex flex-col sm:flex-row items-center justify-between gap-4 card-bevel">
         <div className="w-full sm:w-80">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search recruiter by name or email..."
-            className="w-full h-[40px] px-3.5 rounded-[14px] text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full h-[40px] px-3.5 rounded-[14px] text-small bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none"
           />
         </div>
 
@@ -588,7 +588,7 @@ export function RecruitersPage() {
           <select
             value={selectedClientFilter}
             onChange={(e) => setSelectedClientFilter(e.target.value)}
-            className="w-full h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#0D6EFD] focus:outline-none"
+            className="w-full h-[40px] px-3 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none"
           >
             <option value="">All Service Clients</option>
             {clients.map((c) => (
@@ -653,7 +653,7 @@ export function RecruitersPage() {
               {clients.map((c) => (
                 <label
                   key={c.id}
-                  className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E2E8F0] text-caption cursor-pointer hover:border-[#0D6EFD]"
+                  className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E2E8F0] text-caption cursor-pointer hover:border-[#2563EB]"
                 >
                   <input
                     type="checkbox"
@@ -665,7 +665,7 @@ export function RecruitersPage() {
                         setAddAssignedClientIds((prev) => prev.filter((id) => id !== c.id));
                       }
                     }}
-                    className="rounded border-gray-300 text-[#0D6EFD]"
+                    className="rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB]"
                   />
                   <span className="font-semibold text-[#081226] truncate">{c.company_name}</span>
                 </label>
@@ -741,7 +741,7 @@ export function RecruitersPage() {
               {clients.map((c) => (
                 <label
                   key={c.id}
-                  className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E2E8F0] text-caption cursor-pointer hover:border-[#0D6EFD]"
+                  className="flex items-center gap-2 p-2 rounded-lg bg-white border border-[#E2E8F0] text-caption cursor-pointer hover:border-[#2563EB]"
                 >
                   <input
                     type="checkbox"
@@ -753,7 +753,7 @@ export function RecruitersPage() {
                         setEditAssignedClientIds((prev) => prev.filter((id) => id !== c.id));
                       }
                     }}
-                    className="rounded border-gray-300 text-[#0D6EFD]"
+                    className="rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB]"
                   />
                   <span className="font-semibold text-[#081226] truncate">{c.company_name}</span>
                 </label>
@@ -815,7 +815,7 @@ export function RecruitersPage() {
             <select
               value={targetClientId}
               onChange={(e) => setTargetClientId(e.target.value)}
-              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#0D6EFD] focus:outline-none"
+              className="w-full h-[48px] px-4 rounded-[14px] text-small font-medium bg-[#F8FAFC] text-[#081226] border border-[#E2E8F0] shadow-xs focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/10 focus:outline-none"
               required
             >
               {clients.map((c) => (

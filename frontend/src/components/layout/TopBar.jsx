@@ -88,7 +88,7 @@ export function TopBar({
   );
 
   return (
-    <header className="sticky top-2 lg:static z-30 h-[62px] sm:h-[68px] mx-2 sm:mx-4 lg:mx-6 mt-2 sm:mt-4 lg:mt-5 mb-3 sm:mb-4 px-3 sm:px-5 lg:px-6 glass-surface rounded-[22px] shadow-topbar flex items-center justify-between gap-2 sm:gap-4 select-none card-bevel">
+    <header className="sticky top-2 lg:static z-30 h-[64px] sm:h-[70px] mx-2 sm:mx-4 lg:mx-6 mt-2 sm:mt-4 lg:mt-5 mb-3 sm:mb-4 px-3 sm:px-5 lg:px-6 glass-panel rounded-[24px] flex items-center justify-between gap-2 sm:gap-4 select-none">
       {/* Left: Mobile Hamburger Toggle + Brand / Search Trigger */}
       <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
         {/* Hamburger Menu (Mobile/Tablet only) */}
@@ -102,8 +102,8 @@ export function TopBar({
         </button>
 
         {/* Mobile Brand Name */}
-        <div className="lg:hidden font-extrabold text-sm sm:text-base text-[#081226] tracking-tight shrink-0 flex items-center gap-1.5">
-          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#2563EB] to-[#60A5FA] flex items-center justify-center text-white text-[12px] font-black shadow-xs">
+        <div className="lg:hidden font-display font-extrabold text-sm sm:text-base text-[#081226] tracking-tight shrink-0 flex items-center gap-1.5">
+          <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#2563EB] to-[#60A5FA] flex items-center justify-center text-white text-[12px] font-black shadow-[0_0_10px_rgba(37,99,235,0.3)]">
             AF
           </div>
           <span className="hidden xs:inline font-bold">ApplyFlow</span>
@@ -114,20 +114,20 @@ export function TopBar({
           <button
             type="button"
             onClick={onOpenCommandPalette}
-            className="w-full h-[38px] sm:h-[42px] px-3 sm:px-4 rounded-xl text-small bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] hover:border-[#CBD5E1] hover:bg-white hover:shadow-xs flex items-center justify-between transition-all duration-150 cursor-pointer min-w-0 group"
+            className="w-full h-[38px] sm:h-[42px] px-3 sm:px-4 rounded-xl text-small bg-[#F8FAFC]/90 text-[#64748B] border border-[#E2E8F0] hover:border-[#BFDBFE] hover:bg-white hover:shadow-[0_2px_12px_rgba(37,99,235,0.08)] flex items-center justify-between transition-all duration-150 cursor-pointer min-w-0 group"
           >
             <div className="flex items-center gap-2.5 min-w-0 truncate">
               <Search className="w-4 h-4 text-[#94A3B8] group-hover:text-[#2563EB] transition-colors shrink-0" />
-              <span className="text-[#94A3B8] group-hover:text-[#475569] font-normal truncate hidden sm:inline text-small transition-colors">
+              <span className="text-[#94A3B8] group-hover:text-[#475569] font-medium truncate hidden sm:inline text-small transition-colors">
                 Search candidates, jobs, quick jump...
               </span>
-              <span className="text-[#94A3B8] font-normal truncate sm:hidden text-small">
+              <span className="text-[#94A3B8] font-medium truncate sm:hidden text-small">
                 Search...
               </span>
             </div>
 
             <div className="hidden sm:flex items-center gap-1">
-              <kbd className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[11px] font-semibold text-[#64748B] bg-white border border-[#E2E8F0] rounded-md shadow-2xs group-hover:border-[#CBD5E1] transition-colors shrink-0">
+              <kbd className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[10.5px] font-extrabold text-[#64748B] bg-white border border-[#E2E8F0] rounded-md shadow-2xs group-hover:border-[#BFDBFE] group-hover:text-[#2563EB] transition-colors shrink-0">
                 <Command className="w-3 h-3" />
                 <span>K</span>
               </kbd>

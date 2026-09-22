@@ -11,10 +11,10 @@ import {
 
 export const EmployeeCharts = React.memo(function EmployeeCharts({ weeklyTrend = [] }) {
   return (
-    <div className="bg-white rounded-[20px] border border-[#E2E8F0] shadow-surface hover:shadow-elevated transition-shadow p-5 space-y-5">
+    <div className="bg-white rounded-[20px] border border-[#E2E8F0] card-bevel shadow-surface hover:shadow-elevated transition-shadow p-5 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-h3 font-bold text-[#081226]">
+          <h3 className="text-h3 font-display font-bold text-[#081226]">
             My 7-Day Performance Trends
           </h3>
           <p className="text-caption text-[#64748B] mt-0.5">
@@ -23,12 +23,12 @@ export const EmployeeCharts = React.memo(function EmployeeCharts({ weeklyTrend =
         </div>
 
         <div className="flex items-center gap-3 text-caption font-semibold">
-          <span className="flex items-center gap-1.5 text-[#0D6EFD]">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#0D6EFD]" />
+          <span className="flex items-center gap-1.5 text-[#2563EB]">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]" />
             Uploads
           </span>
-          <span className="flex items-center gap-1.5 text-[#FF8A00]">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#FF8A00]" />
+          <span className="flex items-center gap-1.5 text-[#F97316]">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F97316]" />
             Applications
           </span>
         </div>
@@ -50,8 +50,8 @@ export const EmployeeCharts = React.memo(function EmployeeCharts({ weeklyTrend =
                 padding: '8px 12px',
               }}
             />
-            <Bar dataKey="uploads" name="Uploads" fill="#0D6EFD" radius={[6, 6, 0, 0]} />
-            <Bar dataKey="applications" name="Applications" fill="#FF8A00" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="uploads" name="Uploads" fill="#2563EB" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="applications" name="Applications" fill="#F97316" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

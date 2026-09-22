@@ -561,10 +561,10 @@ export function AIResponseInboxPage() {
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#2563EB] to-[#60A5FA] flex items-center justify-center text-white shadow-md">
               <Mail className="w-5 h-5" />
             </div>
-            <h1 className="text-h1 font-extrabold text-[#081226] tracking-tight">
+            <h1 className="text-h1 font-display font-extrabold text-[#081226] tracking-tight">
               Applications
             </h1>
-            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#EFF6FF] text-[#2563EB] border border-[#BFDBFE] flex items-center gap-1.5 shadow-xs">
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-[#2563EB] border border-blue-200 flex items-center gap-1.5 shadow-xs">
               <Sparkles className="w-3 h-3 text-[#F97316]" />
               AI Intake Detector
             </span>
@@ -1104,7 +1104,7 @@ export function AIResponseInboxPage() {
                       icon={Sparkles}
                       onClick={handleAnalyzeEmail}
                       isLoading={isAnalyzing}
-                      className="w-full h-[48px] text-base font-bold bg-gradient-to-r from-[#2563EB] via-[#1D4ED8] to-[#0D6EFD] shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
+                      className="w-full h-[48px] text-base font-bold bg-gradient-to-r from-[#2563EB] via-[#1D4ED8] to-[#3B82F6] shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
                     >
                       {isAnalyzing ? 'Groq AI is Classifying...' : 'Analyze with Groq'}
                     </Button>
@@ -1191,7 +1191,7 @@ export function AIResponseInboxPage() {
                       onClick={handleAnalyzeFile}
                       isLoading={isAnalyzing}
                       disabled={!selectedFile}
-                      className="w-full h-[48px] text-base font-bold bg-gradient-to-r from-[#2563EB] via-[#1D4ED8] to-[#0D6EFD] shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
+                      className="w-full h-[48px] text-base font-bold bg-gradient-to-r from-[#2563EB] via-[#1D4ED8] to-[#3B82F6] shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
                     >
                       {isAnalyzing ? 'Extracting & Classifying...' : 'Analyze with Groq'}
                     </Button>

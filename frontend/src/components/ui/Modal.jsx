@@ -30,17 +30,17 @@ export function Modal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="fixed inset-0 bg-[#081226]/65 backdrop-blur-md"
+            className="fixed inset-0 bg-[#081226]/60 backdrop-blur-xl"
           />
 
           {/* Modal Card */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            initial={{ opacity: 0, scale: 0.94, y: 14 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+            exit={{ opacity: 0, scale: 0.94, y: 14 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 400 }}
             className={cn(
               'relative w-full bg-white rounded-[26px] border border-[#E2E8F0] shadow-floating overflow-hidden z-10 max-h-[92vh] flex flex-col card-bevel',
               maxWidth,
@@ -48,9 +48,9 @@ export function Modal({
             )}
           >
             {/* Header */}
-            <div className="px-5 sm:px-6 pt-5 sm:pt-6 pb-4 border-b border-[#F1F5F9] flex items-start justify-between gap-3 shrink-0">
+            <div className="px-6 pt-5 sm:pt-6 pb-4 border-b border-[#F1F5F9] flex items-start justify-between gap-3 shrink-0 bg-gradient-to-r from-white to-[#F8FAFC]">
               <div className="min-w-0">
-                {title && <h3 className="text-h3 font-bold text-[#081226] tracking-tight truncate">{title}</h3>}
+                {title && <h3 className="font-display text-h3 font-bold text-[#081226] tracking-tight truncate">{title}</h3>}
                 {subtitle && <p className="text-small text-[#64748B] mt-0.5">{subtitle}</p>}
               </div>
 
@@ -69,7 +69,7 @@ export function Modal({
 
             {/* Footer */}
             {footer && (
-              <div className="px-5 sm:px-6 py-3.5 sm:py-4 bg-[#F8FAFC] border-t border-[#F1F5F9] flex items-center justify-end gap-2.5 sm:gap-3 rounded-b-[26px] shrink-0">
+              <div className="px-6 py-4 bg-[#F8FAFC] border-t border-[#F1F5F9] flex items-center justify-end gap-2.5 sm:gap-3 rounded-b-[26px] shrink-0">
                 {footer}
               </div>
             )}

@@ -42,19 +42,27 @@ async function resolveDashboardScope(
       `,
     ]);
     return {
-      allowedClientIds: assignedClients.map((r: any) => String(r.client_id)),
-      allowedEmployeeIds: assignedEmployees.map((r: any) => String(r.employee_id)),
+      allowedClientIds: assignedClients
+        .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+        .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined")),
+      allowedEmployeeIds: assignedEmployees
+        .map((r: any) => (r.employee_id ? String(r.employee_id).trim() : null))
+        .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined")),
     };
   }
 
   if (user.role === "employee" || user.role === "recruiter") {
     const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true AND client_id IS NOT NULL
     `;
     const cids =
       assigned.length > 0
-        ? assigned.map((r: any) => String(r.client_id))
-        : (await sql`SELECT id FROM clients WHERE status = 'active'`).map((r: any) => String(r.id));
+        ? assigned
+            .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+            .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"))
+        : (await sql`SELECT id FROM clients WHERE status = 'active'`)
+            .map((r: any) => (r.id ? String(r.id).trim() : null))
+            .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
     return {
       allowedClientIds: cids,
       allowedEmployeeIds: [user.id],
@@ -62,8 +70,9 @@ async function resolveDashboardScope(
   }
 
   if (user.role === "client") {
+    const cid = user.client_id ? String(user.client_id).trim() : null;
     return {
-      allowedClientIds: user.client_id ? [String(user.client_id)] : [],
+      allowedClientIds: cid && cid !== "null" && cid !== "undefined" ? [cid] : [],
       allowedEmployeeIds: [],
     };
   }

@@ -27,26 +27,33 @@ async function getScopedClientIdsForReqs(sql: any, user: UserPayload): Promise<s
 
   if (user.role === "sub_admin") {
     const assigned = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
       UNION
       SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
     `;
-    return assigned.map((r: any) => String(r.client_id));
+    return assigned
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   if (user.role === "employee" || user.role === "recruiter") {
     const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true AND client_id IS NOT NULL
     `;
     if (assigned.length > 0) {
-      return assigned.map((r: any) => String(r.client_id));
+      return assigned
+        .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+        .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
     }
     const activeClients = await sql`SELECT id as client_id FROM clients WHERE status = 'active'`;
-    return activeClients.map((r: any) => String(r.client_id));
+    return activeClients
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   if (user.role === "client") {
-    return user.client_id ? [String(user.client_id)] : [];
+    const cid = user.client_id ? String(user.client_id).trim() : null;
+    return cid && cid !== "null" && cid !== "undefined" ? [cid] : [];
   }
 
   return [];
@@ -198,9 +205,6 @@ requirementsRouter.get("/", async (c) => {
   const sql = getDb(c.env.DATABASE_URL);
 
   const scopedCids = await getScopedClientIdsForReqs(sql, user);
-  if (scopedCids !== null && scopedCids.length === 0) {
-    return c.json([]);
-  }
 
   const conditions: string[] = [];
   const params: any[] = [];
@@ -208,12 +212,19 @@ requirementsRouter.get("/", async (c) => {
 
   if (scopedCids !== null) {
     if (user.role === "client") {
+      if (scopedCids.length === 0) {
+        return c.json([]);
+      }
       conditions.push(`client_id = ANY($${pIdx++})`);
       params.push(scopedCids);
     } else {
       // Employees, recruiters, and sub_admins view scoped clients + global requirements
-      conditions.push(`(client_id IS NULL OR client_id = ANY($${pIdx++}))`);
-      params.push(scopedCids);
+      if (scopedCids.length > 0) {
+        conditions.push(`(client_id IS NULL OR client_id = ANY($${pIdx++}))`);
+        params.push(scopedCids);
+      } else {
+        conditions.push(`client_id IS NULL`);
+      }
     }
   }
   if (filterClientId) {

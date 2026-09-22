@@ -72,27 +72,37 @@ async function getAllowedClientIds(
   }
 
   if (user.role === "client") {
-    return user.client_id ? [user.client_id] : [];
+    const cid = user.client_id ? String(user.client_id).trim() : null;
+    return cid && cid !== "null" && cid !== "undefined" ? [cid] : [];
   }
 
   if (user.role === "sub_admin") {
     const rows = await sql`
-      SELECT client_id FROM sub_admin_clients WHERE user_id = ${user.id}
+      SELECT client_id FROM sub_admin_assignments
+      WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
     `;
-    return rows.map((r: any) => String(r.client_id));
+    return rows
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   if (user.role === "employee" || user.role === "recruiter") {
     const rows = await sql`
       SELECT client_id FROM employee_clients
-      WHERE employee_id = ${user.id} AND active = true
+      WHERE employee_id = ${user.id} AND active = true AND client_id IS NOT NULL
     `;
-    const assigned = rows.map((r: any) => String(r.client_id));
+    const assigned = rows
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
     if (assigned.length > 0) return assigned;
 
     // Fallback to active clients
     const activeClients = await sql`SELECT id FROM clients WHERE status = 'active'`;
-    return activeClients.map((r: any) => String(r.id));
+    return activeClients
+      .map((r: any) => (r.id ? String(r.id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   return [];

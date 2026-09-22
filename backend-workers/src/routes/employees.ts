@@ -88,7 +88,9 @@ async function getScopedEmployeeIds(sql: any, user: UserPayload): Promise<string
       UNION
       SELECT id as employee_id FROM users WHERE managed_by = ${user.id}
     `;
-    return assigned.map((r: any) => String(r.employee_id));
+    return assigned
+      .map((r: any) => (r.employee_id ? String(r.employee_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   return [user.id];

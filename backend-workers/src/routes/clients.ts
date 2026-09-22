@@ -58,27 +58,34 @@ async function getScopedClientIds(sql: any, user: UserPayload): Promise<string[]
 
   if (user.role === "sub_admin") {
     const assigned = await sql`
-      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true
+      SELECT client_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
       UNION
       SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
     `;
-    return assigned.map((r: any) => String(r.client_id));
+    return assigned
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   if (user.role === "employee" || user.role === "recruiter") {
     const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true AND client_id IS NOT NULL
     `;
     if (assigned.length > 0) {
-      return assigned.map((r: any) => String(r.client_id));
+      return assigned
+        .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+        .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
     }
     // If no explicit assignments, recruiters view active clients
     const activeClients = await sql`SELECT id as client_id FROM clients WHERE status = 'active'`;
-    return activeClients.map((r: any) => String(r.client_id));
+    return activeClients
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   if (user.role === "client") {
-    return user.client_id ? [String(user.client_id)] : [];
+    const cid = user.client_id ? String(user.client_id).trim() : null;
+    return cid && cid !== "null" && cid !== "undefined" ? [cid] : [];
   }
 
   return [];

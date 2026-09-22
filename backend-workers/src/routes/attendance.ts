@@ -136,8 +136,12 @@ attendanceRouter.get(
     if (user.role === "sub_admin") {
       const subAdminRows = await sql`
         SELECT employee_id FROM sub_admin_assignments WHERE sub_admin_id = ${user.id} AND active = true AND employee_id IS NOT NULL
+        UNION
+        SELECT id as employee_id FROM users WHERE managed_by = ${user.id}
       `;
-      allowedEmployeeIds = subAdminRows.map((r: any) => String(r.employee_id));
+      allowedEmployeeIds = subAdminRows
+        .map((r: any) => (r.employee_id ? String(r.employee_id).trim() : null))
+        .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
     }
 
     let records: any[];

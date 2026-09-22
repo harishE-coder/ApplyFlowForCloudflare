@@ -65,18 +65,23 @@ export async function getAuthorizedClientIds(
       UNION
       SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
     `;
-    return assigned.map((r: any) => String(r.client_id));
+    return assigned
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   if (user.role === "client") {
-    return user.client_id ? [String(user.client_id)] : [];
+    const cid = user.client_id ? String(user.client_id).trim() : null;
+    return cid && cid !== "null" && cid !== "undefined" ? [cid] : [];
   }
 
   if (user.role === "employee" || user.role === "recruiter") {
     const assigned = await sql`
-      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true
+      SELECT client_id FROM employee_clients WHERE employee_id = ${user.id} AND active = true AND client_id IS NOT NULL
     `;
-    return assigned.map((r: any) => String(r.client_id));
+    return assigned
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
   }
 
   return [];

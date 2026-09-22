@@ -39,34 +39,94 @@ targetsRouter.get("/", async (c) => {
     }
   } else if (user.role === "sub_admin") {
     const subClients = await sql`
-      SELECT client_id FROM sub_admin_clients WHERE user_id = ${user.id}
+      SELECT client_id FROM sub_admin_assignments
+      WHERE sub_admin_id = ${user.id} AND active = true AND client_id IS NOT NULL
+      UNION
+      SELECT id as client_id FROM clients WHERE managed_by = ${user.id}
     `;
-    const allowedClientIds = subClients.map((r: any) => String(r.client_id));
+    const allowedClientIds = subClients
+      .map((r: any) => (r.client_id ? String(r.client_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
 
-    if (allowedClientIds.length === 0) {
+    const subEmployees = await sql`
+      SELECT employee_id FROM sub_admin_assignments
+      WHERE sub_admin_id = ${user.id} AND active = true AND employee_id IS NOT NULL
+      UNION
+      SELECT id as employee_id FROM users WHERE managed_by = ${user.id}
+    `;
+    const allowedEmployeeIds = subEmployees
+      .map((r: any) => (r.employee_id ? String(r.employee_id).trim() : null))
+      .filter((id: string | null): id is string => Boolean(id && id !== "null" && id !== "undefined"));
+
+    if (allowedClientIds.length === 0 && allowedEmployeeIds.length === 0) {
       return c.json([]);
     }
 
     if (employeeId) {
-      rows = await sql`
-        SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
-               t.daily_target, t.status, t.effective_date
-        FROM targets t
-        JOIN users u ON u.id = t.employee_id
-        JOIN clients c ON c.id = t.client_id
-        WHERE t.client_id = ANY(${allowedClientIds}) AND t.employee_id = ${employeeId}
-        ORDER BY t.effective_date DESC
-      `;
+      if (allowedClientIds.length > 0 && allowedEmployeeIds.length > 0) {
+        rows = await sql`
+          SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
+                 t.daily_target, t.status, t.effective_date
+          FROM targets t
+          JOIN users u ON u.id = t.employee_id
+          JOIN clients c ON c.id = t.client_id
+          WHERE (t.client_id = ANY(${allowedClientIds}) OR t.employee_id = ANY(${allowedEmployeeIds}))
+            AND t.employee_id = ${employeeId}
+          ORDER BY t.effective_date DESC
+        `;
+      } else if (allowedClientIds.length > 0) {
+        rows = await sql`
+          SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
+                 t.daily_target, t.status, t.effective_date
+          FROM targets t
+          JOIN users u ON u.id = t.employee_id
+          JOIN clients c ON c.id = t.client_id
+          WHERE t.client_id = ANY(${allowedClientIds}) AND t.employee_id = ${employeeId}
+          ORDER BY t.effective_date DESC
+        `;
+      } else {
+        rows = await sql`
+          SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
+                 t.daily_target, t.status, t.effective_date
+          FROM targets t
+          JOIN users u ON u.id = t.employee_id
+          JOIN clients c ON c.id = t.client_id
+          WHERE t.employee_id = ANY(${allowedEmployeeIds}) AND t.employee_id = ${employeeId}
+          ORDER BY t.effective_date DESC
+        `;
+      }
     } else {
-      rows = await sql`
-        SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
-               t.daily_target, t.status, t.effective_date
-        FROM targets t
-        JOIN users u ON u.id = t.employee_id
-        JOIN clients c ON c.id = t.client_id
-        WHERE t.client_id = ANY(${allowedClientIds})
-        ORDER BY t.effective_date DESC
-      `;
+      if (allowedClientIds.length > 0 && allowedEmployeeIds.length > 0) {
+        rows = await sql`
+          SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
+                 t.daily_target, t.status, t.effective_date
+          FROM targets t
+          JOIN users u ON u.id = t.employee_id
+          JOIN clients c ON c.id = t.client_id
+          WHERE (t.client_id = ANY(${allowedClientIds}) OR t.employee_id = ANY(${allowedEmployeeIds}))
+          ORDER BY t.effective_date DESC
+        `;
+      } else if (allowedClientIds.length > 0) {
+        rows = await sql`
+          SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
+                 t.daily_target, t.status, t.effective_date
+          FROM targets t
+          JOIN users u ON u.id = t.employee_id
+          JOIN clients c ON c.id = t.client_id
+          WHERE t.client_id = ANY(${allowedClientIds})
+          ORDER BY t.effective_date DESC
+        `;
+      } else {
+        rows = await sql`
+          SELECT t.id, t.employee_id, u.name as employee_name, t.client_id, c.company_name as client_name,
+                 t.daily_target, t.status, t.effective_date
+          FROM targets t
+          JOIN users u ON u.id = t.employee_id
+          JOIN clients c ON c.id = t.client_id
+          WHERE t.employee_id = ANY(${allowedEmployeeIds})
+          ORDER BY t.effective_date DESC
+        `;
+      }
     }
   } else {
     // Employee / recruiter sees own targets
@@ -112,11 +172,23 @@ targetsRouter.post("/", requireRoles("super_admin", "admin", "sub_admin"), async
   const sql = getDb(c.env.DATABASE_URL);
 
   if (user.role === "sub_admin") {
-    const subClients = await sql`
-      SELECT client_id FROM sub_admin_clients
-      WHERE user_id = ${user.id} AND client_id = ${client_id}
+    const [scopedClient] = await sql`
+      SELECT client_id FROM sub_admin_assignments
+      WHERE sub_admin_id = ${user.id} AND client_id = ${client_id} AND active = true
+      UNION
+      SELECT id as client_id FROM clients
+      WHERE id = ${client_id} AND managed_by = ${user.id}
+      LIMIT 1
     `;
-    if (subClients.length === 0) {
+    const [scopedEmployee] = await sql`
+      SELECT employee_id FROM sub_admin_assignments
+      WHERE sub_admin_id = ${user.id} AND employee_id = ${employee_id} AND active = true
+      UNION
+      SELECT id as employee_id FROM users
+      WHERE id = ${employee_id} AND managed_by = ${user.id}
+      LIMIT 1
+    `;
+    if (!scopedClient && !scopedEmployee) {
       return c.json(
         { detail: "Cannot set targets for resources outside your management scope." },
         403

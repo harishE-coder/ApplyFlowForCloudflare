@@ -95,7 +95,20 @@ async def delete_notification(db: AsyncSession, user: User, notification_id: uui
     await db.flush()
 
 
+async def clear_read_notifications(db: AsyncSession, user: User) -> int:
+    result = await db.execute(
+        delete(Notification).where(
+            Notification.user_id == user.id,
+            Notification.is_read == True,
+        )
+    )
+    await db.flush()
+    return result.rowcount
+
+
 async def clear_old_notifications(db: AsyncSession, user: User, days: int = 30) -> int:
+    if days <= 0:
+        return await clear_read_notifications(db, user)
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     result = await db.execute(
         delete(Notification).where(
@@ -106,3 +119,4 @@ async def clear_old_notifications(db: AsyncSession, user: User, days: int = 30) 
     )
     await db.flush()
     return result.rowcount
+

@@ -14,7 +14,6 @@ import {
   Check,
   RefreshCw,
   Edit3,
-  SkipForward,
   Layers,
   ArrowRight,
   ShieldAlert,
@@ -46,9 +45,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
     <tr
       className={cn(
         'transition-colors',
-        row.status === 'duplicate'
-          ? 'bg-[#FFFBEB]/40'
-          : row.status === 'needs_review'
+        row.status === 'needs_review'
           ? 'bg-[#FEF2F2]/40'
           : 'hover:bg-[#F8FAFC]'
       )}
@@ -121,14 +118,7 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
             </span>
           </div>
         )}
-        {row.status === 'duplicate' && (
-          <span
-            className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]"
-            title={row.duplicateInfo?.existing_candidate ? `Matches candidate ${row.duplicateInfo.existing_candidate}` : 'Duplicate candidate'}
-          >
-            ⚠️ Duplicate Exists
-          </span>
-        )}
+
         {row.status === 'needs_review' && (
           <div className="flex flex-col gap-0.5">
             {row.error === 'ServiceClient Mismatch' || row.error === 'Service Client Mismatch' ? (
@@ -211,7 +201,7 @@ export function UploadPage() {
   const [queue, setQueue] = useState([]);
   const [visibleCount, setVisibleCount] = useState(20);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0); // 0 to 100
   const [uploadProgressCount, setUploadProgressCount] = useState({ current: 0, total: 0 });
@@ -414,19 +404,14 @@ export function UploadPage() {
         resume_identifier: parsed.resume_identifier,
         resume_id_tag: parsed.resume_id_tag || '',
         candidate_name: parsed.candidate_name || 'Candidate',
-        status: parsed.status, // 'valid' | 'duplicate' | 'needs_review'
+        status: parsed.status, // 'valid' | 'needs_review'
         error: parsed.error,
         clientMatch: parsed.clientMatch,
-        isDuplicate: false,
-        duplicateInfo: null,
       };
     });
 
     setQueue((prev) => {
       const combined = [...prev, ...newQueueItems].slice(0, 200); // 1-200 files
-      if (selectedClientId) {
-        runDuplicateCheck(combined, selectedClientId);
-      }
       return combined;
     });
 
@@ -443,61 +428,15 @@ export function UploadPage() {
           ...it,
           service_client: selectedClientName || it.service_client,
           clientMatch: true,
-          status: it.status === 'duplicate' ? 'duplicate' : 'valid',
+          status: 'valid',
         }))
       );
-      runDuplicateCheck(queue, selectedClientId);
     }
   }, [selectedClientId]);
 
-  // Run Duplicate Detection via Backend API: POST /api/resumes/check-duplicates
-  const runDuplicateCheck = async (itemsToCheck, cId) => {
-    if (!cId || itemsToCheck.length === 0) return;
-    setIsCheckingDuplicates(true);
-    try {
-      const payload = {
-        client_id: cId,
-        items: itemsToCheck.map((it) => ({
-          filename: it.filename,
-          company: it.company,
-          candidate_name: it.candidate_name || it.resume_identifier,
-          resume_id_tag: it.resume_id_tag || it.resume_identifier || null,
-        })),
-      };
 
-      const res = await api.post('/resumes/check-duplicates', payload);
-      const results = res.data?.results || [];
 
-      setQueue((prev) =>
-        prev.map((item) => {
-          const match = results.find((r) => r.filename === item.filename);
-          if (match?.is_duplicate) {
-            return {
-              ...item,
-              status: 'duplicate',
-              isDuplicate: true,
-              duplicateInfo: match,
-            };
-          }
-          if (item.status === 'duplicate' && !match?.is_duplicate) {
-            return {
-              ...item,
-              status: item.error ? 'needs_review' : 'valid',
-              isDuplicate: false,
-              duplicateInfo: null,
-            };
-          }
-          return item;
-        })
-      );
-    } catch (err) {
-      console.warn('Duplicate check warning:', err);
-    } finally {
-      setIsCheckingDuplicates(false);
-    }
-  };
-
-  // Re-run client match and duplicate check if selectedClientId changes
+  // Re-run client match check if selectedClientId changes
   useEffect(() => {
     if (selectedClientId && queue.length > 0) {
       const selectedClientObj = assignedClients.find((c) => c.id === selectedClientId);
@@ -506,7 +445,6 @@ export function UploadPage() {
       setQueue((prev) =>
         prev.map((it) => {
           const parsed = parseFilename(it.filename, selName);
-          if (it.status === 'duplicate') return it;
           return {
             ...it,
             service_client: parsed.service_client,
@@ -516,8 +454,6 @@ export function UploadPage() {
           };
         })
       );
-
-      runDuplicateCheck(queue, selectedClientId);
     }
   }, [selectedClientId]);
 
@@ -537,11 +473,7 @@ export function UploadPage() {
     setQueue((prev) => prev.filter((it) => it.id !== id));
   };
 
-  // Skip duplicates helper
-  const handleSkipDuplicates = () => {
-    setQueue((prev) => prev.filter((it) => it.status !== 'duplicate'));
-    success('Duplicates Skipped', 'Removed duplicate files from current upload batch.');
-  };
+
 
   // Perform upload
   const handleCommitUpload = async (mode = 'all_valid') => {
@@ -551,9 +483,6 @@ export function UploadPage() {
     }
 
     let filesToUpload = queue;
-    if (mode === 'skip_duplicates') {
-      filesToUpload = queue.filter((it) => it.status !== 'duplicate');
-    }
 
     // Filter out items that have client mismatch or errors unless corrected
     const hasUnresolvedErrors = filesToUpload.some((it) => it.status === 'needs_review');
@@ -618,17 +547,31 @@ export function UploadPage() {
       setUploadProgressCount({ current: filesToUpload.length, total: filesToUpload.length });
 
       const uploaded = res.data?.saved_count ?? filesToUpload.length;
-      const dupCount = queue.filter((it) => it.status === 'duplicate').length;
       const reviewedCount = queue.filter((it) => it.status === 'needs_review').length;
+      const responseItems = res.data?.items || [];
+      const failedFilenames = new Set(
+        responseItems
+          .filter((it) => it.status === 'error' || it.status === 'needs_review')
+          .map((it) => it.filename)
+      );
+
+      // Keep failed files in queue so user can retry without re-selecting
+      if (failedFilenames.size > 0) {
+        setQueue((prev) => prev.filter((it) => failedFilenames.has(it.filename)));
+        warning(
+          'Some Files Failed',
+          `${failedFilenames.size} file(s) failed to upload and are still in the queue. Click Upload again to retry.`
+        );
+      } else {
+        setQueue([]);
+      }
 
       setUploadSuccessSummary({
         uploaded: uploaded || 0,
-        duplicates: dupCount || 0,
+        failed: failedFilenames.size,
         reviewed: reviewedCount || 0,
-        items: res.data?.items || [],
+        items: responseItems,
       });
-
-      setQueue([]);
 
       // Trigger immediate dashboard update event across the application
       window.dispatchEvent(new CustomEvent('resume-uploaded', { detail: { count: uploaded } }));
@@ -649,7 +592,9 @@ export function UploadPage() {
         // Ignore confetti error
       }
 
-      success('Batch Ingested', `Successfully uploaded ${uploaded} candidate resumes.`);
+      if (uploaded > 0) {
+        success('Batch Ingested', `Successfully uploaded ${uploaded} candidate resumes.${failedFilenames.size > 0 ? ` ${failedFilenames.size} failed — retry them from the queue.` : ''}`);
+      }
     } catch (err) {
       if (progressInterval) clearInterval(progressInterval);
       const errorMsg =
@@ -664,7 +609,6 @@ export function UploadPage() {
     }
   };
 
-  const duplicateCount = queue.filter((it) => it.status === 'duplicate').length;
   const reviewCount = queue.filter((it) => it.status === 'needs_review').length;
   const validCount = queue.filter((it) => it.status === 'valid').length;
 
@@ -686,7 +630,7 @@ export function UploadPage() {
             </span>
           </div>
           <p className="text-small text-[#64748B] mt-1">
-            Batch PDF ingestion with locked 4-segment entity extraction, client verification, and duplicate check.
+            Batch PDF ingestion with locked 4-segment entity extraction and client verification.
           </p>
         </div>
 
@@ -866,12 +810,7 @@ export function UploadPage() {
                 <h3 className="text-h3 font-bold text-[#081226]">
                   Pre-Commit Batch Summary ({queue.length} Files)
                 </h3>
-                {isCheckingDuplicates && (
-                  <span className="text-[11px] text-[#FF8A00] font-semibold flex items-center gap-1 animate-pulse">
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                    Checking duplicates...
-                  </span>
-                )}
+
               </div>
               <p className="text-caption text-[#64748B] mt-0.5">
                 Verify parsed entities before saving to database. You can edit any field directly inline.
@@ -883,11 +822,7 @@ export function UploadPage() {
               <span className="px-2.5 py-1 rounded-lg text-caption font-bold bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0]">
                 ✅ {validCount} Valid
               </span>
-              {duplicateCount > 0 && (
-                <span className="px-2.5 py-1 rounded-lg text-caption font-bold bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]">
-                  ⚠️ {duplicateCount} Duplicates
-                </span>
-              )}
+
               {reviewCount > 0 && (
                 <span className="px-2.5 py-1 rounded-lg text-caption font-bold bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA]">
                   ❌ {reviewCount} Need Review
@@ -957,18 +892,7 @@ export function UploadPage() {
                 Clear Batch
               </Button>
 
-              {duplicateCount > 0 && (
-                <Button
-                  variant="outline"
-                  size="md"
-                  icon={SkipForward}
-                  onClick={handleSkipDuplicates}
-                  disabled={isUploading}
-                  className="text-[#D97706] border-[#FDE68A] hover:bg-[#FFFBEB]"
-                >
-                  Skip {duplicateCount} Duplicate(s)
-                </Button>
-              )}
+
             </div>
 
             <div className="flex items-center gap-3">
@@ -977,7 +901,7 @@ export function UploadPage() {
                 size="lg"
                 icon={UploadCloud}
                 isLoading={isUploading}
-                onClick={() => handleCommitUpload(duplicateCount > 0 ? 'skip_duplicates' : 'all_valid')}
+                onClick={() => handleCommitUpload('all_valid')}
                 disabled={validCount === 0 || reviewCount > 0}
               >
                 Commit & Upload {validCount} Valid Resumes →
@@ -1013,10 +937,12 @@ export function UploadPage() {
               <p className="text-[11px] font-bold uppercase text-[#64748B]">Successfully Saved</p>
               <p className="text-h2 font-black text-[#16A34A] mt-1">{uploadSuccessSummary.uploaded}</p>
             </div>
+
             <div className="bg-white p-4 rounded-2xl border border-[#BBF7D0] text-center">
-              <p className="text-[11px] font-bold uppercase text-[#64748B]">Duplicates Skipped</p>
-              <p className="text-h2 font-black text-[#D97706] mt-1">{uploadSuccessSummary.duplicates}</p>
+              <p className="text-[11px] font-bold uppercase text-[#64748B]">Failed (In Queue)</p>
+              <p className="text-h2 font-black text-[#EF4444] mt-1">{uploadSuccessSummary.failed || 0}</p>
             </div>
+
             <div className="bg-white p-4 rounded-2xl border border-[#BBF7D0] text-center">
               <p className="text-[11px] font-bold uppercase text-[#64748B]">Needs Review</p>
               <p className="text-h2 font-black text-[#64748B] mt-1">{uploadSuccessSummary.reviewed}</p>

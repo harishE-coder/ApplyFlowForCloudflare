@@ -74,7 +74,50 @@ notificationsRouter.post("/read-all", async (c) => {
   return c.json({ message: `${updated.length} notifications marked as read` });
 });
 
-// 4. DELETE /api/notifications/:id
+// 4. DELETE /api/notifications/clear-read
+notificationsRouter.delete("/clear-read", async (c) => {
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  const deleted = await sql`
+    DELETE FROM notifications
+    WHERE user_id = ${user.id}
+      AND is_read = true
+    RETURNING id
+  `;
+
+  return c.json({ message: `${deleted.length} read notifications cleared` });
+});
+
+// 5. DELETE /api/notifications/clear-old
+notificationsRouter.delete("/clear-old", async (c) => {
+  const daysParam = c.req.query("days");
+  const days = daysParam !== undefined ? Math.max(0, Number(daysParam) || 0) : 30;
+  const user = c.get("user");
+  const sql = getDb(c.env.DATABASE_URL);
+
+  let deleted;
+  if (days <= 0) {
+    deleted = await sql`
+      DELETE FROM notifications
+      WHERE user_id = ${user.id}
+        AND is_read = true
+      RETURNING id
+    `;
+  } else {
+    deleted = await sql`
+      DELETE FROM notifications
+      WHERE user_id = ${user.id}
+        AND is_read = true
+        AND created_at < NOW() - (${days + " days"})::interval
+      RETURNING id
+    `;
+  }
+
+  return c.json({ message: `${deleted.length} old notifications cleared` });
+});
+
+// 6. DELETE /api/notifications/:id
 notificationsRouter.delete("/:id", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -88,19 +131,3 @@ notificationsRouter.delete("/:id", async (c) => {
   return c.json({ message: "Notification deleted successfully" });
 });
 
-// 5. DELETE /api/notifications/clear-old
-notificationsRouter.delete("/clear-old", async (c) => {
-  const days = Math.max(1, Number(c.req.query("days") || 30));
-  const user = c.get("user");
-  const sql = getDb(c.env.DATABASE_URL);
-
-  const deleted = await sql`
-    DELETE FROM notifications
-    WHERE user_id = ${user.id}
-      AND is_read = true
-      AND created_at < NOW() - (${days} || ' days')::interval
-    RETURNING id
-  `;
-
-  return c.json({ message: `${deleted.length} old notifications cleared` });
-});

@@ -42,15 +42,14 @@ async def mark_all_notifications_read(
     return {"message": f"{count} notifications marked as read"}
 
 
-@router.delete("/{notification_id}")
-async def delete_notification_endpoint(
-    notification_id: uuid.UUID,
+@router.delete("/clear-read")
+async def clear_read_notifications_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a single notification."""
-    await service.delete_notification(db, current_user, notification_id)
-    return {"message": "Notification deleted successfully"}
+    """Clear all read notifications for current user."""
+    count = await service.clear_read_notifications(db, current_user)
+    return {"message": f"{count} read notifications cleared"}
 
 
 @router.delete("/clear-old")
@@ -62,3 +61,15 @@ async def clear_old_notifications_endpoint(
     """Clear read notifications older than specified days."""
     count = await service.clear_old_notifications(db, current_user, days=days)
     return {"message": f"{count} old notifications cleared"}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification_endpoint(
+    notification_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a single notification."""
+    await service.delete_notification(db, current_user, notification_id)
+    return {"message": "Notification deleted successfully"}
+

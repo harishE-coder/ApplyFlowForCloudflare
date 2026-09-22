@@ -672,7 +672,7 @@ resumesRouter.post("/upload", async (c) => {
     let company = filenameParsed.hiringOrganization;
     let role = filenameParsed.targetRole;
 
-    // AI Extraction: Attempt text extraction & AI gateway
+    // AI Extraction: Attempt text extraction & AI gateway (5s timeout for batch resilience)
     let aiExtracted: any = null;
     try {
       const extractedText = await extractTextFromFile(file);
@@ -686,7 +686,7 @@ resumesRouter.post("/upload", async (c) => {
         try {
           execCtx = c.executionCtx;
         } catch {}
-        aiExtracted = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL, 15000, reqId, execCtx);
+        aiExtracted = await callAiGateway(c.env, extractedText, c.env.GROQ_MODEL, 5000, reqId, execCtx);
       }
     } catch (aiErr) {
       console.warn("[Resume AI Extraction Warning]", (aiErr as Error)?.message);
@@ -739,47 +739,24 @@ resumesRouter.post("/upload", async (c) => {
     const fileBuffer = await file.arrayBuffer();
     const fileHash = await computeFileHash(fileBuffer);
 
-    // Duplicate detection by hash or (client_id + candidate + company)
-    const duplicateRows = await sql`
-      SELECT id, candidate_name, company, resume_id_tag
-      FROM resumes
-      WHERE client_id = ${clientId}
-        AND (
-          file_hash = ${fileHash}
-          OR (LOWER(candidate_name) = ${candidateName.toLowerCase()} AND LOWER(company) = ${company.toLowerCase()})
-        )
-      LIMIT 1
-    `;
-
-    if (duplicateRows.length > 0) {
-      rejectedCount++;
-      items.push({
-        filename,
-        status: "duplicate",
-        message: "Duplicate resume already exists for candidate and company",
-        is_duplicate: true,
-        candidate_name: candidateName,
-        company: company,
-        role: role,
-        saved_resume_id: duplicateRows[0].id,
-      });
-      continue;
-    }
-
     // Step 1: Upload to Google Apps Script -> Google Drive
     let uploadRes;
     try {
       uploadRes = await uploadResume(fileBuffer, filename, clientName, c.env, file.type);
       createdDriveFileIds.push(uploadRes.fileId);
     } catch (uploadErr) {
-      // Rollback any files uploaded earlier in this batch if batch fails
-      for (const fId of createdDriveFileIds) {
-        await deleteResume(fId, c.env);
-      }
-      return c.json(
-        { detail: `Google Drive upload failed for '${filename}': ${(uploadErr as Error).message}` },
-        502
-      );
+      // Skip failed file and continue with rest of batch (no full-batch rollback)
+      console.warn(`[Resume Upload] Drive upload failed for '${filename}': ${(uploadErr as Error).message}`);
+      items.push({
+        filename,
+        status: "error",
+        message: `Google Drive upload failed: ${(uploadErr as Error).message}`,
+        candidate_name: candidateName,
+        company: company,
+        role: role,
+      });
+      rejectedCount++;
+      continue;
     }
 
     // Step 2: Insert row into Neon only after successful Drive upload
@@ -842,10 +819,17 @@ resumesRouter.post("/upload", async (c) => {
     } catch (err) {
       // COMPENSATION PATTERN: Delete orphaned Google Drive file if DB insertion fails
       await deleteResume(uploadRes.fileId, c.env);
-      return c.json(
-        { detail: `Database insertion failed for '${filename}': ${(err as any).message}` },
-        500
-      );
+      console.warn(`[Resume Upload] DB insert failed for '${filename}': ${(err as any).message}`);
+      items.push({
+        filename,
+        status: "error",
+        message: `Database save failed: ${(err as any).message}`,
+        candidate_name: candidateName,
+        company: company,
+        role: role,
+      });
+      rejectedCount++;
+      continue;
     }
   }
 

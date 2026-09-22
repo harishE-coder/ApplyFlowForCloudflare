@@ -35,6 +35,12 @@ Return ONLY a JSON object matching this schema:
   "status": "<Submitted|Shortlisted|Round 1|Round 2|Technical|Manager|HR|Offer|Rejected|Hold or empty>",
   "round": "<e.g. Round 1, Round 2, Technical, HR, Manager, Offer, Shortlisted or empty>",
   "interview_date": "<YYYY-MM-DD or empty>",
+  "interview_time": "<e.g. 10:00 AM EST, 2:30 PM, or empty>",
+  "meeting_link": "<Zoom/Google Meet/Teams/Webex URL or empty>",
+  "interviewer_name": "<Name of interviewer/recruiter or empty>",
+  "interviewer_email": "<Email of interviewer/recruiter or empty>",
+  "notes": "<Brief agenda or preparation instructions or empty>",
+  "salary_or_rate": "<Salary, compensation or hourly rate if offer letter or empty>",
   "resume_id_tag": "<e.g. RES101, RES-101, or empty if not mentioned>"
 }}
 
@@ -59,6 +65,20 @@ class GroqService:
         tag_match = re.search(r'\b(RES[-_]?\d+)\b', raw_email, re.IGNORECASE)
         fallback_tag = tag_match.group(1).upper() if tag_match else None
 
+        # Regex fallback for meeting links (Zoom, Google Meet, MS Teams, Webex)
+        meeting_patterns = [
+            r'https?://[a-zA-Z0-9-.]*zoom\.us/[a-zA-Z0-9/_?=&%-]+',
+            r'https?://meet\.google\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}[a-zA-Z0-9/_?=&%-]*',
+            r'https?://teams\.microsoft\.com/l/meetup-join/[a-zA-Z0-9/_?=&%.-]+',
+            r'https?://[a-zA-Z0-9-.]*webex\.com/[a-zA-Z0-9/_?=&%-]+',
+        ]
+        fallback_meeting_link = None
+        for pat in meeting_patterns:
+            m = re.search(pat, raw_email, re.IGNORECASE)
+            if m:
+                fallback_meeting_link = m.group(0).rstrip('.)>,;')
+                break
+
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": USER_PROMPT_TEMPLATE.format(email_text=raw_email)},
@@ -69,7 +89,7 @@ class GroqService:
                 messages=messages,
                 temperature=0.0,
                 response_format={"type": "json_object"},
-                max_tokens=500,
+                max_tokens=600,
             )
 
             if not resp_data or "choices" not in resp_data or not resp_data["choices"]:
@@ -88,10 +108,17 @@ class GroqService:
                     "status": "",
                     "round": "",
                     "interview_date": "",
+                    "interview_time": "",
+                    "meeting_link": "",
+                    "interviewer_name": "",
+                    "interviewer_email": "",
+                    "notes": "",
+                    "salary_or_rate": "",
                     "resume_id_tag": "",
                 }
 
             extracted_tag = (parsed.get("resume_id_tag") or "").strip() or fallback_tag or ""
+            extracted_meeting = (parsed.get("meeting_link") or "").strip() or fallback_meeting_link or ""
 
             return {
                 "is_interview_mail": True,
@@ -101,6 +128,12 @@ class GroqService:
                 "status": (parsed.get("status") or "Shortlisted").strip() or "Shortlisted",
                 "round": (parsed.get("round") or "Round 1").strip() or "Round 1",
                 "interview_date": (parsed.get("interview_date") or "").strip() or None,
+                "interview_time": (parsed.get("interview_time") or "").strip() or None,
+                "meeting_link": extracted_meeting or None,
+                "interviewer_name": (parsed.get("interviewer_name") or "").strip() or None,
+                "interviewer_email": (parsed.get("interviewer_email") or "").strip() or None,
+                "notes": (parsed.get("notes") or "").strip() or None,
+                "salary_or_rate": (parsed.get("salary_or_rate") or "").strip() or None,
                 "resume_id_tag": extracted_tag,
             }
         except Exception as e:

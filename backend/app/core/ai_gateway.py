@@ -94,6 +94,10 @@ class AIGateway:
         groq_fallbacks = [
             m for m in [
                 groq_primary_model,
+                "qwen/qwen3.8-27b",
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b",
+                "llama-3.3-70b-versatile",
                 "llama-3.1-8b-instant",
                 "deepseek-r1-distill-llama-70b",
                 "gemma2-9b-it",
@@ -349,9 +353,12 @@ class AIGateway:
                             last_error = f"{provider.key_id} HTTP {resp.status_code} Auth Failure"
                             break
 
-                        # 4. OTHER CLIENT ERRORS (e.g. 400 Bad Request)
-                        logger.error(f"[AI Gateway] [Req: {req_trace}] Client 4xx from {provider.key_id} ({model_candidate}): {resp.text}")
-                        return resp.json()
+                        # 4. OTHER CLIENT ERRORS (e.g. 404 Model Not Found, 400 Bad Request)
+                        logger.warning(
+                            f"[AI Gateway] [Req: {req_trace}] Client {resp.status_code} from {provider.key_id} ({model_candidate}): {resp.text}"
+                        )
+                        last_error = f"{provider.key_id} ({model_candidate}) HTTP {resp.status_code}: {resp.text[:120]}"
+                        continue
 
                 except (httpx.TimeoutException, httpx.NetworkError) as exc:
                     self.record_cooldown(provider, reason=f"Network timeout ({exc})", delta_score=-20)

@@ -266,6 +266,12 @@ async def analyze_recruiter_email(
         resume_matched=matched_resume_obj.matched if matched_resume_obj else False,
         match_priority=matched_resume_obj.match_priority if matched_resume_obj else None,
         match_reason=matched_resume_obj.match_reason if matched_resume_obj else None,
+        interview_time=extracted.get("interview_time"),
+        meeting_link=extracted.get("meeting_link"),
+        interviewer_name=extracted.get("interviewer_name"),
+        interviewer_email=extracted.get("interviewer_email"),
+        notes=extracted.get("notes"),
+        salary_or_rate=extracted.get("salary_or_rate"),
     )
 
 
@@ -419,7 +425,15 @@ async def confirm_and_save_email(
             event_date=interview_dt or datetime.utcnow(),
             email_id=email_intake.id,
             raw_email=payload.raw_email,
-            ai_json={"status": status_str, "round": round_str, "confirmed_by": current_user.name},
+            ai_json={
+                "status": status_str,
+                "round": round_str,
+                "confirmed_by": current_user.name,
+                "meeting_link": getattr(payload, "meeting_link", None),
+                "interview_time": getattr(payload, "interview_time", None),
+                "interviewer_name": getattr(payload, "interviewer_name", None),
+                "notes": getattr(payload, "notes", None),
+            },
             interview_date=interview_dt,
             created_by=current_user.id,
         )
@@ -469,7 +483,15 @@ async def confirm_and_save_email(
             event_date=interview_dt or datetime.utcnow(),
             email_id=email_intake.id,
             raw_email=payload.raw_email,
-            ai_json={"status": status_str, "round": round_str, "confirmed_by": current_user.name},
+            ai_json={
+                "status": status_str,
+                "round": round_str,
+                "confirmed_by": current_user.name,
+                "meeting_link": getattr(payload, "meeting_link", None),
+                "interview_time": getattr(payload, "interview_time", None),
+                "interviewer_name": getattr(payload, "interviewer_name", None),
+                "notes": getattr(payload, "notes", None),
+            },
             interview_date=interview_dt,
             created_by=current_user.id,
         )
@@ -527,10 +549,12 @@ async def confirm_and_save_email(
                 db.add(chat_room)
                 await db.flush()
 
+            time_info = f" ({payload.interview_time})" if getattr(payload, "interview_time", None) else ""
+            meeting_info = f" | 🔗 {payload.meeting_link}" if getattr(payload, "meeting_link", None) else ""
             chat_msg = ChatMessage(
                 room_id=chat_room.id,
                 sender_id=current_user.id,
-                message=f"🤖 AI Mail Intake: {current_user.name} confirmed — {cand_label} ({company_name} – {role_name}) moved to {round_str}.",
+                message=f"🤖 AI Mail Intake: {current_user.name} confirmed — {cand_label} ({company_name} – {role_name}) moved to {round_str}{time_info}.{meeting_info}",
                 attachment_type="resume" if app.resume_id else None,
                 attachment_reference=str(app.resume_id) if app.resume_id else None,
             )

@@ -107,6 +107,13 @@ class AIAnalysisResponse(BaseModel):
     resume_matched: bool = False
     match_priority: int | None = None
     match_reason: str | None = None
+    # Rich Logistics Extraction
+    interview_time: str | None = None
+    meeting_link: str | None = None
+    interviewer_name: str | None = None
+    interviewer_email: str | None = None
+    notes: str | None = None
+    salary_or_rate: str | None = None
 
 
 class ConfirmSaveRequest(BaseModel):
@@ -123,6 +130,10 @@ class ConfirmSaveRequest(BaseModel):
     decision: str = "new_application"
     matched_application_id: uuid.UUID | None = None
     resume_id: uuid.UUID | None = None
+    interview_time: str | None = None
+    meeting_link: str | None = None
+    interviewer_name: str | None = None
+    notes: str | None = None
 
 
 class ConfirmAIRequest(BaseModel):

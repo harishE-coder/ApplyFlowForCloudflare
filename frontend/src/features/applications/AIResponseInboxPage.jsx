@@ -46,6 +46,12 @@ import {
   Link2,
   Unlink,
   FileCheck,
+  Video,
+  ExternalLink,
+  Copy,
+  Zap,
+  Clipboard,
+  PlusCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -62,7 +68,7 @@ import { formatDate, formatRelativeTime, cn } from '@/utils/cn';
 // Sample recruiter & non-recruiter emails for 1-click testing
 const SAMPLE_EMAILS = [
   {
-    label: '📄 Interview Scheduled (New)',
+    label: '📄 Interview Scheduled (TCS)',
     text: `From: priya.recruiter@tcs.com
 To: hr@applyflow.com
 Subject: Interview Scheduled - Java Developer - Rahul Kumar
@@ -74,6 +80,26 @@ We have scheduled Round 1 Technical Interview for Rahul Kumar on 2026-08-26 at 1
 Best Regards,
 Priya Verma
 TCS Recruitment`,
+  },
+  {
+    label: '🎥 Google Tech + Meet Link',
+    text: `From: sarah.recruiter@google.com
+To: hr@applyflow.com
+Subject: Technical Interview Invitation - Google - Alex Chen
+
+Hi Team,
+
+We would like to invite Alex Chen for a 60-minute Google Technical Coding Round on 2026-09-28 at 02:30 PM EST.
+
+Please join using Google Meet:
+https://meet.google.com/xyz-qwer-tyu
+
+Interviewer: Sarah Jenkins (sarah.recruiter@google.com)
+Notes: Live coding on algorithmic problem solving.
+
+Best,
+Sarah Jenkins
+Google Recruiting`,
   },
   {
     label: '💻 Round 2 Follow-up',
@@ -102,6 +128,21 @@ Congratulations!
 
 Sincerely,
 TCS Talent Acquisition`,
+  },
+  {
+    label: '❌ Application Rejected',
+    text: `From: talent@microsoft.com
+To: hr@applyflow.com
+Subject: Update regarding your application - Microsoft
+
+Dear Team,
+
+Thank you for presenting candidates for the Software Engineer role. After careful review, we have decided not to move forward with Rahul Kumar at this time.
+
+We wish the candidate all the best in their future endeavors.
+
+Regards,
+Microsoft Recruiting Team`,
   },
   {
     label: '🚫 50% AWS Promo (Ignored)',
@@ -133,7 +174,7 @@ export function AIResponseInboxPage() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
-  // AI Intake Mode: 'paste' | 'eml' | 'pdf' | 'screenshot'
+  // AI Intake Mode: 'paste' | 'eml' | 'pdf' | 'screenshot' | 'direct'
   const [intakeMode, setIntakeMode] = useState('paste');
 
   // Text Ingestion State
@@ -146,6 +187,31 @@ export function AIResponseInboxPage() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
+  // Direct Application Intake State
+  const [directCandidateSearch, setDirectCandidateSearch] = useState('');
+  const [directCandidateResume, setDirectCandidateResume] = useState(null);
+  const [directCandidateSuggestions, setDirectCandidateSuggestions] = useState([]);
+  const [showDirectCandidateSuggestions, setShowDirectCandidateSuggestions] = useState(false);
+  const [directClientId, setDirectClientId] = useState('');
+  const [directRequirementId, setDirectRequirementId] = useState('');
+  const [clientRequirements, setClientRequirements] = useState([]);
+  const [loadingRequirements, setLoadingRequirements] = useState(false);
+  const [isSubmittingDirect, setIsSubmittingDirect] = useState(false);
+  const [directForm, setDirectForm] = useState({
+    company: '',
+    role: '',
+    round: 'Submitted',
+    status: 'Submitted',
+    interview_date: '',
+    interview_time: '',
+    meeting_link: '',
+    notes: '',
+  });
+
+  // Inline Candidate Suggestions for AI Intake (No modal required)
+  const [inlineCandidateSuggestions, setInlineCandidateSuggestions] = useState([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
   // PHASE 1: Human Confirmation State (Review Card before DB save)
   const [analysisResult, setAnalysisResult] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -156,6 +222,10 @@ export function AIResponseInboxPage() {
     round: '',
     status: 'Shortlisted',
     interview_date: '',
+    interview_time: '',
+    meeting_link: '',
+    interviewer_name: '',
+    notes: '',
     client_id: '',
   });
 
@@ -278,6 +348,155 @@ export function AIResponseInboxPage() {
     }
   };
 
+  // 1-Click Clipboard Paste
+  const handlePasteFromClipboard = async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        warning('Clipboard Access', 'Please paste directly into the textarea with Ctrl+V or Cmd+V.');
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      if (!text || !text.trim()) {
+        warning('Empty Clipboard', 'No text found on clipboard.');
+        return;
+      }
+      setRawEmail(text.trim());
+      success('Pasted from Clipboard', `Loaded ${text.trim().length} characters.`);
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+      warning('Clipboard Permission', 'Please paste directly using Ctrl+V or Cmd+V.');
+    }
+  };
+
+  // Fetch Requirements for selected client in Direct Intake
+  const fetchRequirementsForClient = async (clientId) => {
+    if (!clientId) {
+      setClientRequirements([]);
+      return;
+    }
+    setLoadingRequirements(true);
+    try {
+      const res = await api.get('/requirements', {
+        params: { client_id: clientId, is_active: true },
+      });
+      setClientRequirements(res.data || []);
+    } catch (err) {
+      console.warn('Failed to fetch requirements:', err);
+      setClientRequirements([]);
+    } finally {
+      setLoadingRequirements(false);
+    }
+  };
+
+  // Direct Intake Candidate Search
+  const searchDirectCandidates = async (query) => {
+    if (!query || query.trim().length < 2) {
+      setDirectCandidateSuggestions([]);
+      return;
+    }
+    try {
+      const targetClientId = directClientId || selectedClient || (clients.length > 0 ? clients[0].id : undefined);
+      const res = await api.get('/resumes', {
+        params: { search: query.trim(), client_id: targetClientId, page_size: 6 },
+      });
+      setDirectCandidateSuggestions(res.data?.items || []);
+      setShowDirectCandidateSuggestions(true);
+    } catch (err) {
+      console.warn('Candidate search failed:', err);
+    }
+  };
+
+  // Direct Intake Submission Handler
+  const handleDirectIntakeSubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!directCandidateSearch.trim()) {
+      warning('Candidate Required', 'Please enter or select a candidate name.');
+      return;
+    }
+    const targetClientId = directClientId || selectedClient || (clients.length > 0 ? clients[0].id : null);
+    if (!targetClientId) {
+      warning('Client Required', 'Please select a Service Client.');
+      return;
+    }
+
+    setIsSubmittingDirect(true);
+    try {
+      const clientObj = clients.find((c) => c.id === targetClientId);
+      const payload = {
+        candidate_name: directCandidateSearch.trim(),
+        company: directForm.company.trim() || clientObj?.company_name || 'Hiring Client',
+        role: directForm.role.trim() || 'Software Engineer',
+        round: directForm.round || 'Submitted',
+        status: directForm.status || 'Submitted',
+        interview_date: directForm.interview_date || null,
+        interview_time: directForm.interview_time || null,
+        meeting_link: directForm.meeting_link || null,
+        notes: directForm.notes || null,
+        client_id: targetClientId,
+        raw_email: directForm.notes
+          ? `Direct ATS Intake: ${directForm.notes}`
+          : `Direct ATS Ingestion by ${user?.name || 'Recruiter'} for ${directCandidateSearch.trim()}`,
+        source_type: 'direct',
+        decision: 'new_application',
+        resume_id: directCandidateResume?.id || null,
+      };
+
+      const res = await api.post('/ai/confirm-save', payload);
+      triggerConfetti();
+      success('Application Registered', `Created application for ${directCandidateSearch.trim()} → ${directForm.round}`);
+
+      window.dispatchEvent(new CustomEvent('application-created', { detail: res.data }));
+      window.dispatchEvent(new CustomEvent('application-updated', { detail: res.data }));
+
+      // Reset direct form
+      setDirectCandidateSearch('');
+      setDirectCandidateResume(null);
+      setDirectForm({
+        company: '',
+        role: '',
+        round: 'Submitted',
+        status: 'Submitted',
+        interview_date: '',
+        interview_time: '',
+        meeting_link: '',
+        notes: '',
+      });
+      fetchInbox();
+    } catch (err) {
+      console.error('Direct intake error:', err);
+      toastError('Registration Failed', err.response?.data?.detail || 'Failed to register application');
+    } finally {
+      setIsSubmittingDirect(false);
+    }
+  };
+
+  // Fetch Candidate Suggestions for inline quick linking
+  const fetchCandidateSuggestions = async (clientId, candidateName) => {
+    if (!clientId) return;
+    setLoadingSuggestions(true);
+    try {
+      const res = await api.get('/resumes', {
+        params: { client_id: clientId, page_size: 20 },
+      });
+      const items = res.data?.items || [];
+      if (!candidateName || candidateName.toLowerCase() === 'candidate') {
+        setInlineCandidateSuggestions(items.slice(0, 3));
+      } else {
+        const q = candidateName.toLowerCase().trim();
+        const sorted = [...items].sort((a, b) => {
+          const aMatch = (a.candidate_name || '').toLowerCase().includes(q) ? 2 : 0;
+          const bMatch = (b.candidate_name || '').toLowerCase().includes(q) ? 2 : 0;
+          return bMatch - aMatch;
+        });
+        setInlineCandidateSuggestions(sorted.slice(0, 3));
+      }
+    } catch (e) {
+      console.warn('Could not fetch suggestions:', e);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
   // --------------------------------------------------------------------------
   // STEP 1: ANALYZE WITH GROQ (FIRST JOB: IS IT INTERVIEW MAIL?)
   // --------------------------------------------------------------------------
@@ -289,9 +508,10 @@ export function AIResponseInboxPage() {
 
     setIsAnalyzing(true);
     try {
+      const targetClientId = selectedClient || (clients.length === 1 ? clients[0].id : undefined);
       const res = await api.post('/ai/analyze-email', {
         raw_email: rawEmail.trim(),
-        client_id: selectedClient || (clients.length === 1 ? clients[0].id : undefined),
+        client_id: targetClientId,
         source_type: 'paste',
       });
 
@@ -305,6 +525,10 @@ export function AIResponseInboxPage() {
         round: data.round,
         status: data.status,
         interview_date: data.interview_date || '',
+        interview_time: data.interview_time || '',
+        meeting_link: data.meeting_link || '',
+        interviewer_name: data.interviewer_name || '',
+        notes: data.notes || '',
         client_id: data.client_id || selectedClient || (clients[0]?.id || ''),
       });
 
@@ -319,8 +543,11 @@ export function AIResponseInboxPage() {
           match_priority: data.match_priority,
           match_reason: data.match_reason,
         });
+        setInlineCandidateSuggestions([]);
       } else {
         setLinkedResume(null);
+        // Automatically fetch candidate suggestions for 1-click linking
+        fetchCandidateSuggestions(data.client_id || selectedClient || (clients[0]?.id || ''), data.candidate_name);
       }
 
       if (!data.is_interview_mail) {
@@ -365,6 +592,10 @@ export function AIResponseInboxPage() {
         round: data.round,
         status: data.status,
         interview_date: data.interview_date || '',
+        interview_time: data.interview_time || '',
+        meeting_link: data.meeting_link || '',
+        interviewer_name: data.interviewer_name || '',
+        notes: data.notes || '',
         client_id: data.client_id || selectedClient || (clients[0]?.id || ''),
       });
 
@@ -379,8 +610,10 @@ export function AIResponseInboxPage() {
           match_priority: data.match_priority,
           match_reason: data.match_reason,
         });
+        setInlineCandidateSuggestions([]);
       } else {
         setLinkedResume(null);
+        fetchCandidateSuggestions(data.client_id || selectedClient || (clients[0]?.id || ''), data.candidate_name);
       }
 
       if (!data.is_interview_mail) {
@@ -418,6 +651,10 @@ export function AIResponseInboxPage() {
         round: editableForm.round.trim() || 'Round 1',
         status: editableForm.status || 'Shortlisted',
         interview_date: editableForm.interview_date || null,
+        interview_time: editableForm.interview_time || null,
+        meeting_link: editableForm.meeting_link || null,
+        interviewer_name: editableForm.interviewer_name || null,
+        notes: editableForm.notes || null,
         client_id: targetClientId,
         raw_email: analysisResult.raw_email,
         source_type: analysisResult.source_type,
@@ -440,6 +677,7 @@ export function AIResponseInboxPage() {
       // Reset analysis and input states
       setAnalysisResult(null);
       setLinkedResume(null);
+      setInlineCandidateSuggestions([]);
       setIsEditing(false);
       setRawEmail('');
       setSelectedFile(null);
@@ -743,9 +981,50 @@ export function AIResponseInboxPage() {
                           <td className="px-4 py-2.5 font-bold text-[#2563EB]">{editableForm.status}</td>
                         </tr>
                         <tr>
-                          <td className="px-4 py-2.5 font-bold text-[#64748B]">Date</td>
-                          <td className="px-4 py-2.5 text-[#081226]">{editableForm.interview_date || 'Not specified'}</td>
+                          <td className="px-4 py-2.5 font-bold text-[#64748B]">Date & Time</td>
+                          <td className="px-4 py-2.5 text-[#081226]">
+                            {editableForm.interview_date || 'Not specified'}
+                            {editableForm.interview_time ? ` · ${editableForm.interview_time}` : ''}
+                          </td>
                         </tr>
+                        {editableForm.meeting_link && (
+                          <tr>
+                            <td className="px-4 py-2.5 font-bold text-[#64748B]">Meeting Link</td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={editableForm.meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#2563EB] hover:underline font-bold text-xs flex items-center gap-1 bg-[#EFF6FF] px-2.5 py-1 rounded-lg border border-[#BFDBFE]"
+                                >
+                                  <Video className="w-3.5 h-3.5 text-[#2563EB]" />
+                                  <span>Join Meeting</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(editableForm.meeting_link);
+                                    success('Copied', 'Meeting link copied to clipboard');
+                                  }}
+                                  className="p-1 rounded-md text-[#64748B] hover:text-[#081226] hover:bg-[#F1F5F9] transition-colors"
+                                  title="Copy Link"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {editableForm.notes && (
+                          <tr>
+                            <td className="px-4 py-2.5 font-bold text-[#64748B]">Notes</td>
+                            <td className="px-4 py-2.5 text-xs text-[#475569] leading-relaxed">
+                              {editableForm.notes}
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -819,6 +1098,30 @@ export function AIResponseInboxPage() {
                       </div>
                     </div>
 
+                    {/* Quick Round Preset Chips */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-[#64748B] block">
+                        Quick Round Presets
+                      </label>
+                      <div className="flex flex-wrap gap-1">
+                        {['Screening', 'Round 1', 'Round 2', 'Technical', 'Manager', 'HR', 'Offer', 'Rejected'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setEditableForm({ ...editableForm, round: preset, status: preset === 'Offer' ? 'Offer' : preset === 'Rejected' ? 'Rejected' : 'Shortlisted' })}
+                            className={cn(
+                              'px-2 py-0.5 text-[10px] font-extrabold rounded-md border transition-all cursor-pointer',
+                              editableForm.round === preset
+                                ? 'bg-[#2563EB] text-white border-[#2563EB]'
+                                : 'bg-white text-[#64748B] border-[#E2E8F0] hover:border-[#2563EB]'
+                            )}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
@@ -851,6 +1154,33 @@ export function AIResponseInboxPage() {
                           placeholder="e.g. 2026-08-26"
                           onChange={(e) => setEditableForm({ ...editableForm, interview_date: e.target.value })}
                           className="w-full h-[42px] px-3 rounded-xl bg-[#F8FAFC] text-small font-bold text-[#081226] border border-[#E2E8F0] focus:bg-white focus:border-[#2563EB] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Interview Time
+                        </label>
+                        <input
+                          type="text"
+                          value={editableForm.interview_time}
+                          placeholder="e.g. 10:00 AM EST"
+                          onChange={(e) => setEditableForm({ ...editableForm, interview_time: e.target.value })}
+                          className="w-full h-[42px] px-3 rounded-xl bg-[#F8FAFC] text-small font-bold text-[#081226] border border-[#E2E8F0] focus:bg-white focus:border-[#2563EB] focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Meeting Link
+                        </label>
+                        <input
+                          type="url"
+                          value={editableForm.meeting_link}
+                          placeholder="https://meet.google.com/..."
+                          onChange={(e) => setEditableForm({ ...editableForm, meeting_link: e.target.value })}
+                          className="w-full h-[42px] px-3 rounded-xl bg-[#F8FAFC] text-small font-mono text-[#081226] border border-[#E2E8F0] focus:bg-white focus:border-[#2563EB] focus:outline-none"
                         />
                       </div>
                     </div>
@@ -912,29 +1242,77 @@ export function AIResponseInboxPage() {
                     </div>
                   ) : (
                     /* Case 2 — No Resume Found / Unlinked */
-                    <div className="p-3.5 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-start gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-xl bg-[#FEF3C7] text-[#D97706] flex items-center justify-center shrink-0">
-                          <AlertTriangle className="w-5 h-5" />
+                    <div className="p-3.5 rounded-2xl bg-[#FFFBEB] border border-[#FDE68A] space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-[#FEF3C7] text-[#D97706] flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-small font-extrabold text-[#92400E]">
+                              No Resume Match Found
+                            </p>
+                            <p className="text-caption text-[#B45309]">
+                              Link a suggested candidate below, browse all, or proceed unlinked.
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-small font-extrabold text-[#92400E]">
-                            No Resume Match Found
-                          </p>
-                          <p className="text-caption text-[#B45309]">
-                            Create without linking a resume, or select one manually.
-                          </p>
-                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={openResumeSelector}
+                          className="h-8 text-xs font-bold bg-white text-[#92400E] border-[#FCD34D] hover:bg-[#FEF3C7] shrink-0"
+                        >
+                          Browse All Resumes
+                        </Button>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={openResumeSelector}
-                        className="h-8 text-xs font-bold bg-white text-[#92400E] border-[#FCD34D] hover:bg-[#FEF3C7] shrink-0"
-                      >
-                        Select Resume Manually
-                      </Button>
+
+                      {/* Quick Inline Candidate Suggestions */}
+                      {inlineCandidateSuggestions && inlineCandidateSuggestions.length > 0 && (
+                        <div className="pt-2 border-t border-[#FDE68A]/60 space-y-1.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[#92400E] flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-[#D97706]" />
+                            <span>1-Click Candidate Matches</span>
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {inlineCandidateSuggestions.map((cand) => (
+                              <button
+                                key={cand.id}
+                                type="button"
+                                onClick={() => {
+                                  setLinkedResume({
+                                    id: cand.id,
+                                    original_filename: cand.original_filename,
+                                    candidate_name: cand.candidate_name,
+                                    company: cand.company,
+                                    role: cand.role,
+                                    resume_id_tag: cand.resume_id_tag,
+                                    match_priority: null,
+                                    match_reason: '1-click linked by recruiter',
+                                  });
+                                  setEditableForm((prev) => ({
+                                    ...prev,
+                                    candidate_name: cand.candidate_name || prev.candidate_name,
+                                    company: cand.company || prev.company,
+                                    role: cand.role || prev.role,
+                                  }));
+                                  success('Candidate Linked', `Linked ${cand.candidate_name}`);
+                                }}
+                                className="px-2.5 py-1 rounded-xl bg-white border border-[#FCD34D] text-[#92400E] text-caption font-bold flex items-center gap-1.5 hover:bg-[#FEF3C7] transition-all cursor-pointer shadow-xs"
+                              >
+                                <User className="w-3 h-3 text-[#D97706]" />
+                                <span>{cand.candidate_name}</span>
+                                {cand.resume_id_tag && (
+                                  <span className="text-[9px] px-1 py-0.2 bg-[#FEF3C7] text-[#92400E] rounded font-mono font-bold">
+                                    {cand.resume_id_tag}
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -999,12 +1377,12 @@ export function AIResponseInboxPage() {
                   </div>
                 )}
 
-                {/* 4 Input Options */}
+                {/* 5 Input Options */}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-2">
                     Select Intake Format
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#F1F5F9] rounded-2xl border border-[#E2E8F0]">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 bg-[#F1F5F9] rounded-2xl border border-[#E2E8F0]">
                     <button
                       type="button"
                       onClick={() => setIntakeMode('paste')}
@@ -1015,6 +1393,17 @@ export function AIResponseInboxPage() {
                     >
                       <FileText className="w-3.5 h-3.5 text-[#2563EB]" />
                       <span>Paste</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIntakeMode('direct')}
+                      className={cn(
+                        'py-2 text-[11px] font-bold rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer',
+                        intakeMode === 'direct' ? 'bg-white text-[#081226] shadow-xs' : 'text-[#64748B] hover:text-[#081226]'
+                      )}
+                    >
+                      <Zap className="w-3.5 h-3.5 text-[#EAB308]" />
+                      <span>Direct</span>
                     </button>
                     <button
                       type="button"
@@ -1078,15 +1467,25 @@ export function AIResponseInboxPage() {
                         <label className="text-small font-semibold text-[#081226]">
                           Paste Email Text <span className="text-[#EF4444]">*</span>
                         </label>
-                        {rawEmail && (
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setRawEmail('')}
-                            className="text-caption text-[#94A3B8] hover:text-[#EF4444] cursor-pointer"
+                            onClick={handlePasteFromClipboard}
+                            className="text-caption font-bold text-[#2563EB] hover:underline flex items-center gap-1 cursor-pointer"
                           >
-                            Clear
+                            <Clipboard className="w-3 h-3" />
+                            <span>Paste Clipboard</span>
                           </button>
-                        )}
+                          {rawEmail && (
+                            <button
+                              type="button"
+                              onClick={() => setRawEmail('')}
+                              className="text-caption text-[#94A3B8] hover:text-[#EF4444] cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       <textarea
@@ -1111,8 +1510,274 @@ export function AIResponseInboxPage() {
                   </div>
                 )}
 
-                {/* OPTION 2, 3, 4: FILE / SCREENSHOT UPLOAD */}
-                {intakeMode !== 'paste' && (
+                {/* OPTION 2: DIRECT / MANUAL ATS APPLICATION INTAKE */}
+                {intakeMode === 'direct' && (
+                  <form onSubmit={handleDirectIntakeSubmit} className="space-y-4">
+                    <div className="p-3.5 bg-[#FEF9C3]/50 border border-[#FEF08A] rounded-2xl flex items-center gap-2.5 text-xs text-[#854D0E]">
+                      <Zap className="w-4 h-4 text-[#CA8A04] shrink-0" />
+                      <span>
+                        <strong>Direct ATS Registration:</strong> Enter application or interview details directly without needing an email.
+                      </span>
+                    </div>
+
+                    {/* Candidate Search & Bank Autocomplete */}
+                    <div className="relative space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-small font-semibold text-[#081226]">
+                          Candidate Name <span className="text-[#EF4444]">*</span>
+                        </label>
+                        {directCandidateResume && (
+                          <span className="text-caption font-bold text-[#10B981] flex items-center gap-1">
+                            ✓ Resume Attached ({directCandidateResume.email || 'Candidate Bank'})
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={directCandidateSearch}
+                          onChange={(e) => {
+                            setDirectCandidateSearch(e.target.value);
+                            searchDirectCandidates(e.target.value);
+                          }}
+                          onFocus={() => {
+                            if (directCandidateSuggestions.length > 0) setShowDirectCandidateSuggestions(true);
+                          }}
+                          placeholder="Type candidate name or search resume bank..."
+                          className="w-full h-[42px] px-3.5 rounded-xl bg-[#F8FAFC] text-small font-bold text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15"
+                          required
+                        />
+                        {directCandidateSearch && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDirectCandidateSearch('');
+                              setDirectCandidateResume(null);
+                              setDirectCandidateSuggestions([]);
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-caption text-[#94A3B8] hover:text-[#EF4444]"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Autocomplete Dropdown */}
+                      {showDirectCandidateSuggestions && directCandidateSuggestions.length > 0 && (
+                        <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white rounded-xl border border-[#E2E8F0] shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                          <div className="p-2 bg-[#F8FAFC] border-b border-[#F1F5F9] text-[11px] font-bold text-[#64748B]">
+                            Candidate Bank Suggestions:
+                          </div>
+                          {directCandidateSuggestions.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onClick={() => {
+                                setDirectCandidateSearch(c.candidate_name);
+                                setDirectCandidateResume(c);
+                                setShowDirectCandidateSuggestions(false);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-[#EFF6FF] flex items-center justify-between transition-colors cursor-pointer border-b border-[#F8FAFC] last:border-0"
+                            >
+                              <div>
+                                <p className="font-bold text-small text-[#081226]">{c.candidate_name}</p>
+                                <p className="text-caption text-[#64748B]">{c.email || c.title || 'Candidate Record'}</p>
+                              </div>
+                              <span className="text-[10px] font-bold text-[#2563EB] bg-[#EFF6FF] px-2 py-0.5 rounded">
+                                Select Resume
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Service Client & Requirement */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Service Client <span className="text-[#EF4444]">*</span>
+                        </label>
+                        <select
+                          value={directClientId || selectedClient}
+                          onChange={(e) => {
+                            setDirectClientId(e.target.value);
+                            fetchRequirementsForClient(e.target.value);
+                          }}
+                          className="w-full h-[40px] px-3 rounded-xl bg-[#F8FAFC] text-small font-bold text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                          required
+                        >
+                          <option value="">Select Service Client</option>
+                          {clients.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.company_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Link Active Requirement
+                        </label>
+                        <select
+                          value={directRequirementId}
+                          disabled={loadingRequirements || clientRequirements.length === 0}
+                          onChange={(e) => {
+                            setDirectRequirementId(e.target.value);
+                            const req = clientRequirements.find((r) => r.id === e.target.value);
+                            if (req) {
+                              setDirectForm((prev) => ({
+                                ...prev,
+                                role: req.job_title || req.title || prev.role,
+                                company: req.client_name || prev.company,
+                              }));
+                            }
+                          }}
+                          className="w-full h-[40px] px-3 rounded-xl bg-[#F8FAFC] text-small font-medium text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB] disabled:opacity-50"
+                        >
+                          <option value="">
+                            {loadingRequirements
+                              ? 'Loading requirements...'
+                              : clientRequirements.length === 0
+                              ? 'No open requirements'
+                              : 'Optional: Pick Requirement'}
+                          </option>
+                          {clientRequirements.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.job_title || r.title} ({r.position_type || 'Full Time'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Hiring Company & Job Role */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Hiring Company / Organization
+                        </label>
+                        <input
+                          type="text"
+                          value={directForm.company}
+                          onChange={(e) => setDirectForm((prev) => ({ ...prev, company: e.target.value }))}
+                          placeholder="e.g. Google, TCS, Meta"
+                          className="w-full h-[40px] px-3 rounded-xl bg-[#F8FAFC] text-small font-semibold text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Role Title
+                        </label>
+                        <input
+                          type="text"
+                          value={directForm.role}
+                          onChange={(e) => setDirectForm((prev) => ({ ...prev, role: e.target.value }))}
+                          placeholder="e.g. Senior Frontend Engineer"
+                          className="w-full h-[40px] px-3 rounded-xl bg-[#F8FAFC] text-small font-semibold text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stage / Round Quick Presets */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block">
+                        Intake Stage / Round
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['Submitted', 'Screening', 'Round 1', 'Round 2', 'Technical', 'Manager', 'Offer', 'Rejected'].map((round) => (
+                          <button
+                            key={round}
+                            type="button"
+                            onClick={() =>
+                              setDirectForm((prev) => ({
+                                ...prev,
+                                round: round,
+                                status: round === 'Offer' ? 'Offer' : round === 'Rejected' ? 'Rejected' : round,
+                              }))
+                            }
+                            className={cn(
+                              'px-2.5 py-1 text-caption font-bold rounded-lg border transition-all cursor-pointer',
+                              directForm.round === round
+                                ? 'bg-[#2563EB] text-white border-[#2563EB] shadow-xs'
+                                : 'bg-[#F8FAFC] text-[#475569] border-[#E2E8F0] hover:bg-[#EFF6FF]'
+                            )}
+                          >
+                            {round}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Interview Date, Time & Meeting URL */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Interview Date
+                        </label>
+                        <input
+                          type="date"
+                          value={directForm.interview_date}
+                          onChange={(e) => setDirectForm((prev) => ({ ...prev, interview_date: e.target.value }))}
+                          className="w-full h-[40px] px-3 rounded-xl bg-[#F8FAFC] text-small font-medium text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Interview Time
+                        </label>
+                        <input
+                          type="text"
+                          value={directForm.interview_time}
+                          onChange={(e) => setDirectForm((prev) => ({ ...prev, interview_time: e.target.value }))}
+                          placeholder="e.g. 10:00 AM EST"
+                          className="w-full h-[40px] px-3 rounded-xl bg-[#F8FAFC] text-small font-medium text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block mb-1">
+                          Meeting Link
+                        </label>
+                        <input
+                          type="url"
+                          value={directForm.meeting_link}
+                          onChange={(e) => setDirectForm((prev) => ({ ...prev, meeting_link: e.target.value }))}
+                          placeholder="Google Meet / Zoom URL"
+                          className="w-full h-[40px] px-3 rounded-xl bg-[#F8FAFC] text-small font-medium text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Intake Notes */}
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block">
+                        Recruiter Notes / Instructions
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={directForm.notes}
+                        onChange={(e) => setDirectForm((prev) => ({ ...prev, notes: e.target.value }))}
+                        placeholder="Add recruiter notes, interview panel names, or submission details..."
+                        className="w-full p-2.5 rounded-xl bg-[#F8FAFC] text-small text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB]"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      variant="primary"
+                      size="lg"
+                      icon={PlusCircle}
+                      isLoading={isSubmittingDirect}
+                      className="w-full h-[48px] text-base font-bold bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] shadow-lg hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
+                    >
+                      {isSubmittingDirect ? 'Registering Application...' : 'Register Direct Application'}
+                    </Button>
+                  </form>
+                )}
+
+                {/* OPTION 3, 4, 5: FILE / SCREENSHOT UPLOAD */}
+                {(intakeMode === 'eml' || intakeMode === 'pdf' || intakeMode === 'screenshot') && (
                   <div className="space-y-4">
                     <input
                       ref={fileInputRef}
@@ -1265,6 +1930,32 @@ export function AIResponseInboxPage() {
                           {item.round}
                         </span>
                       </div>
+
+                      {/* Meeting Link / Time Pill if present */}
+                      {(() => {
+                        const snippet = item.raw_email_snippet || '';
+                        const meetingUrlMatch = snippet.match(/https?:\/\/(?:[a-zA-Z0-9-]+\.)?(?:zoom\.us|meet\.google\.com|teams\.microsoft\.com|webex\.com)\/[^\s<>"')]+/i);
+                        if (meetingUrlMatch) {
+                          return (
+                            <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl text-caption">
+                              <div className="flex items-center gap-1.5 text-[#1E40AF] font-bold truncate">
+                                <Video className="w-3.5 h-3.5 text-[#2563EB] shrink-0" />
+                                <span className="truncate">Meeting Link Detected</span>
+                              </div>
+                              <a
+                                href={meetingUrlMatch[0]}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#2563EB] text-white font-bold text-[11px] hover:bg-[#1D4ED8] transition-colors shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Join <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       <div className="flex items-center justify-between pt-2 border-t border-[#F1F5F9]">
                         <button

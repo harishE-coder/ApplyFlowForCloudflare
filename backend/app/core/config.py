@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     groq_api_key_3: str | None = Field(default=None, alias="groq_api_key_3")
     openai_api_key: str | None = Field(default=None, alias="openai_api_key")
     gemini_api_key: str | None = Field(default=None, alias="gemini_api_key")
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "qwen/qwen3.8-27b"
     openai_model: str = "gpt-4o-mini"
     gemini_model: str = "gemini-1.5-flash"
 

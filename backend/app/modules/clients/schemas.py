@@ -63,3 +63,7 @@ class RecruiterAssignmentItem(BaseModel):
 class AssignEmployeesRequest(BaseModel):
     employee_ids: list[uuid.UUID] | None = None
     assignments: list[RecruiterAssignmentItem] | None = None
+
+
+class ResetClientPasswordRequest(BaseModel):
+    new_password: str

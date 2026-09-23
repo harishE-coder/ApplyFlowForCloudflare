@@ -13,12 +13,14 @@ import {
   User,
   Sparkles,
   Command,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Avatar } from '@/components/ui/Avatar';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { ChangePasswordModal } from '@/components/common/ChangePasswordModal';
 import api from '@/services/api';
 import { formatDate, cn } from '@/utils/cn';
 
@@ -35,6 +37,7 @@ export function TopBar({
 
   const [attendance, setAttendance] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   // Fetch employee attendance
   useEffect(() => {
@@ -73,6 +76,11 @@ export function TopBar({
         label: user?.name || 'Recruiter Account',
         icon: User,
         onClick: () => {},
+      },
+      {
+        label: 'Change Password',
+        icon: KeyRound,
+        onClick: () => setIsChangePasswordOpen(true),
       },
       {
         divider: true,
@@ -206,6 +214,12 @@ export function TopBar({
           items={profileMenuItems}
         />
       </div>
+
+      {/* Self-Service Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </header>
   );
 }

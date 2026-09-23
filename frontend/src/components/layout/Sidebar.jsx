@@ -19,9 +19,11 @@ import {
   X,
   Mail,
   ChevronRight,
+  KeyRound,
 } from 'lucide-react';
 import { ApplyFlowLogo } from '@/assets/logo/ApplyFlowLogo';
 import { Avatar } from '@/components/ui/Avatar';
+import { ChangePasswordModal } from '@/components/common/ChangePasswordModal';
 import { useAuth } from '@/features/auth/AuthContext';
 import { cn } from '@/utils/cn';
 
@@ -33,6 +35,7 @@ export function Sidebar({
 }) {
   const { user, logout, isAdmin, isSubAdmin, isEmployee, isClient } = useAuth();
   const location = useLocation();
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = React.useState(false);
 
   const navigationSections = [
     {
@@ -293,14 +296,24 @@ export function Sidebar({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={logout}
-          title="Sign out of ApplyFlow"
-          className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#94A3B8] hover:text-[#EF4444] hover:bg-[#EF4444]/10 rounded-xl transition-all duration-150 shrink-0 cursor-pointer active:scale-95"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsChangePasswordOpen(true)}
+            title="Change your password"
+            className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#94A3B8] hover:text-[#60A5FA] hover:bg-[#2563EB]/15 rounded-xl transition-all duration-150 shrink-0 cursor-pointer active:scale-95"
+          >
+            <KeyRound className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            title="Sign out of ApplyFlow"
+            className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#94A3B8] hover:text-[#EF4444] hover:bg-[#EF4444]/10 rounded-xl transition-all duration-150 shrink-0 cursor-pointer active:scale-95"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -338,6 +351,12 @@ export function Sidebar({
           </>
         )}
       </AnimatePresence>
+
+      {/* Self-Service Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </>
   );
 }

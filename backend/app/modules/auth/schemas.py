@@ -33,3 +33,9 @@ class AuthResponse(BaseModel):
 
 class RefreshResponse(BaseModel):
     message: str = "Token refreshed"
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+

@@ -13,10 +13,13 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
     revoke_token,
+    verify_password,
 )
 from app.modules.auth.schemas import (
     AuthResponse,
+    ChangePasswordRequest,
     LoginRequest,
     RefreshResponse,
     UserResponse,
@@ -226,3 +229,50 @@ async def get_app_bootstrap(
         "notifications": notif_data,
         "chat_unread": chat_unread,
     }
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Self-service password change for any authenticated user.
+    Requires current_password verification before updating password_hash.
+    """
+    if not payload.current_password or not payload.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Both current password and new password are required.",
+        )
+
+    if len(payload.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long.",
+        )
+
+    # Verify current password
+    stored_hash = getattr(current_user, "password_hash", None)
+    if not stored_hash or not verify_password(payload.current_password, stored_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password.",
+        )
+
+    # Update to new password hash
+    current_user.password_hash = hash_password(payload.new_password)
+    db.add(current_user)
+    await db.commit()
+
+    invalidate_user_cache(str(current_user.id))
+    await log_activity(
+        db,
+        user_id=current_user.id,
+        action="user_password_changed",
+        details={"self_service": True},
+    )
+
+    return {"message": "Password changed successfully"}
+

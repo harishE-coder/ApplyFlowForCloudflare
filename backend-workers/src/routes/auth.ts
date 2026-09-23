@@ -5,6 +5,7 @@ import {
   createAccessToken,
   createRefreshToken,
   getJwtSecret,
+  hashPassword,
   setAuthCookies,
   verifyPassword,
   verifyToken,
@@ -223,4 +224,52 @@ authRouter.get("/bootstrap", requireAuth, async (c) => {
     },
   });
 });
+
+// 6. POST /api/auth/change-password
+authRouter.post("/change-password", requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => null);
+  if (!body || !body.current_password || !body.new_password) {
+    return c.json({ detail: "Current password and new password are required." }, 400);
+  }
+
+  const currentPassword = String(body.current_password);
+  const newPassword = String(body.new_password);
+
+  if (newPassword.length < 6) {
+    return c.json({ detail: "New password must be at least 6 characters long." }, 400);
+  }
+
+  const sql = getDb(c.env.DATABASE_URL);
+  const users = await sql`
+    SELECT id, password_hash, hashed_password
+    FROM users
+    WHERE id = ${user.id}
+    LIMIT 1
+  `;
+
+  if (!users || users.length === 0) {
+    return c.json({ detail: "User not found" }, 404);
+  }
+
+  const storedHash = users[0].password_hash || users[0].hashed_password;
+  if (!storedHash) {
+    return c.json({ detail: "User has no set password." }, 400);
+  }
+
+  const isValid = await verifyPassword(currentPassword, storedHash);
+  if (!isValid) {
+    return c.json({ detail: "Incorrect current password." }, 400);
+  }
+
+  const hashedPassword = await hashPassword(newPassword);
+  await sql`
+    UPDATE users
+    SET password_hash = ${hashedPassword}, hashed_password = ${hashedPassword}, updated_at = NOW()
+    WHERE id = ${user.id}
+  `;
+
+  return c.json({ message: "Password changed successfully" });
+});
+
 

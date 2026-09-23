@@ -787,3 +787,86 @@ clientsRouter.delete(
     return c.json({ message: "Recruiter assignment deactivated successfully" });
   }
 );
+
+/**
+ * 11. POST /api/clients/:client_id/reset-password
+ * Admin & Sub-Admin override: sets or updates client login password
+ */
+clientsRouter.post(
+  "/:client_id/reset-password",
+  requireRoles("super_admin", "admin", "sub_admin"),
+  async (c) => {
+    const clientId = c.req.param("client_id");
+    const user = c.get("user");
+    const body = await c.req.json().catch(() => null);
+
+    const newPassword = body?.new_password ? String(body.new_password).trim() : "";
+    if (!newPassword || newPassword.length < 6) {
+      return c.json({ detail: "Password must be at least 6 characters long." }, 400);
+    }
+
+    const sql = getDb(c.env.DATABASE_URL);
+
+    if (user.role === "sub_admin") {
+      const scopedCids = await getScopedClientIds(sql, user);
+      if (!scopedCids || !scopedCids.includes(clientId)) {
+        return c.json({ detail: "Forbidden: Client outside management scope" }, 403);
+      }
+    }
+
+    const clientRows = await sql`
+      SELECT id, company_name, email, contact_person, phone
+      FROM clients
+      WHERE id = ${clientId}
+      LIMIT 1
+    `;
+
+    if (!clientRows || clientRows.length === 0) {
+      return c.json({ detail: "Client not found" }, 404);
+    }
+
+    const client = clientRows[0];
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Check for existing client user
+    const clientUsers = await sql`
+      SELECT id FROM users
+      WHERE client_id = ${clientId} AND role = 'client'
+    `;
+
+    if (clientUsers && clientUsers.length > 0) {
+      await sql`
+        UPDATE users
+        SET password_hash = ${hashedPassword}, hashed_password = ${hashedPassword}, is_active = true, status = 'active', updated_at = NOW()
+        WHERE client_id = ${clientId} AND role = 'client'
+      `;
+    } else {
+      const targetEmail = (client.email || `client_${clientId.slice(0, 8)}@applyflow.com`).toLowerCase();
+      const existingByEmail = await sql`
+        SELECT id FROM users WHERE LOWER(email) = ${targetEmail} LIMIT 1
+      `;
+      if (existingByEmail && existingByEmail.length > 0) {
+        await sql`
+          UPDATE users
+          SET password_hash = ${hashedPassword}, hashed_password = ${hashedPassword}, client_id = ${clientId}, role = 'client', is_active = true, status = 'active', updated_at = NOW()
+          WHERE id = ${existingByEmail[0].id}
+        `;
+      } else {
+        const newUserId = crypto.randomUUID();
+        const userName = client.contact_person || client.company_name;
+        await sql`
+          INSERT INTO users (id, name, email, phone, password_hash, hashed_password, role, status, client_id, is_active, created_at, updated_at)
+          VALUES (${newUserId}, ${userName}, ${targetEmail}, ${client.phone || null}, ${hashedPassword}, ${hashedPassword}, 'client', 'active', ${clientId}, true, NOW(), NOW())
+        `;
+      }
+    }
+
+    await sql`
+      INSERT INTO activity_logs (id, user_id, action, details, created_at)
+      VALUES (${crypto.randomUUID()}, ${user.id}, 'client_password_reset', ${JSON.stringify({ client_id: clientId, client_name: client.company_name })}, NOW())
+    `;
+
+    return c.json({ message: "Client password updated successfully" });
+  }
+);
+

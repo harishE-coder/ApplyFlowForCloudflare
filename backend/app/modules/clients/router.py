@@ -10,6 +10,7 @@ from app.modules.clients.schemas import (
     ClientCreate,
     ClientResponse,
     ClientUpdate,
+    ResetClientPasswordRequest,
 )
 from app.modules.users.models import User
 
@@ -177,3 +178,16 @@ async def unassign_employee(
     """Remove recruiter assignment (sets active = false)."""
     await service.unassign_employee(db, client_id, employee_id, current_user=current_user)
     return {"message": "Recruiter assignment deactivated successfully"}
+
+
+@router.post("/{client_id}/reset-password", dependencies=[Depends(require_role("admin", "sub_admin"))])
+async def reset_client_password_endpoint(
+    client_id: uuid.UUID,
+    payload: ResetClientPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reset or set client user login password (Admin & Sub-Admin override)."""
+    await service.reset_client_password(db, client_id, payload.new_password, current_user)
+    return {"message": "Client password updated successfully"}
+

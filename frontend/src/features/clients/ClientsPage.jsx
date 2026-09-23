@@ -23,6 +23,9 @@ import {
   AlertTriangle,
   UserPlus,
   Check,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -197,6 +200,13 @@ export function ClientsPage() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [isPrimary, setIsPrimary] = useState(true);
   const [assigning, setAssigning] = useState(false);
+
+  // Reset Client Password Modal State
+  const [isResetClientOpen, setIsResetClientOpen] = useState(false);
+  const [resetClientTarget, setResetClientTarget] = useState(null);
+  const [resetClientPassword, setResetClientPassword] = useState('Password@123');
+  const [showResetClientPassword, setShowResetClientPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   // Confirmation Modals State
   const [deactivateClientTarget, setDeactivateClientTarget] = useState(null);
@@ -386,6 +396,25 @@ export function ClientsPage() {
     }
   };
 
+  // Reset Client Password Handler
+  const handleResetClientPassword = async (e) => {
+    e.preventDefault();
+    if (!resetClientTarget || !resetClientPassword) return;
+    setResetLoading(true);
+    try {
+      await api.post(`/clients/${resetClientTarget.id}/reset-password`, {
+        new_password: resetClientPassword,
+      });
+      success('Password Reset', `Password reset successfully for ${resetClientTarget.company_name}.`);
+      setIsResetClientOpen(false);
+      setResetClientTarget(null);
+    } catch (err) {
+      toastError('Reset Failed', err.response?.data?.detail || 'Failed to reset client password');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   // Generate three-dot menu items for client
   const getActionMenuItems = (client) => {
     const items = [];
@@ -395,6 +424,17 @@ export function ClientsPage() {
         icon: Edit2,
         label: 'Edit Client',
         onClick: () => openEditModal(client),
+      });
+
+      items.push({
+        icon: KeyRound,
+        label: 'Reset Password',
+        onClick: () => {
+          setResetClientTarget(client);
+          setResetClientPassword('Password@123');
+          setShowResetClientPassword(false);
+          setIsResetClientOpen(true);
+        },
       });
 
       items.push({
@@ -821,6 +861,71 @@ export function ClientsPage() {
             </Button>
             <Button type="submit" variant="primary" size="md" isLoading={assigning}>
               Confirm Assignment
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reset Client Password Modal */}
+      <Modal
+        isOpen={isResetClientOpen}
+        onClose={() => {
+          setIsResetClientOpen(false);
+          setResetClientTarget(null);
+        }}
+        title={`Reset Password for ${resetClientTarget?.company_name || 'Client'}`}
+        subtitle="Set a new login password for immediate portal access. No previous password is required."
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={handleResetClientPassword} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block">
+              New Password <span className="text-[#EF4444]">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showResetClientPassword ? 'text' : 'password'}
+                value={resetClientPassword}
+                onChange={(e) => setResetClientPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                className="w-full h-[42px] pl-3.5 pr-10 rounded-xl bg-[#F8FAFC] text-small font-medium text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowResetClientPassword(!showResetClientPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#081226] p-1"
+                tabIndex={-1}
+              >
+                {showResetClientPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-[#64748B] mt-1">
+              Client will use this password and their registered contact email (<strong>{resetClientTarget?.email || 'client email'}</strong>) to sign in.
+            </p>
+          </div>
+
+          <div className="pt-4 flex justify-end gap-3 border-t border-[#F1F5F9]">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => {
+                setIsResetClientOpen(false);
+                setResetClientTarget(null);
+              }}
+              disabled={resetLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              icon={KeyRound}
+              isLoading={resetLoading}
+            >
+              Update Password
             </Button>
           </div>
         </form>

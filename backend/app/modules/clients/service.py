@@ -550,3 +550,92 @@ async def unassign_employee(
             )
         await db.flush()
 
+
+async def reset_client_password(
+    db: AsyncSession,
+    client_id: uuid.UUID,
+    new_password: str,
+    current_user: User,
+) -> User:
+    client = await get_client_by_id(db, client_id)
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    if current_user.role == "sub_admin":
+        allowed_cids = await get_sub_admin_client_ids(db, current_user.id)
+        if client_id not in allowed_cids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot modify client outside your management scope.",
+            )
+
+    new_pw = (new_password or "").strip()
+    if len(new_pw) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 6 characters long.",
+        )
+
+    # Find the user(s) associated with this client
+    client_users = (
+        await db.execute(
+            select(User).where(User.client_id == client_id, User.role == "client")
+        )
+    ).scalars().all()
+
+    hashed_pw = hash_password(new_pw)
+
+    if client_users:
+        for u in client_users:
+            u.password_hash = hashed_pw
+            u.is_active = True
+            u.status = "active"
+        target_user = client_users[0]
+    else:
+        # If no user record exists yet for this client, provision one
+        email = (client.email or f"client_{str(client_id)[:8]}@applyflow.com").strip().lower()
+        existing_user = (
+            await db.execute(select(User).where(User.email == email))
+        ).scalars().first()
+        if existing_user:
+            existing_user.password_hash = hashed_pw
+            existing_user.client_id = client_id
+            existing_user.role = "client"
+            existing_user.is_active = True
+            existing_user.status = "active"
+            target_user = existing_user
+        else:
+            new_user = User(
+                name=(client.contact_person or client.company_name).strip() or client.company_name,
+                email=email,
+                phone=client.phone,
+                password_hash=hashed_pw,
+                role="client",
+                status="active",
+                client_id=client.id,
+                is_active=True,
+            )
+            db.add(new_user)
+            target_user = new_user
+
+    # Invalidate cached session
+    from app.core.dependencies import invalidate_user_cache
+    invalidate_user_cache(str(target_user.id))
+
+    # Log admin/subadmin activity
+    log = ActivityLog(
+        id=uuid.uuid4(),
+        user_id=current_user.id,
+        action="client_password_reset",
+        details={
+            "client_id": str(client_id),
+            "client_name": client.company_name,
+            "target_user_email": target_user.email,
+        },
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(log)
+    await db.commit()
+    return target_user
+
+

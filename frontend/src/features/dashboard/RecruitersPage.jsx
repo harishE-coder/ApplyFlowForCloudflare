@@ -25,6 +25,8 @@ import {
   Archive,
   Lock,
   AlertCircle,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
@@ -76,6 +78,7 @@ export function RecruitersPage() {
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetEmployee, setResetEmployee] = useState(null);
   const [newPassword, setNewPassword] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
   const [resetting, setResetting] = useState(false);
 
   // 4. TARGET ASSIGNMENT MODAL STATE
@@ -777,23 +780,42 @@ export function RecruitersPage() {
         isOpen={isResetOpen}
         onClose={() => setIsResetOpen(false)}
         title={`Reset Password for ${resetEmployee?.name || 'Recruiter'}`}
-        subtitle="Specify a new password for immediate account access."
+        subtitle="Specify a new password for immediate account access. No current password required."
+        maxWidth="max-w-md"
       >
         <form onSubmit={handleResetPassword} className="space-y-4">
-          <Input
-            label="New Password"
-            type="text"
-            required
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            helperText="Employee will use this new password upon next login."
-          />
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] block">
+              New Password <span className="text-[#EF4444]">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showResetPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="At least 6 characters"
+                className="w-full h-[42px] pl-3.5 pr-10 rounded-xl bg-[#F8FAFC] text-small font-medium text-[#081226] border border-[#E2E8F0] focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowResetPassword(!showResetPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#081226] p-1"
+                tabIndex={-1}
+              >
+                {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-[#64748B] mt-1">
+              Employee will use this new password upon next login.
+            </p>
+          </div>
 
-          <div className="pt-4 flex justify-end gap-3">
-            <Button variant="outline" size="md" onClick={() => setIsResetOpen(false)}>
+          <div className="pt-4 flex justify-end gap-3 border-t border-[#F1F5F9]">
+            <Button variant="outline" size="md" onClick={() => setIsResetOpen(false)} disabled={resetting}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" size="md" isLoading={resetting}>
+            <Button type="submit" variant="primary" size="md" icon={KeyRound} isLoading={resetting}>
               Update Password
             </Button>
           </div>

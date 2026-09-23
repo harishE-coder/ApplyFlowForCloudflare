@@ -77,10 +77,10 @@ export function ChatInput({
 
   // Filter participants by mention query
   const filteredParticipants = useMemo(() => {
-    if (mentionQuery === null || !participants.length) return [];
+    if (mentionQuery === null || !participants || !participants.length) return [];
     const query = mentionQuery.toLowerCase();
     const filtered = participants.filter((p) =>
-      p.name?.toLowerCase().includes(query)
+      p && p.name && p.name.toLowerCase().includes(query)
     );
     return filtered.slice(0, 8); // Max 8 suggestions
   }, [mentionQuery, participants]);
@@ -127,8 +127,10 @@ export function ChatInput({
   }, [text]);
 
   // Detect @ mention trigger from cursor position
+  // Triggers ONLY before a word (at start of text or preceded by whitespace/opening delimiter)
+  // NEVER in the middle of a word (e.g. email@domain.com or word@)
   const detectMention = useCallback((value, cursorPos) => {
-    if (!participants.length) {
+    if (!participants || !participants.length) {
       setMentionQuery(null);
       setMentionStartIndex(-1);
       return;
@@ -136,8 +138,6 @@ export function ChatInput({
 
     // Look backwards from cursor to find the nearest unmatched @
     const textBeforeCursor = value.slice(0, cursorPos);
-
-    // Find the last @ before cursor
     const lastAtIndex = textBeforeCursor.lastIndexOf('@');
 
     if (lastAtIndex === -1) {
@@ -146,18 +146,31 @@ export function ChatInput({
       return;
     }
 
-    // @ must be at start of input or preceded by a space/newline
-    if (lastAtIndex > 0 && !/\s/.test(value[lastAtIndex - 1])) {
-      setMentionQuery(null);
-      setMentionStartIndex(-1);
-      return;
+    // @ must be at the very start of input OR preceded by whitespace/opening delimiter
+    // If preceded by a letter, number, or other character, it is in the middle of a word (e.g. "email@domain.com", "word@") -> do NOT show
+    if (lastAtIndex > 0) {
+      const prevChar = value[lastAtIndex - 1];
+      if (!/[\s(\[{\x22\x27]/.test(prevChar)) {
+        setMentionQuery(null);
+        setMentionStartIndex(-1);
+        return;
+      }
     }
 
     // Extract query text between @ and cursor
     const query = textBeforeCursor.slice(lastAtIndex + 1);
 
-    // If query has a newline, it's not a valid mention trigger
-    if (query.includes('\n')) {
+    // WhatsApp style rules:
+    // 1. If query contains space or newline, it is no longer an active mention tag
+    //    (e.g., typing space immediately dismisses the mention dropdown)
+    if (/\s/.test(query)) {
+      setMentionQuery(null);
+      setMentionStartIndex(-1);
+      return;
+    }
+
+    // 2. Query should not exceed standard name query length (max 30 chars)
+    if (query.length > 30) {
       setMentionQuery(null);
       setMentionStartIndex(-1);
       return;
@@ -165,7 +178,7 @@ export function ChatInput({
 
     setMentionQuery(query);
     setMentionStartIndex(lastAtIndex);
-  }, [participants.length]);
+  }, [participants]);
 
   const handleTextChange = (e) => {
     const val = e.target.value;
@@ -203,11 +216,18 @@ export function ChatInput({
 
   // Insert selected mention into textarea
   const insertMention = useCallback((participant) => {
-    if (mentionStartIndex === -1) return;
+    if (mentionStartIndex === -1 || !participant) return;
 
     const before = text.slice(0, mentionStartIndex);
     const cursorPos = textareaRef.current?.selectionStart || text.length;
-    const after = text.slice(cursorPos);
+
+    // Advance past any trailing word characters of the current token
+    let tokenEnd = cursorPos;
+    while (tokenEnd < text.length && !/\s/.test(text[tokenEnd])) {
+      tokenEnd++;
+    }
+
+    const after = text.slice(tokenEnd);
     const mentionText = `@${participant.name} `;
     const newText = before + mentionText + after;
 
@@ -482,39 +502,6 @@ export function ChatInput({
               className="p-2 min-h-[38px] min-w-[38px] flex items-center justify-center text-[#64748B] hover:text-[#0D9488] hover:bg-[#F0FDFA] rounded-xl transition-all duration-120 hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
             >
               <Briefcase className="w-4 h-4" />
-            </button>
-          )}
-
-          {/* @ Mention Trigger Button */}
-          {participants.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (textareaRef.current) {
-                  const cursorPos = textareaRef.current.selectionStart;
-                  const before = text.slice(0, cursorPos);
-                  const after = text.slice(cursorPos);
-                  // Insert @ at cursor position
-                  const needsSpace = before.length > 0 && !/\s$/.test(before);
-                  const newText = before + (needsSpace ? ' @' : '@') + after;
-                  setText(newText);
-                  const newCursorPos = before.length + (needsSpace ? 2 : 1);
-                  requestAnimationFrame(() => {
-                    textareaRef.current.focus();
-                    textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-                    detectMention(newText, newCursorPos);
-                  });
-                }
-              }}
-              disabled={disabled}
-              title="Mention someone (@)"
-              className={`p-2 min-h-[38px] min-w-[38px] flex items-center justify-center rounded-xl transition-all duration-120 hover:scale-105 active:scale-95 cursor-pointer ${
-                isMentionActive
-                  ? 'text-[#2563EB] bg-[#EFF6FF]'
-                  : 'text-[#64748B] hover:text-[#2563EB] hover:bg-[#EFF6FF]'
-              }`}
-            >
-              <AtSign className="w-4 h-4" />
             </button>
           )}
 

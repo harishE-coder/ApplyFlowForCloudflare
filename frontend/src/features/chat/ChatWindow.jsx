@@ -65,6 +65,74 @@ function formatDateHeader(dateStr) {
   });
 }
 
+/**
+ * Renders message text with @mentions highlighted as styled pills.
+ * Matches @Name patterns against room participants for validation.
+ */
+function renderMessageWithMentions(text, participants = [], currentUserId = null, isOwn = false) {
+  if (!text || !participants.length) return text;
+
+  // Build a set of participant names for quick lookup
+  const participantMap = new Map();
+  participants.forEach((p) => {
+    if (p.name) participantMap.set(p.name.toLowerCase(), p);
+  });
+
+  if (participantMap.size === 0) return text;
+
+  // Build regex from participant names (longest first to avoid partial matches)
+  const sortedNames = Array.from(participantMap.keys()).sort((a, b) => b.length - a.length);
+  const escapedNames = sortedNames.map((name) =>
+    name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  );
+  const mentionRegex = new RegExp(`@(${escapedNames.join('|')})(?=\\s|$|[.,!?;:])`, 'gi');
+
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = mentionRegex.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    const mentionedName = match[1];
+    const participant = participantMap.get(mentionedName.toLowerCase());
+    const isSelfMention = participant && String(participant.id) === String(currentUserId);
+
+    // Style: own bubble = white pill, incoming = blue pill, self-mention = amber
+    let pillClasses;
+    if (isSelfMention) {
+      pillClasses = isOwn
+        ? 'bg-amber-300/30 text-white font-bold px-1.5 py-0.5 rounded-md'
+        : 'bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded-md border border-amber-200';
+    } else if (isOwn) {
+      pillClasses = 'bg-white/20 text-white font-bold px-1.5 py-0.5 rounded-md';
+    } else {
+      pillClasses = 'bg-[#EFF6FF] text-[#2563EB] font-bold px-1.5 py-0.5 rounded-md border border-[#BFDBFE]';
+    }
+
+    parts.push(
+      <span key={`mention-${match.index}`} className={pillClasses}>
+        @{participant?.name || mentionedName}
+      </span>
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  // If no matches were found, return original text
+  if (parts.length === 0) return text;
+
+  return <>{parts}</>;
+}
+
 function MessageStatusIcon({ status }) {
   if (status === 'pending') {
     return <Clock className="w-3 h-3 text-blue-200 animate-spin" title="Sending..." />;
@@ -1044,7 +1112,7 @@ export function ChatWindow({
                             : 'bg-white text-[#081226] border border-[#CBD5E1]/70 rounded-tl-xs'
                         }`}
                       >
-                        {msg.message}
+                        {renderMessageWithMentions(msg.message, room?.participants, user?.id, isOwn)}
                       </div>
                     )}
 
@@ -1105,6 +1173,7 @@ export function ChatWindow({
           onOpenJobModal={() => setIsJobModalOpen(true)}
           onTypingChange={onTypingChange}
           typingText={typingText}
+          participants={room?.participants || []}
         />
       ) : (
         <div className="p-4 bg-[#F8FAFC] border-t border-[#E2E8F0] text-center text-caption text-[#64748B]">

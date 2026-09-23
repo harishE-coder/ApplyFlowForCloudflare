@@ -458,7 +458,7 @@ async def dispatch_upload_notifications_and_stats(
 
     # 3. Notification to Admins
     admin_users = (
-        await db.execute(select(User).where(User.role == "admin", User.is_active == True))
+        await db.execute(select(User).where(User.role.in_(["admin", "super_admin"]), User.is_active == True))
     ).scalars().all()
     for admin in admin_users:
         if admin.id != current_user.id:
@@ -471,7 +471,7 @@ async def dispatch_upload_notifications_and_stats(
                 )
             )
 
-    # 4. Notification to Sub-Admins assigned to this client
+    # 4. Notification to Sub-Admins assigned to this client or managing this client/recruiter
     sub_admin_assignments = (
         await db.execute(
             select(SubAdminAssignment.sub_admin_id).where(
@@ -479,8 +479,14 @@ async def dispatch_upload_notifications_and_stats(
             )
         )
     ).scalars().all()
-    for sub_admin_id in set(sub_admin_assignments):
-        if sub_admin_id != current_user.id:
+    sub_admin_ids = set(sub_admin_assignments)
+    if client.managed_by:
+        sub_admin_ids.add(client.managed_by)
+    if current_user.managed_by:
+        sub_admin_ids.add(current_user.managed_by)
+
+    for sub_admin_id in sub_admin_ids:
+        if sub_admin_id != current_user.id and sub_admin_id not in [a.id for a in admin_users]:
             db.add(
                 Notification(
                     user_id=sub_admin_id,

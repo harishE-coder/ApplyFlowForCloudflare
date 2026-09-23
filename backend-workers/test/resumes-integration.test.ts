@@ -28,6 +28,7 @@ const mockClient = {
 };
 
 let mockResumes: any[] = [];
+let mockNotifications: any[] = [];
 let shouldFailDbInsert = false;
 
 vi.mock("../src/db", () => {
@@ -37,6 +38,38 @@ vi.mock("../src/db", () => {
         const queryText = typeof strings === "string" ? strings : strings.join("?");
 
         const normalized = queryText.replace(/\s+/g, " ");
+
+        // Client lookup by id
+        if (normalized.includes("FROM clients WHERE id =") || normalized.includes("FROM clients")) {
+          return [mockClient];
+        }
+
+        // Client users lookup
+        if (normalized.includes("FROM users") && normalized.includes("role = 'client'")) {
+          return [{ id: "c1111111-0000-0000-0000-000000000001", role: "client" }];
+        }
+
+        // Admin users lookup
+        if (normalized.includes("FROM users") && normalized.includes("role IN ('admin', 'super_admin')")) {
+          return [{ id: mockAdminUser.id, role: "admin" }];
+        }
+
+        // Sub-admin users lookup
+        if (normalized.includes("FROM users") && normalized.includes("role = 'sub_admin'")) {
+          return [{ id: "s2222222-0000-0000-0000-000000000002", role: "sub_admin" }];
+        }
+
+        // Insert notification
+        if (normalized.includes("INSERT INTO notifications")) {
+          mockNotifications.push({
+            id: values[0],
+            user_id: values[1],
+            title: values[2],
+            message: values[3],
+            type: values[4],
+          });
+          return [];
+        }
 
         // Auth user lookup
         if (normalized.includes("FROM users WHERE id =") || (normalized.includes("users") && normalized.includes("WHERE id ="))) {
@@ -54,13 +87,6 @@ vi.mock("../src/db", () => {
         // Active clients lookup
         if (normalized.includes("SELECT id FROM clients WHERE status = 'active'")) {
           return [{ id: mockClient.id }];
-        }
-
-        // Client lookup by id
-        if (normalized.includes("FROM clients WHERE id =")) {
-          const clientId = String(values[0]);
-          if (clientId === mockClient.id) return [mockClient];
-          return [];
         }
 
         // Duplicate check query
@@ -229,6 +255,64 @@ describe("Resume Endpoints Integration with Google Apps Script Storage", () => {
           }),
         })
       );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("POST /api/resumes/upload dispatches notifications to client, admin, and sub-admin", async () => {
+    mockNotifications = [];
+    const recruiterToken = await createAccessToken(
+      mockRecruiterUser as UserPayload,
+      mockEnv.JWT_SECRET_KEY
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("script.google.com")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            fileId: "drive-notif-123",
+            url: "https://drive.google.com/file/d/drive-notif-123/view",
+            downloadUrl: "https://drive.google.com/uc?export=download&id=drive-notif-123",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return originalFetch(url);
+    });
+
+    try {
+      const formData = new FormData();
+      const fakePdf = new Blob(["%PDF-1.4 Fake Resume"], { type: "application/pdf" });
+      formData.append("files", fakePdf, "John Doe_Acme Corp_Software Engineer.pdf");
+      formData.append("client_id", mockClient.id);
+
+      const res = await app.fetch(
+        new Request("http://localhost/api/resumes/upload", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${recruiterToken}` },
+          body: formData,
+        }),
+        mockEnv
+      );
+
+      expect([200, 201]).toContain(res.status);
+      const json = await res.json();
+      expect(json.success).toBe(true);
+      expect(json.saved_count).toBe(1);
+
+      // Verify notifications sent to client, admin, and sub-admin
+      const clientNotif = mockNotifications.find((n) => n.type === "resume_available");
+      const adminNotif = mockNotifications.find((n) => n.user_id === mockAdminUser.id && n.type === "upload_completed");
+      const subAdminNotif = mockNotifications.find((n) => n.user_id === "s2222222-0000-0000-0000-000000000002");
+
+      expect(clientNotif).toBeDefined();
+      expect(clientNotif?.title).toContain("John Doe");
+      expect(adminNotif).toBeDefined();
+      expect(adminNotif?.title).toContain("Acme Corp");
+      expect(subAdminNotif).toBeDefined();
     } finally {
       globalThis.fetch = originalFetch;
     }

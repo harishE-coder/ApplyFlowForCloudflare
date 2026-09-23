@@ -843,6 +843,144 @@ resumesRouter.post("/upload", async (c) => {
     }
   }
 
+  // Step 3: Multi-role Notification Dispatch upon successful upload
+  if (savedCount > 0) {
+    try {
+      const clientRows = await sql`
+        SELECT company_name, managed_by FROM clients WHERE id = ${clientId} LIMIT 1
+      `;
+      const clientName = clientRows[0]?.company_name || "Client";
+      const clientManagerId = clientRows[0]?.managed_by ? String(clientRows[0].managed_by).trim() : null;
+      const uploaderName = user.name || "Recruiter";
+      const firstSaved = items.find((it) => it.status === "saved");
+      const candidateName = firstSaved?.candidate_name || "Candidate";
+
+      // 1. Client users belonging to this particular client
+      const clientUsers = await sql`
+        SELECT id FROM users 
+        WHERE role = 'client' 
+          AND client_id = ${clientId} 
+          AND is_active = true 
+          AND status = 'active'
+      `;
+
+      // 2. Admins & Super Admins
+      const adminUsers = await sql`
+        SELECT id FROM users 
+        WHERE role IN ('admin', 'super_admin') 
+          AND is_active = true 
+          AND status = 'active'
+      `;
+
+      // 3. Sub-Admins (if sub admin there for this client or managing this recruiter)
+      const subAdminUsers = await sql`
+        SELECT DISTINCT u.id 
+        FROM users u
+        WHERE u.role = 'sub_admin'
+          AND u.is_active = true
+          AND u.status = 'active'
+          AND (
+            u.id IN (
+              SELECT sub_admin_id FROM sub_admin_assignments 
+              WHERE client_id = ${clientId} AND active = true
+            )
+            ${clientManagerId ? sql`OR u.id = ${clientManagerId}` : sql``}
+            OR u.id = (SELECT managed_by FROM users WHERE id = ${user.id} AND managed_by IS NOT NULL)
+          )
+      `;
+
+      const clientTitle =
+        savedCount === 1 ? `New Candidate Available: ${candidateName}` : `${savedCount} New Candidates Available`;
+      const clientMsg =
+        savedCount === 1
+          ? `A new candidate resume (${candidateName}) has been uploaded to your portal.`
+          : `${savedCount} new candidate resumes are available in your portal.`;
+
+      const adminTitle =
+        savedCount === 1 ? `New Resume Uploaded: ${clientName}` : `${savedCount} Resumes Uploaded: ${clientName}`;
+      const adminMsg =
+        savedCount === 1
+          ? `${uploaderName} uploaded a resume for ${candidateName} (${clientName}).`
+          : `${uploaderName} uploaded ${savedCount} resumes for ${clientName}.`;
+
+      // Notify particular client users
+      for (const cu of clientUsers) {
+        if (cu.id && String(cu.id) !== String(user.id)) {
+          await sql`
+            INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
+            VALUES (
+              ${crypto.randomUUID()},
+              ${cu.id},
+              ${clientTitle},
+              ${clientMsg},
+              ${"resume_available"},
+              false,
+              NOW()
+            )
+          `;
+        }
+      }
+
+      // Notify admins
+      const notifiedAdminIds = new Set<string>();
+      for (const au of adminUsers) {
+        if (au.id && String(au.id) !== String(user.id)) {
+          notifiedAdminIds.add(String(au.id));
+          await sql`
+            INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
+            VALUES (
+              ${crypto.randomUUID()},
+              ${au.id},
+              ${adminTitle},
+              ${adminMsg},
+              ${"upload_completed"},
+              false,
+              NOW()
+            )
+          `;
+        }
+      }
+
+      // Notify sub-admins (if sub admin there and not already notified)
+      for (const su of subAdminUsers) {
+        if (su.id && String(su.id) !== String(user.id) && !notifiedAdminIds.has(String(su.id))) {
+          await sql`
+            INSERT INTO notifications (id, user_id, title, message, type, is_read, created_at)
+            VALUES (
+              ${crypto.randomUUID()},
+              ${su.id},
+              ${adminTitle},
+              ${adminMsg},
+              ${"upload_completed"},
+              false,
+              NOW()
+            )
+          `;
+        }
+      }
+
+      // Activity log entry
+      await sql`
+        INSERT INTO activity_logs (id, user_id, action, details, created_at)
+        VALUES (
+          ${crypto.randomUUID()},
+          ${user.id},
+          'resume_batch_uploaded',
+          ${JSON.stringify({
+            client_id: clientId,
+            client_name: clientName,
+            saved_count: savedCount,
+            candidate_names: items.filter((it) => it.status === "saved").map((it) => it.candidate_name),
+            work_date: workDate,
+          })},
+          NOW()
+        )
+      `;
+    } catch (notifErr) {
+      console.warn(`[Resume Upload Notification Error] ${(notifErr as Error).message}`);
+    }
+  }
+
   return c.json(
     {
       success: true,

@@ -399,7 +399,11 @@ export async function getTeamPerformanceMaps(
 /**
  * 7-day trend series joining resumes and applications independently in IST timezone.
  */
-export async function getSevenDayTrend(sql: any, targetSum: number = 0): Promise<DailyTrendPoint[]> {
+export async function getSevenDayTrend(
+  sql: any,
+  targetSum: number = 0,
+  isDaily: boolean = false
+): Promise<DailyTrendPoint[]> {
   const trendRows = await sql`
     SELECT 
       d.dt::date as date,
@@ -427,7 +431,7 @@ export async function getSevenDayTrend(sql: any, targetSum: number = 0): Promise
     const dStr = typeof r.date === "string" ? r.date : r.date.toISOString().split("T")[0];
     const up = Number(r.uploads);
     const app = Math.max(Number(r.applications), up);
-    const target = Math.round(targetSum / 7) || 0;
+    const target = isDaily ? targetSum : (Math.round(targetSum / 7) || 0);
     const compRate = target > 0 ? Math.round((app / target) * 100) : (app > 0 ? 100 : 0);
     return {
       date: dStr,

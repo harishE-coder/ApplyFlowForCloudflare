@@ -259,7 +259,7 @@ dashboardRouter.get("/admin/home", async (c) => {
     }));
 
     // 3. 7-day upload and applications trend - shared helper
-    const dailyUploadsTrend = await getSevenDayTrend(sql, targetSum);
+    const dailyUploadsTrend = await getSevenDayTrend(sql, targetSum, true);
 
     // 4. Dropdown metadata
     const [clientsList, empsList, targetsList] = await Promise.all([

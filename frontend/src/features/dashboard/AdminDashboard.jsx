@@ -377,13 +377,14 @@ export function AdminDashboard() {
   // 2. Target Completion Trend (7-Day Line Chart)
   const completionTrendData = useMemo(() => {
     const rawTrend = overview?.daily_uploads_trend;
+    const dailyGoal = (totalDailyTarget > 0 ? totalDailyTarget : overview?.target_sum) || 0;
+
     if (Array.isArray(rawTrend) && rawTrend.length > 0) {
       return rawTrend.map((pt) => {
-        const t = (pt.target > 0 ? pt.target : totalDailyTarget) || 0;
+        // Daily goal is the single source of truth for the daily target benchmark
+        const t = dailyGoal > 0 ? dailyGoal : (pt.target || 0);
         const actual = Math.max(pt.uploads || 0, pt.applications || 0);
-        const comp = typeof pt.completionRate === 'number'
-          ? pt.completionRate
-          : (t > 0 ? Math.round((actual / t) * 100) : (actual > 0 ? 100 : 0));
+        const comp = t > 0 ? Math.round((actual / t) * 100) : (actual > 0 ? 100 : 0);
         return {
           day: pt.date,
           date: pt.date,
@@ -406,13 +407,13 @@ export function AdminDashboard() {
         day: dateStr,
         date: dateStr,
         uploads: 0,
-        target: totalDailyTarget || 0,
+        target: dailyGoal,
         completion: 0,
         completionRate: 0,
       });
     }
     return fallbackDays;
-  }, [overview?.daily_uploads_trend, totalDailyTarget]);
+  }, [overview?.daily_uploads_trend, overview?.target_sum, totalDailyTarget]);
 
   // 3. Client Performance Comparison (Horizontal Bar Chart)
   const clientComparisonData = useMemo(() => {

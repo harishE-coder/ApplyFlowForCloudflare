@@ -48,6 +48,8 @@ export interface DailyTrendPoint {
   uploads: number;
   applications: number;
   target: number;
+  completionRate?: number;
+  completion?: number;
 }
 
 /**
@@ -423,11 +425,17 @@ export async function getSevenDayTrend(sql: any, targetSum: number = 0): Promise
 
   return trendRows.map((r: any) => {
     const dStr = typeof r.date === "string" ? r.date : r.date.toISOString().split("T")[0];
+    const up = Number(r.uploads);
+    const app = Math.max(Number(r.applications), up);
+    const target = Math.round(targetSum / 7) || 0;
+    const compRate = target > 0 ? Math.round((app / target) * 100) : (app > 0 ? 100 : 0);
     return {
       date: dStr,
-      uploads: Number(r.uploads),
-      applications: Math.max(Number(r.applications), Number(r.uploads)),
-      target: Math.round(targetSum / 7) || 0,
+      uploads: up,
+      applications: app,
+      target: target,
+      completionRate: compRate,
+      completion: compRate,
     };
   });
 }

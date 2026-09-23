@@ -9,6 +9,8 @@ class ChartPoint(BaseModel):
     uploads: int = 0
     applications: int = 0
     target: int = 0
+    completionRate: int = 0
+    completion: int = 0
 
 
 class ActivityItem(BaseModel):

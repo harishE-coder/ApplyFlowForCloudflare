@@ -376,20 +376,42 @@ export function AdminDashboard() {
 
   // 2. Target Completion Trend (7-Day Line Chart)
   const completionTrendData = useMemo(() => {
-    if (overview?.daily_uploads_trend && overview.daily_uploads_trend.length > 0) {
-      return overview.daily_uploads_trend.map((pt) => {
-        const t = pt.target || totalDailyTarget || 0;
-        const comp = t > 0 ? Math.round((pt.uploads / t) * 100) : (pt.uploads > 0 ? 100 : 0);
+    const rawTrend = overview?.daily_uploads_trend;
+    if (Array.isArray(rawTrend) && rawTrend.length > 0) {
+      return rawTrend.map((pt) => {
+        const t = (pt.target > 0 ? pt.target : totalDailyTarget) || 0;
+        const actual = Math.max(pt.uploads || 0, pt.applications || 0);
+        const comp = typeof pt.completionRate === 'number'
+          ? pt.completionRate
+          : (t > 0 ? Math.round((actual / t) * 100) : (actual > 0 ? 100 : 0));
         return {
           day: pt.date,
           date: pt.date,
-          uploads: pt.uploads,
+          uploads: actual,
           target: t,
           completion: comp,
+          completionRate: comp,
         };
       });
     }
-    return [];
+
+    // Fallback: 7 days up to today so the chart line always renders cleanly
+    const fallbackDays = [];
+    const today = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      fallbackDays.push({
+        day: dateStr,
+        date: dateStr,
+        uploads: 0,
+        target: totalDailyTarget || 0,
+        completion: 0,
+        completionRate: 0,
+      });
+    }
+    return fallbackDays;
   }, [overview?.daily_uploads_trend, totalDailyTarget]);
 
   // 3. Client Performance Comparison (Horizontal Bar Chart)

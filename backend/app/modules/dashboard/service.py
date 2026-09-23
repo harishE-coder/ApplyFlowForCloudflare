@@ -110,12 +110,15 @@ async def get_resume_upload_series(
         cur_iso = cur_d.strftime("%Y-%m-%d")
         label = cur_d.strftime("%d %b")
         cnt = counts_by_date.get(cur_iso, 0)
+        comp_rate = round((cnt / target_daily) * 100) if target_daily > 0 else (100 if cnt > 0 else 0)
         series.append(
             ChartPoint(
                 date=label,
                 uploads=cnt,
                 applications=cnt,
                 target=target_daily,
+                completionRate=comp_rate,
+                completion=comp_rate,
             )
         )
     return series

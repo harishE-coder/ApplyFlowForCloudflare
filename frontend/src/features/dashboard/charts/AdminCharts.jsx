@@ -12,17 +12,31 @@ import {
   Pie,
   Cell,
   CartesianGrid,
+  ReferenceLine,
 } from 'recharts';
 import { Mail, TrendingUp } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { formatDate } from '@/utils/cn';
 
+const formatTooltipLabel = (val) => {
+  if (!val) return '';
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    const parts = val.split('-');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    return `${d} ${monthNames[m] || parts[1]} ${parts[0]}`;
+  }
+  return val;
+};
+
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
+    const rawPoint = payload[0]?.payload;
     return (
-      <div className="bg-[#081226]/95 backdrop-blur-xl border border-[#1E2E4E] rounded-[14px] p-3 shadow-floating text-white text-caption select-none">
-        <p className="font-bold text-[12px] text-blue-200 mb-1.5">{label}</p>
+      <div className="bg-[#081226]/95 backdrop-blur-xl border border-[#1E2E4E] rounded-[14px] p-3 shadow-floating text-white text-caption select-none min-w-[140px]">
+        <p className="font-bold text-[12px] text-blue-200 mb-1.5">{formatTooltipLabel(label)}</p>
         <div className="space-y-1">
           {payload.map((entry, index) => (
             <div key={index} className="flex items-center justify-between gap-3 text-[11.5px]">
@@ -30,9 +44,17 @@ const CustomChartTooltip = ({ active, payload, label }) => {
                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }} />
                 <span>{entry.name}:</span>
               </span>
-              <span className="font-mono font-bold text-white">{entry.value}</span>
+              <span className="font-mono font-bold text-white">
+                {entry.name?.includes('%') ? `${entry.value}%` : entry.value}
+              </span>
             </div>
           ))}
+          {rawPoint && typeof rawPoint.uploads === 'number' && typeof rawPoint.target === 'number' && rawPoint.target > 0 && (
+            <div className="pt-1.5 mt-1.5 border-t border-[#1E2E4E]/80 flex items-center justify-between text-[11px] text-[#94A3B8]">
+              <span>Submissions / Goal:</span>
+              <span className="font-mono text-emerald-400 font-semibold">{rawPoint.uploads} / {rawPoint.target}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -109,10 +131,45 @@ export const AdminCharts = React.memo(function AdminCharts({
 
         <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={completionTrendData}>
+            <LineChart
+              data={completionTrendData}
+              margin={{ top: 12, right: 16, left: -10, bottom: 4 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-              <XAxis dataKey="date" stroke="#94A3B8" fontSize={11.5} tickLine={false} />
-              <YAxis stroke="#94A3B8" fontSize={11.5} tickLine={false} axisLine={false} />
+              <XAxis
+                dataKey="date"
+                stroke="#94A3B8"
+                fontSize={11.5}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(val) => {
+                  if (!val) return '';
+                  try {
+                    const parts = String(val).split('-');
+                    if (parts.length === 3) {
+                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                      const m = parseInt(parts[1], 10) - 1;
+                      const d = parseInt(parts[2], 10);
+                      return `${d} ${monthNames[m] || parts[1]}`;
+                    }
+                  } catch (e) {}
+                  return val;
+                }}
+              />
+              <YAxis
+                stroke="#94A3B8"
+                fontSize={11.5}
+                tickLine={false}
+                axisLine={false}
+                domain={[0, (dataMax) => Math.max(100, Math.ceil((dataMax || 0) / 20) * 20)]}
+                tickFormatter={(v) => `${v}%`}
+              />
+              <ReferenceLine
+                y={100}
+                stroke="#16A34A"
+                strokeDasharray="4 4"
+                strokeOpacity={0.4}
+              />
               <Tooltip content={<CustomChartTooltip />} />
               <Line
                 type="monotone"
@@ -122,6 +179,7 @@ export const AdminCharts = React.memo(function AdminCharts({
                 strokeWidth={2.5}
                 dot={{ r: 4, fill: '#16A34A', strokeWidth: 2, stroke: '#FFF' }}
                 activeDot={{ r: 6, fill: '#16A34A', stroke: '#FFF', strokeWidth: 2 }}
+                isAnimationActive={true}
               />
             </LineChart>
           </ResponsiveContainer>

@@ -3,6 +3,8 @@ Application configuration using pydantic-settings.
 Loads from .env file and environment variables.
 """
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -93,7 +95,10 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         """Async connection URL for SQLAlchemy asyncpg engine."""
         if self.use_sqlite:
-            return "sqlite+aiosqlite:///./applyflow.db"
+            db_path = Path(__file__).resolve().parents[3] / "applyflow.db"
+            if not db_path.exists():
+                db_path = Path(__file__).resolve().parents[2] / "applyflow.db"
+            return f"sqlite+aiosqlite:///{db_path}"
 
         import re
 

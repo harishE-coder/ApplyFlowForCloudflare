@@ -662,7 +662,10 @@ resumesRouter.post("/upload", async (c) => {
       const parsedMeta = JSON.parse(metadataRaw);
       if (Array.isArray(parsedMeta)) {
         for (const m of parsedMeta) {
-          if (m?.filename) metadataOverrides[m.filename] = m;
+          if (m?.filename) {
+            metadataOverrides[m.filename] = m;
+            metadataOverrides[m.filename.trim().toLowerCase()] = m;
+          }
         }
       }
     } catch {}
@@ -714,7 +717,7 @@ resumesRouter.post("/upload", async (c) => {
     }
 
     // Priority 1: Explicit form / manual override if entered and not placeholder
-    const manualMeta = metadataOverrides[filename];
+    const manualMeta = metadataOverrides[filename] || metadataOverrides[filename.trim().toLowerCase()];
     if (manualMeta?.candidate_name && !isPlaceholderCandidate(manualMeta.candidate_name)) {
       candidateName = manualMeta.candidate_name.trim();
     }
@@ -730,7 +733,11 @@ resumesRouter.post("/upload", async (c) => {
     if (!company) company = "Unknown Hiring Organization";
     if (!role) role = "Unknown Target Role";
 
-    if (parsed.status === "needs_review") {
+    const hasManualMeta = Boolean(
+      manualMeta && (manualMeta.candidate_name || manualMeta.company || manualMeta.role)
+    );
+
+    if (!hasManualMeta && parsed.status === "needs_review") {
       needsReviewCount++;
       items.push({
         filename,

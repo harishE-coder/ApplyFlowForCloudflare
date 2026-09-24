@@ -40,6 +40,8 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
   row,
   onUpdateRow,
   onRemoveRow,
+  onQuickFixClient,
+  selectedClientName,
 }) {
   return (
     <tr
@@ -47,6 +49,8 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
         'transition-colors',
         row.status === 'needs_review'
           ? 'bg-[#FEF2F2]/40'
+          : row.lastFailureReason
+          ? 'bg-[#FFFBEB]/40'
           : 'hover:bg-[#F8FAFC]'
       )}
     >
@@ -112,15 +116,31 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
       {/* 6. Status Badge */}
       <td className="px-4 py-3 whitespace-nowrap">
         {row.status === 'valid' && (
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-1">
             <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0] inline-flex items-center gap-1 w-fit">
               ✅ Service Client Verified
             </span>
+            {row.lastFailureReason && (
+              <div className="flex flex-col gap-0.5">
+                <span
+                  className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 inline-flex items-center gap-1 w-fit"
+                  title="This file failed on the previous upload attempt and has been kept in your queue ready for retry."
+                >
+                  ⟳ Auto-Selected for Retry
+                </span>
+                <span
+                  className="text-[10px] font-medium text-rose-600 max-w-[210px] truncate"
+                  title={row.lastFailureReason}
+                >
+                  Error: {row.lastFailureReason}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
         {row.status === 'needs_review' && (
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-1">
             {row.error === 'ServiceClient Mismatch' || row.error === 'Service Client Mismatch' ? (
               <span
                 className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA] inline-flex items-center gap-1 w-fit"
@@ -131,10 +151,30 @@ const UploadQueueRow = React.memo(function UploadQueueRow({
             ) : (
               <span
                 className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A] inline-flex items-center gap-1 w-fit"
-                title="Cannot detect Service Client from filename. Correct inline or select client."
+                title={row.error || 'Cannot detect Service Client from filename.'}
               >
-                ⚠ Cannot detect Service Client from filename
+                ⚠ {row.error || 'Needs Review'}
               </span>
+            )}
+
+            {row.lastFailureReason && (
+              <span
+                className="text-[10px] font-medium text-rose-600 max-w-[210px] truncate"
+                title={row.lastFailureReason}
+              >
+                Error: {row.lastFailureReason}
+              </span>
+            )}
+
+            {selectedClientName && (
+              <button
+                type="button"
+                onClick={() => onQuickFixClient && onQuickFixClient(row.id)}
+                className="text-[11px] font-semibold text-[#2563EB] hover:text-[#1D4ED8] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                title={`Set Service Client to ${selectedClientName} and mark valid`}
+              >
+                <Check className="w-3 h-3 text-[#2563EB]" /> Auto-assign {selectedClientName}
+              </button>
             )}
           </div>
         )}
@@ -317,13 +357,10 @@ export function UploadPage() {
 
   const TRAILING_NOISE_REGEX = /^(resume|cv|biodata|final|latest|updated|v\d+|version\d*|version|[\(\[\{]\d+[\)\]\}]|\d+)$/i;
 
-  // Client-side Recruiter Filename Parser:
-  // Format: Candidate_Company_Role_With_Multiple_Words.pdf
-  // 1. Strip trailing noise tokens (Resume, CV, Final, Latest, Updated, v1, v2, Version)
-  // 2. Token 1 -> Candidate Name
-  // 3. Token 2 -> Hiring Organization
-  // 4. Remaining tokens -> Target Role
-  // 5. Service Client -> ALWAYS selectedClientName (never inferred from filename)
+  // Client-side Recruiter Filename Parser supporting:
+  // 1. ServiceClient_HiringOrg_RoleOrRoleID_CandidateIdentifier.pdf
+  // 2. ServiceClient_HiringCompany_Role.pdf
+  // 3. Natural candidate resumes: Suresh_resume (2).pdf, Harish_Resume.pdf, John_Doe.pdf
   const parseFilename = (filename, selectedClientName = '') => {
     const stem = filename.replace(/\.[^/.]+$/, '').trim();
 
@@ -338,44 +375,95 @@ export function UploadPage() {
       parts = [stem];
     }
 
-    // Strip trailing noise tokens
-    while (parts.length > 1 && TRAILING_NOISE_REGEX.test(parts[parts.length - 1])) {
-      parts.pop();
+    const hasNoise = parts.some((p) =>
+      /\b(resume|cv|biodata)\b|[\(\[\{]\d+[\)\]\}]/i.test(p)
+    );
+
+    // 1. Natural candidate resumes
+    if (hasNoise || (parts.length <= 2 && parts.slice(1).some((p) => TRAILING_NOISE_REGEX.test(p)))) {
+      const candidateName = cleanCandidateName(parts[0]);
+      return {
+        service_client: selectedClientName || 'Service Client',
+        company: 'Unknown Hiring Organization',
+        role: 'Unknown Target Role',
+        resume_identifier: parts.length > 1 ? parts[parts.length - 1] : stem,
+        resume_id_tag: '',
+        candidate_name: candidateName,
+        status: selectedClientName ? 'valid' : 'needs_review',
+        error: selectedClientName ? null : 'Cannot detect Service Client from filename',
+        clientMatch: Boolean(selectedClientName),
+      };
     }
 
-    // Service Client is always the selected client from the upload form
-    const serviceClient = selectedClientName || 'Service Client';
-    let candidateName = 'Candidate';
-    let company = '';
-    let role = '';
-
-    if (parts.length >= 3) {
-      candidateName = cleanCandidateName(parts[0]);
-      company = formatCompanyName(parts[1]);
-      const roleTokens = parts.slice(2).filter((t) => !TRAILING_NOISE_REGEX.test(t));
-      role = formatRoleTitle((roleTokens.length > 0 ? roleTokens : parts.slice(2)).join(' '));
-    } else if (parts.length === 2) {
-      candidateName = cleanCandidateName(parts[0]);
-      company = formatCompanyName(parts[1]);
-    } else if (parts.length === 1) {
-      candidateName = cleanCandidateName(parts[0]);
+    // 2. Format with less than 3 segments (not natural resume)
+    if (parts.length < 3) {
+      return {
+        service_client: selectedClientName || (parts[0] ? formatCompanyName(parts[0]) : 'Service Client'),
+        company: parts[0] ? formatCompanyName(parts[0]) : 'Unknown Hiring Organization',
+        role: parts[1] ? formatRoleTitle(parts[1]) : 'Unknown Target Role',
+        resume_identifier: parts[parts.length - 1] || stem,
+        resume_id_tag: '',
+        candidate_name: cleanCandidateName(stem),
+        status: 'needs_review',
+        error: 'Invalid filename format. Expected: ServiceClient_Company_RoleOrRoleID_ResumeIdentifier.pdf',
+        clientMatch: false,
+      };
     }
 
-    const resumeIdentifier = parts.length > 1 ? parts[parts.length - 1] : stem;
-    const hasDigits = resumeIdentifier ? /\d/.test(resumeIdentifier) : false;
+    // 3. 4 or more segments: ServiceClient_Company_Role_Identifier
+    if (parts.length >= 4) {
+      const rawClient = parts[0];
+      const rawCompany = parts[1];
+      const rawRoleParts = parts.slice(2, -1);
+      const rawIdentifier = parts[parts.length - 1];
+
+      const clientCandidateMatch = selectedClientName
+        ? rawClient.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === selectedClientName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+        : true;
+
+      const hasDigits = /\d/.test(rawIdentifier);
+      const isIdTag = /^(RES\d+|Resume\d+|\d+)$/i.test(rawIdentifier);
+
+      return {
+        service_client: clientCandidateMatch ? (selectedClientName || rawClient) : rawClient,
+        company: formatCompanyName(rawCompany),
+        role: formatRoleTitle(rawRoleParts.join(' ')),
+        resume_identifier: rawIdentifier,
+        resume_id_tag: isIdTag ? rawIdentifier.toUpperCase() : (hasDigits ? rawIdentifier : ''),
+        candidate_name: isIdTag ? `Candidate ${rawIdentifier.toUpperCase()}` : cleanCandidateName(rawIdentifier),
+        status: clientCandidateMatch ? 'valid' : 'needs_review',
+        error: clientCandidateMatch ? null : 'ServiceClient Mismatch',
+        clientMatch: clientCandidateMatch,
+      };
+    }
+
+    // 4. Exactly 3 segments: ServiceClient_Company_Role
+    const rawClient = parts[0];
+    const rawCompany = parts[1];
+    const rawRole = parts[2];
+
+    const clientCandidateMatch = selectedClientName
+      ? rawClient.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === selectedClientName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+      : true;
 
     return {
-      service_client: serviceClient,
-      company: company || 'Unknown Hiring Organization',
-      role: role || 'Unknown Target Role',
-      resume_identifier: resumeIdentifier || 'RES01',
-      resume_id_tag: hasDigits ? resumeIdentifier : '',
-      candidate_name: candidateName || 'Candidate',
-      status: 'valid',
-      error: null,
-      clientMatch: true,
+      service_client: clientCandidateMatch ? (selectedClientName || rawClient) : rawClient,
+      company: formatCompanyName(rawCompany),
+      role: formatRoleTitle(rawRole),
+      resume_identifier: parts[2],
+      resume_id_tag: /\d/.test(parts[2]) ? parts[2] : '',
+      candidate_name: cleanCandidateName(parts[2]),
+      status: clientCandidateMatch ? 'valid' : 'needs_review',
+      error: clientCandidateMatch ? null : 'ServiceClient Mismatch',
+      clientMatch: clientCandidateMatch,
     };
   };
+
+  const selectedClientObj = useMemo(
+    () => assignedClients.find((c) => c.id === selectedClientId),
+    [assignedClients, selectedClientId]
+  );
+  const selectedClientName = selectedClientObj?.company_name || '';
 
   // Handle files selection
   const handleFilesSelected = (files) => {
@@ -387,9 +475,6 @@ export function UploadPage() {
       warning('PDF Only', 'Only PDF resume files are accepted.');
       return;
     }
-
-    const selectedClientObj = assignedClients.find((c) => c.id === selectedClientId);
-    const selectedClientName = selectedClientObj?.company_name || '';
 
     const newQueueItems = pdfFiles.map((file, idx) => {
       const parsed = parseFilename(file.name, selectedClientName);
@@ -407,6 +492,7 @@ export function UploadPage() {
         status: parsed.status, // 'valid' | 'needs_review'
         error: parsed.error,
         clientMatch: parsed.clientMatch,
+        lastFailureReason: null,
       };
     });
 
@@ -420,60 +506,97 @@ export function UploadPage() {
 
   // Sync existing queue items when selectedClientId changes
   useEffect(() => {
-    if (selectedClientId && queue.length > 0) {
-      const selectedClientObj = assignedClients.find((c) => c.id === selectedClientId);
-      const selectedClientName = selectedClientObj?.company_name || '';
-      setQueue((prev) =>
-        prev.map((it) => ({
-          ...it,
-          service_client: selectedClientName || it.service_client,
-          clientMatch: true,
-          status: 'valid',
-        }))
-      );
-    }
-  }, [selectedClientId]);
-
-
-
-  // Re-run client match check if selectedClientId changes
-  useEffect(() => {
-    if (selectedClientId && queue.length > 0) {
-      const selectedClientObj = assignedClients.find((c) => c.id === selectedClientId);
-      const selName = selectedClientObj?.company_name || '';
-
+    if (selectedClientId && queue.length > 0 && selectedClientName) {
       setQueue((prev) =>
         prev.map((it) => {
-          const parsed = parseFilename(it.filename, selName);
+          const clientNormalized = selectedClientName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const itemClientNormalized = (it.service_client || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const isMatching = !it.service_client || itemClientNormalized === clientNormalized || it.clientMatch === false;
+
           return {
             ...it,
-            service_client: parsed.service_client,
-            status: parsed.status,
-            error: parsed.error,
-            clientMatch: parsed.clientMatch,
+            service_client: isMatching ? selectedClientName : it.service_client,
+            clientMatch: true,
+            status: 'valid',
+            error: null,
           };
         })
       );
     }
-  }, [selectedClientId]);
+  }, [selectedClientId, selectedClientName]);
 
   // Inline row updates
   const handleUpdateRow = (id, field, value) => {
     setQueue((prev) =>
       prev.map((it) => {
         if (it.id === id) {
-          return { ...it, [field]: value };
+          const updated = { ...it, [field]: value };
+          if (field === 'service_client') {
+            const clientNormalized = selectedClientName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const valNormalized = (value || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+            const matches = !selectedClientName || valNormalized === clientNormalized;
+            updated.clientMatch = matches;
+            if (matches) {
+              updated.status = 'valid';
+              updated.error = null;
+            } else {
+              updated.status = 'needs_review';
+              updated.error = 'ServiceClient Mismatch';
+            }
+          } else if (updated.clientMatch && updated.company && updated.role) {
+            updated.status = 'valid';
+            updated.error = null;
+          }
+          return updated;
         }
         return it;
       })
     );
   };
 
+  // Quick fix individual row to selected client
+  const handleQuickFixRow = (id) => {
+    if (!selectedClientName) return;
+    setQueue((prev) =>
+      prev.map((it) => {
+        if (it.id === id) {
+          return {
+            ...it,
+            service_client: selectedClientName,
+            status: 'valid',
+            error: null,
+            clientMatch: true,
+          };
+        }
+        return it;
+      })
+    );
+  };
+
+  // Quick fix all rows to selected client
+  const handleAutoFixAllToSelectedClient = () => {
+    if (!selectedClientName) return;
+    setQueue((prev) =>
+      prev.map((it) => ({
+        ...it,
+        service_client: selectedClientName,
+        status: 'valid',
+        error: null,
+        clientMatch: true,
+      }))
+    );
+    success('All Resumes Validated', `Set all ${queue.length} resumes to ${selectedClientName}.`);
+  };
+
   const handleRemoveRow = (id) => {
     setQueue((prev) => prev.filter((it) => it.id !== id));
   };
 
-
+  // Check if any items in queue are retrying a previous failure
+  const hasFailedRetries = useMemo(
+    () => queue.some((it) => Boolean(it.lastFailureReason)),
+    [queue]
+  );
 
   // Perform upload
   const handleCommitUpload = async (mode = 'all_valid') => {
@@ -489,7 +612,7 @@ export function UploadPage() {
     if (hasUnresolvedErrors) {
       toastError(
         'Review Required',
-        'Some files have client mismatches or invalid formats. Correct them inline before uploading.'
+        'Some files have client mismatches or invalid formats. Click "Auto-Fix All" or correct them inline before uploading.'
       );
       return;
     }
@@ -546,21 +669,34 @@ export function UploadPage() {
       setUploadProgress(100);
       setUploadProgressCount({ current: filesToUpload.length, total: filesToUpload.length });
 
-      const uploaded = res.data?.saved_count ?? filesToUpload.length;
-      const reviewedCount = queue.filter((it) => it.status === 'needs_review').length;
+      const uploaded = res.data?.saved_count ?? 0;
       const responseItems = res.data?.items || [];
-      const failedFilenames = new Set(
-        responseItems
-          .filter((it) => it.status === 'error' || it.status === 'needs_review')
-          .map((it) => it.filename)
-      );
+      const failedMap = new Map();
+      responseItems.forEach((it) => {
+        if (it.status === 'error' || it.status === 'needs_review' || it.status === 'rejected') {
+          failedMap.set(it.filename, it);
+        }
+      });
 
-      // Keep failed files in queue so user can retry without re-selecting
-      if (failedFilenames.size > 0) {
-        setQueue((prev) => prev.filter((it) => failedFilenames.has(it.filename)));
+      // Keep failed files in queue and automatically re-select them for retry
+      if (failedMap.size > 0) {
+        setQueue((prev) =>
+          prev
+            .filter((it) => failedMap.has(it.filename))
+            .map((it) => {
+              const failInfo = failedMap.get(it.filename);
+              return {
+                ...it,
+                status: 'valid', // Ensure marked valid so the employee can immediately retry
+                clientMatch: true,
+                error: null,
+                lastFailureReason: failInfo?.message || 'Server did not complete upload for this file.',
+              };
+            })
+        );
         warning(
-          'Some Files Failed',
-          `${failedFilenames.size} file(s) failed to upload and are still in the queue. Click Upload again to retry.`
+          'Failed Resumes Re-Selected',
+          `${failedMap.size} resume(s) failed and have been automatically re-selected in your queue. Click "Retry Upload" to retry.`
         );
       } else {
         setQueue([]);
@@ -568,9 +704,9 @@ export function UploadPage() {
 
       setUploadSuccessSummary({
         uploaded: uploaded || 0,
-        failed: failedFilenames.size,
-        reviewed: reviewedCount || 0,
-        items: responseItems,
+        failed: failedMap.size,
+        reviewed: queue.filter((it) => it.status === 'needs_review').length,
+        items: responseItems.filter((it) => it.status === 'saved'),
       });
 
       // Trigger immediate dashboard update event across the application
@@ -580,7 +716,7 @@ export function UploadPage() {
 
       // Confetti celebration (safely guarded)
       try {
-        if (typeof confetti === 'function') {
+        if (typeof confetti === 'function' && uploaded > 0) {
           confetti({
             particleCount: 80,
             spread: 70,
@@ -593,7 +729,10 @@ export function UploadPage() {
       }
 
       if (uploaded > 0) {
-        success('Batch Ingested', `Successfully uploaded ${uploaded} candidate resumes.${failedFilenames.size > 0 ? ` ${failedFilenames.size} failed — retry them from the queue.` : ''}`);
+        success(
+          'Batch Ingested',
+          `Successfully uploaded ${uploaded} candidate resumes.${failedMap.size > 0 ? ` ${failedMap.size} failed — automatically re-selected in queue for retry.` : ''}`
+        );
       }
     } catch (err) {
       if (progressInterval) clearInterval(progressInterval);
@@ -603,6 +742,17 @@ export function UploadPage() {
         err.message ||
         'Failed to upload batch.';
       toastError('Upload Failed', errorMsg);
+
+      // AUTOMATIC RESELECTION: In case of network/server error, all files stay in queue ready to retry
+      setQueue((prev) =>
+        prev.map((it) => ({
+          ...it,
+          status: 'valid',
+          clientMatch: true,
+          error: null,
+          lastFailureReason: errorMsg,
+        }))
+      );
     } finally {
       if (progressInterval) clearInterval(progressInterval);
       setIsUploading(false);
@@ -733,6 +883,9 @@ export function UploadPage() {
             type="file"
             multiple
             accept=".pdf,application/pdf"
+            onClick={(e) => {
+              e.target.value = null;
+            }}
             onChange={(e) => {
               if (e.target.files) {
                 handleFilesSelected(e.target.files);
@@ -800,30 +953,73 @@ export function UploadPage() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-3xl border border-[#E2E8F0] shadow-card overflow-hidden space-y-0"
         >
+          {/* Automatic Reselection Notice Banner (When files failed and are ready to retry) */}
+          {hasFailedRetries && (
+            <div className="p-4 bg-amber-50/90 border-b border-amber-200 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="font-bold text-small text-amber-900">
+                    Failed Resumes Automatically Re-Selected ({queue.length} In Queue)
+                  </p>
+                  <p className="text-caption text-amber-700">
+                    These files failed during the last attempt and are automatically preserved in the queue. You can retry immediately without re-selecting files from your disk.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={RefreshCw}
+                isLoading={isUploading}
+                onClick={() => handleCommitUpload('all_valid')}
+                className="bg-[#D97706] hover:bg-[#B45309] text-white shrink-0 font-bold shadow-xs"
+              >
+                Retry Upload Now ({queue.length}) →
+              </Button>
+            </div>
+          )}
+
           {/* Header & Status Badges */}
           <div className="p-6 bg-[#F8FAFC] border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2.5">
                 <h3 className="text-h3 font-bold text-[#081226]">
-                  Pre-Commit Batch Summary ({queue.length} Files)
+                  {hasFailedRetries ? `Retry Upload Queue (${queue.length} Files)` : `Pre-Commit Batch Summary (${queue.length} Files)`}
                 </h3>
-
               </div>
               <p className="text-caption text-[#64748B] mt-0.5">
                 Verify parsed entities before saving to database. You can edit any field directly inline.
               </p>
             </div>
 
-            {/* Status Breakdown Pills */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Status Breakdown Pills & Quick Actions */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <span className="px-2.5 py-1 rounded-lg text-caption font-bold bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0]">
                 ✅ {validCount} Valid
               </span>
 
               {reviewCount > 0 && (
-                <span className="px-2.5 py-1 rounded-lg text-caption font-bold bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA]">
-                  ❌ {reviewCount} Need Review
-                </span>
+                <>
+                  <span className="px-2.5 py-1 rounded-lg text-caption font-bold bg-[#FEF2F2] text-[#EF4444] border border-[#FECACA]">
+                    ❌ {reviewCount} Need Review
+                  </span>
+
+                  {selectedClientName && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      icon={Sparkles}
+                      onClick={handleAutoFixAllToSelectedClient}
+                      className="text-[#2563EB] border-[#2563EB]/30 bg-blue-50/70 hover:bg-blue-100/80 font-bold text-caption"
+                      title={`Assign ${selectedClientName} to all items in queue`}
+                    >
+                      Auto-Fix All to {selectedClientName}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -849,6 +1045,8 @@ export function UploadPage() {
                     row={row}
                     onUpdateRow={handleUpdateRow}
                     onRemoveRow={handleRemoveRow}
+                    onQuickFixClient={handleQuickFixRow}
+                    selectedClientName={selectedClientName}
                   />
                 ))}
               </tbody>
@@ -861,7 +1059,7 @@ export function UploadPage() {
               <div className="flex items-center justify-between text-small font-semibold">
                 <span className="flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 text-[#2563EB] animate-spin" />
-                  Uploading batch to Google Drive & database repository...
+                  Uploading batch to Cloudflare R2 & database repository...
                 </span>
                 <span>{uploadProgress}%</span>
               </div>
@@ -888,21 +1086,33 @@ export function UploadPage() {
               >
                 Clear Batch
               </Button>
-
-
             </div>
 
             <div className="flex items-center gap-3">
-              <Button
-                variant="primary"
-                size="lg"
-                icon={UploadCloud}
-                isLoading={isUploading}
-                onClick={() => handleCommitUpload('all_valid')}
-                disabled={validCount === 0 || reviewCount > 0}
-              >
-                Commit & Upload {validCount} Valid Resumes →
-              </Button>
+              {hasFailedRetries ? (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  icon={RefreshCw}
+                  isLoading={isUploading}
+                  onClick={() => handleCommitUpload('all_valid')}
+                  disabled={validCount === 0 || reviewCount > 0}
+                  className="bg-[#D97706] hover:bg-[#B45309] text-white shadow-sm font-bold"
+                >
+                  Retry Upload ({validCount} Resumes) →
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  icon={UploadCloud}
+                  isLoading={isUploading}
+                  onClick={() => handleCommitUpload('all_valid')}
+                  disabled={validCount === 0 || reviewCount > 0}
+                >
+                  Commit & Upload {validCount} Valid Resumes →
+                </Button>
+              )}
             </div>
           </div>
         </motion.div>
@@ -921,10 +1131,12 @@ export function UploadPage() {
             </div>
             <div>
               <h3 className="text-h3 font-bold text-[#166534]">
-                Batch Ingestion Successful!
+                Batch Ingestion Result
               </h3>
               <p className="text-small text-[#15803D]">
-                Candidate resumes are now saved, linked to client pipeline, and updated across your daily quota metrics.
+                {uploadSuccessSummary.failed > 0
+                  ? `${uploadSuccessSummary.uploaded} candidate resumes successfully uploaded. ${uploadSuccessSummary.failed} file(s) failed and remain automatically re-selected in your queue for retry.`
+                  : 'All candidate resumes have been saved, linked to client pipeline, and updated across your daily quota metrics.'}
               </p>
             </div>
           </div>
@@ -945,6 +1157,33 @@ export function UploadPage() {
               <p className="text-h2 font-black text-[#64748B] mt-1">{uploadSuccessSummary.reviewed}</p>
             </div>
           </div>
+
+          {/* Prominent Retry Box if any files failed */}
+          {uploadSuccessSummary.failed > 0 && queue.length > 0 && (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-bold text-small text-amber-900">
+                    {uploadSuccessSummary.failed} Failed Resume(s) Retained Below
+                  </p>
+                  <p className="text-caption text-amber-700">
+                    The failed files are still in the queue table above. You do not need to reselect them. Click Retry to upload them now.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="md"
+                icon={RefreshCw}
+                isLoading={isUploading}
+                onClick={() => handleCommitUpload('all_valid')}
+                className="shrink-0 font-bold bg-[#D97706] hover:bg-[#B45309] text-white border-none shadow-sm"
+              >
+                Retry Failed Files ({uploadSuccessSummary.failed}) →
+              </Button>
+            </div>
+          )}
 
           {/* List of uploaded items with Drive Preview & Download */}
           {(uploadSuccessSummary.items || []).length > 0 && (

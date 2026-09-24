@@ -172,12 +172,14 @@ async def lifespan(app: FastAPI):
                 except Exception:
                     pass
 
-            # Migrate resumes table columns for Cloudflare R2
+            # Migrate resumes table columns for Cloudflare R2 and work date
             for col, col_type in [
                 ("r2_key", "VARCHAR(500)"),
+                ("file_hash", "VARCHAR(64)"),
                 ("file_size", "INTEGER"),
                 ("content_type", "VARCHAR(100) DEFAULT 'application/pdf'"),
                 ("expires_at", "TIMESTAMP"),
+                ("work_date", "DATE"),
             ]:
                 try:
                     await conn.execute(sqlalchemy.text(f"ALTER TABLE resumes ADD COLUMN {col} {col_type}"))

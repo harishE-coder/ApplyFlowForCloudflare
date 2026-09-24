@@ -141,7 +141,9 @@ async def upload_resumes_bulk(
     files: list[UploadFile] = File(...),
     client_id: uuid.UUID = Form(...),
     resume_date: date | None = Form(None),
+    work_date: date | None = Form(None),
     requirement_id: uuid.UUID | None = Form(None),
+    metadata: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -154,13 +156,15 @@ async def upload_resumes_bulk(
             status_code=403,
             detail="Forbidden: Only Recruiters can upload resumes.",
         )
+    effective_date = work_date or resume_date
     return await service.process_bulk_upload(
         db=db,
         current_user=current_user,
         files=files,
         client_id=client_id,
-        resume_date=resume_date,
+        resume_date=effective_date,
         requirement_id=requirement_id,
+        metadata=metadata,
         background_tasks=background_tasks,
     )
 

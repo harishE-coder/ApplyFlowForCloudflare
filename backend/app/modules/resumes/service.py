@@ -549,14 +549,17 @@ async def process_bulk_upload(
     client_id: uuid.UUID,
     resume_date: date | None = None,
     requirement_id: uuid.UUID | None = None,
+    metadata: str | None = None,
     background_tasks = None,
 ) -> BulkUploadResponse:
     """
     Process bulk PDF upload into selected Service Client:
     - Validate employee is assigned to Client
     - Parse filename for Company, Role, Candidate / Resume ID
-    - Store PDF in Drive / local storage and metadata in DB
+    - Respect recruiter-reviewed metadata sent from the upload form
+    - Store PDF in Cloudflare R2 / local fallback storage and metadata in DB
     - Auto-sync to client, update dashboards, create activity logs and notifications
+    - Return per-file success / failure items so failed resumes can be retried immediately
     """
     allowed_clients = await get_allowed_client_ids(db, current_user)
 
@@ -585,6 +588,21 @@ async def process_bulk_upload(
 
     batch_date = resume_date or date.today()
 
+    # Parse recruiter metadata map if provided
+    meta_by_filename: dict[str, dict] = {}
+    if metadata:
+        try:
+            import json
+            parsed_meta = json.loads(metadata) if isinstance(metadata, str) else metadata
+            if isinstance(parsed_meta, list):
+                for m in parsed_meta:
+                    if isinstance(m, dict) and m.get("filename"):
+                        fn = m["filename"]
+                        meta_by_filename[fn] = m
+                        meta_by_filename[fn.strip().lower()] = m
+        except Exception as e:
+            print(f"⚠️ Note parsing upload metadata JSON: {e}")
+
     items = []
     saved_count = 0
     needs_review_count = 0
@@ -594,18 +612,51 @@ async def process_bulk_upload(
     tasks_to_upload = []
     for file in files:
         filename = file.filename or "resume.pdf"
-        file_bytes = await file.read()
+        try:
+            file_bytes = await file.read()
+        except Exception as read_err:
+            rejected_count += 1
+            items.append(
+                ParsedFileUploadItem(
+                    filename=filename,
+                    status="error",
+                    message=f"Failed to read file bytes: {read_err}",
+                    client_name=client.company_name,
+                    client_id=client.id,
+                )
+            )
+            continue
+
         parsed = parse_resume_filename(filename, selected_client_name=client.company_name)
 
-        target_company = parsed.get("company") or (selected_req.company if selected_req else "Unknown Hiring Organization")
-        target_role = parsed.get("role") or (selected_req.role if selected_req else "Unknown Target Role")
-        candidate_name = parsed.get("candidate_name") or "Candidate"
+        # Check if verified metadata was supplied from recruiter form
+        recruiter_meta = meta_by_filename.get(filename) or meta_by_filename.get(filename.strip().lower())
+        if recruiter_meta:
+            m_comp = (recruiter_meta.get("company") or "").strip()
+            m_role = (recruiter_meta.get("role") or "").strip()
+            m_cand = (recruiter_meta.get("candidate_name") or "").strip()
 
-        if not parsed["success"] or parsed.get("confidence") == "low":
+            target_company = m_comp or parsed.get("company") or (selected_req.company if selected_req else "Unknown Hiring Organization")
+            target_role = m_role or parsed.get("role") or (selected_req.role if selected_req else "Unknown Target Role")
+            candidate_name = m_cand or parsed.get("candidate_name") or "Candidate"
+            # Since recruiter has verified and confirmed this item in the UI:
+            parsed_success = True
+            parsed_confidence = "high"
+        else:
+            target_company = parsed.get("company") or (selected_req.company if selected_req else "Unknown Hiring Organization")
+            target_role = parsed.get("role") or (selected_req.role if selected_req else "Unknown Target Role")
+            candidate_name = parsed.get("candidate_name") or "Candidate"
+            parsed_success = parsed["success"]
+            parsed_confidence = parsed.get("confidence", "high")
+
+        if not parsed_success or parsed_confidence == "low":
             temp_id = f"tmp_{uuid.uuid4().hex}"
             temp_path = UPLOAD_DIR / f"{temp_id}_{filename}"
-            with open(temp_path, "wb") as f:
-                f.write(file_bytes)
+            try:
+                with open(temp_path, "wb") as f:
+                    f.write(file_bytes)
+            except Exception:
+                pass
 
             items.append(
                 ParsedFileUploadItem(
@@ -628,108 +679,116 @@ async def process_bulk_upload(
         else:
             tasks_to_upload.append((file_bytes, filename, parsed, target_company, target_role, candidate_name))
 
-    # Fast synchronous local storage write & DB preparation (sub-millisecond)
+    # Fast synchronous local storage write & DB preparation with isolated savepoints
     if tasks_to_upload:
-        entities_to_add: list[Any] = []
-        bg_sync_items = []
-
         for f_bytes, f_name, f_parsed, t_comp, t_role, c_name in tasks_to_upload:
-            r2_res = r2_storage.upload_resume(
-                file_bytes=f_bytes,
-                filename=f_name,
-                client_name=client.company_name,
-                mime_type="application/pdf",
-            )
-            r_id = uuid.uuid4()
-            app_id = uuid.uuid4()
-            now_dt = datetime.now(timezone.utc)
-            app_applied_date = datetime.combine(batch_date, now_dt.time()).replace(tzinfo=timezone.utc) if batch_date else now_dt
+            try:
+                async with db.begin_nested():
+                    r2_res = r2_storage.upload_resume(
+                        file_bytes=f_bytes,
+                        filename=f_name,
+                        client_name=client.company_name,
+                        mime_type="application/pdf",
+                    )
+                    r_id = uuid.uuid4()
+                    app_id = uuid.uuid4()
+                    now_dt = datetime.now(timezone.utc)
+                    app_applied_date = datetime.combine(batch_date, now_dt.time()).replace(tzinfo=timezone.utc) if batch_date else now_dt
 
-            resume = Resume(
-                id=r_id,
-                candidate_name=c_name,
-                company=t_comp,
-                role=t_role,
-                resume_id_tag=f_parsed.get("resume_id_tag"),
-                client_id=client.id,
-                requirement_id=selected_req.id if selected_req else None,
-                uploaded_by=current_user.id,
-                resume_date=batch_date,
-                r2_key=r2_res.get("r2_key"),
-                file_size=r2_res.get("file_size"),
-                content_type=r2_res.get("content_type", "application/pdf"),
-                expires_at=r2_res.get("expires_at"),
-                original_filename=f_name,
-            )
-            entities_to_add.append(resume)
+                    resume = Resume(
+                        id=r_id,
+                        candidate_name=c_name,
+                        company=t_comp,
+                        role=t_role,
+                        resume_id_tag=f_parsed.get("resume_id_tag"),
+                        client_id=client.id,
+                        requirement_id=selected_req.id if selected_req else None,
+                        uploaded_by=current_user.id,
+                        resume_date=batch_date,
+                        work_date=batch_date,
+                        r2_key=r2_res.get("r2_key"),
+                        file_size=r2_res.get("file_size"),
+                        content_type=r2_res.get("content_type", "application/pdf"),
+                        expires_at=r2_res.get("expires_at"),
+                        original_filename=f_name,
+                    )
+                    application = Application(
+                        id=app_id,
+                        resume_id=r_id,
+                        candidate_name=c_name,
+                        company=t_comp,
+                        role=t_role,
+                        requirement_id=selected_req.id if selected_req else None,
+                        employee_id=current_user.id,
+                        client_id=client.id,
+                        status="Submitted",
+                        current_round="Initial Application",
+                        applied_date=app_applied_date,
+                    )
+                    app_event = ApplicationEvent(
+                        id=uuid.uuid4(),
+                        application_id=app_id,
+                        event_type="Submitted",
+                        round_name="Initial Application",
+                        created_by=current_user.id,
+                        created_at=app_applied_date,
+                    )
+                    act_log = ActivityLog(
+                        id=uuid.uuid4(),
+                        user_id=current_user.id,
+                        action="resume_uploaded",
+                        details={
+                            "resume_id": str(r_id),
+                            "application_id": str(app_id),
+                            "client": client.company_name,
+                            "company": t_comp,
+                            "candidate": c_name,
+                            "resume_date": batch_date.isoformat(),
+                            "r2_key": resume.r2_key,
+                        },
+                    )
+                    db.add_all([resume, application, app_event, act_log])
+                    await db.flush()
 
-            application = Application(
-                id=app_id,
-                resume_id=r_id,
-                candidate_name=c_name,
-                company=t_comp,
-                role=t_role,
-                requirement_id=selected_req.id if selected_req else None,
-                employee_id=current_user.id,
-                client_id=client.id,
-                status="Submitted",
-                current_round="Initial Application",
-                applied_date=app_applied_date,
-            )
-            entities_to_add.append(application)
-
-            entities_to_add.append(
-                ApplicationEvent(
-                    id=uuid.uuid4(),
-                    application_id=app_id,
-                    event_type="Submitted",
-                    round_name="Initial Application",
-                    created_by=current_user.id,
-                    created_at=app_applied_date,
+                items.append(
+                    ParsedFileUploadItem(
+                        filename=f_name,
+                        status="saved",
+                        message="Successfully parsed and saved to database & Cloudflare R2 storage.",
+                        company=t_comp,
+                        role=t_role,
+                        candidate_name=c_name,
+                        resume_id_tag=resume.resume_id_tag,
+                        client_name=client.company_name,
+                        client_id=client.id,
+                        requirement_id=selected_req.id if selected_req else None,
+                        requirement_code=selected_req.role_code if selected_req else None,
+                        resume_date=batch_date,
+                        work_date=batch_date,
+                        r2_key=resume.r2_key,
+                        file_size=resume.file_size,
+                        saved_resume_id=r_id,
+                    )
                 )
-            )
-
-            entities_to_add.append(
-                ActivityLog(
-                    id=uuid.uuid4(),
-                    user_id=current_user.id,
-                    action="resume_uploaded",
-                    details={
-                        "resume_id": str(r_id),
-                        "application_id": str(app_id),
-                        "client": client.company_name,
-                        "company": t_comp,
-                        "candidate": c_name,
-                        "resume_date": batch_date.isoformat(),
-                        "r2_key": resume.r2_key,
-                    },
+                saved_count += 1
+            except Exception as file_exc:
+                rejected_count += 1
+                items.append(
+                    ParsedFileUploadItem(
+                        filename=f_name,
+                        status="error",
+                        message=f"Upload failed: {str(file_exc)}",
+                        company=t_comp,
+                        role=t_role,
+                        candidate_name=c_name,
+                        resume_id_tag=f_parsed.get("resume_id_tag"),
+                        client_name=client.company_name,
+                        client_id=client.id,
+                    )
                 )
-            )
 
-            items.append(
-                ParsedFileUploadItem(
-                    filename=f_name,
-                    status="saved",
-                    message="Successfully parsed and saved to database & Cloudflare R2 storage.",
-                    company=t_comp,
-                    role=t_role,
-                    candidate_name=c_name,
-                    resume_id_tag=resume.resume_id_tag,
-                    client_name=client.company_name,
-                    client_id=client.id,
-                    requirement_id=selected_req.id if selected_req else None,
-                    requirement_code=selected_req.role_code if selected_req else None,
-                    resume_date=batch_date,
-                    r2_key=resume.r2_key,
-                    file_size=resume.file_size,
-                    saved_resume_id=r_id,
-                )
-            )
-            saved_count += 1
-
-        db.add_all(entities_to_add)
-        await db.flush()
-        invalidate_dashboard_cache()
+        if saved_count > 0:
+            invalidate_dashboard_cache()
 
     # Auto-Sync Notifications & Dashboard Telemetry
     dash_stats = None
